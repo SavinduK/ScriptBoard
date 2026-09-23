@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">KeyPro Keyboard</string>
+    <string name="ime_service_name">KeyPro Gboard</string>
+    <string name="keyboard_settings">Keyboard Settings</string>
+</resources>

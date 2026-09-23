@@ -1,0 +1,6 @@
+{
+  "name": "KeyPro Keyboard",
+  "description": "Gboard-style Android keyboard with dark mode, pinned clipboard snippets, and laptop navigation keys.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
