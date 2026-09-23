@@ -5,6 +5,7 @@ enum class KeyboardLayoutMode {
     SYMBOLS_1,     // ?123
     SYMBOLS_2,     // =\<
     NUMPAD,        // 1234
+    EXTENDED_PC,   // Laptop / PC special keys in-place
     EMOJI,
     CLIPBOARD
 }
@@ -25,6 +26,7 @@ sealed class KeyAction {
     object SwitchToLetters : KeyAction()
     object SwitchToMoreSymbols : KeyAction()
     object SwitchToNumpad : KeyAction()
+    object SwitchToExtendedPc : KeyAction()
     object SwitchToEmoji : KeyAction()
     object SwitchToClipboard : KeyAction()
     object Space : KeyAction()

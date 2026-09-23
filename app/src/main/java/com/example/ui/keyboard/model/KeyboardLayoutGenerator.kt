@@ -191,4 +191,41 @@ object KeyboardLayoutGenerator {
         )
         return listOf(row1, row2, row3, row4)
     }
+
+    fun getExtendedPcRows(): List<List<KeyItem>> {
+        val row1FKeys = (1..12).map { num ->
+            KeyItem("F$num", action = KeyAction.FunctionKey(num), weight = 1f, isFunctional = true, testTag = "key_f$num")
+        }
+
+        val row2 = listOf(
+            KeyItem("ESC", action = KeyAction.Escape, weight = 1f, isFunctional = true, testTag = "pc_esc"),
+            KeyItem("DEL", action = KeyAction.DeleteForward, weight = 1.1f, isFunctional = true, testTag = "pc_del"),
+            KeyItem("INS", action = KeyAction.InsertText(""), weight = 0.9f, isFunctional = true, testTag = "pc_ins"),
+            KeyItem("HOME", action = KeyAction.Home, weight = 1.15f, isFunctional = true, testTag = "pc_home"),
+            KeyItem("END", action = KeyAction.End, weight = 1.15f, isFunctional = true, testTag = "pc_end"),
+            KeyItem("PGUP", action = KeyAction.PageUp, weight = 1.15f, isFunctional = true, testTag = "pc_pgup"),
+            KeyItem("PGDN", action = KeyAction.PageDown, weight = 1.15f, isFunctional = true, testTag = "pc_pgdn"),
+            KeyItem("PRTSC", action = KeyAction.Copy, weight = 1.1f, isFunctional = true, testTag = "pc_prtsc")
+        )
+
+        val row3Chars = listOf("`", "~", "|", "\\", "^", "{", "}", "[", "]")
+        val row3Middle = row3Chars.map {
+            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "pc_sym_$it")
+        }
+        val backspaceKey = KeyItem("⌫", action = KeyAction.Backspace, weight = 1.4f, isFunctional = true, testTag = "key_backspace")
+        val tabKey = KeyItem("↹", action = KeyAction.Tab, weight = 1.1f, isFunctional = true, testTag = "pc_tab")
+        val row3 = listOf(tabKey) + row3Middle + listOf(backspaceKey)
+
+        val row4 = listOf(
+            KeyItem("ABC", action = KeyAction.SwitchToLetters, weight = 1.35f, isFunctional = true, testTag = "key_switch_abc"),
+            KeyItem("Ctrl+A", action = KeyAction.SelectAll, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_a"),
+            KeyItem("Ctrl+C", action = KeyAction.Copy, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_c"),
+            KeyItem("Ctrl+V", action = KeyAction.Paste, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_v"),
+            KeyItem("Ctrl+Z", action = KeyAction.Undo, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_z"),
+            KeyItem("English", action = KeyAction.Space, weight = 2.4f, testTag = "key_space"),
+            KeyItem("↵", action = KeyAction.Enter, weight = 1.35f, isAccent = true, testTag = "key_enter")
+        )
+
+        return listOf(row1FKeys, row2, row3, row4)
+    }
 }

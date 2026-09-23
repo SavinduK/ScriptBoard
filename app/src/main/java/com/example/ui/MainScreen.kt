@@ -1,9 +1,10 @@
 package com.example.ui
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,28 +19,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Laptop
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,10 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.keyboard.KeyProKeyboardView
-import com.example.ui.keyboard.components.ClipboardSheet
-import com.example.ui.keyboard.components.ExtendedPcKeysSheet
 import com.example.ui.keyboard.components.KeyboardSettingsSheet
-import com.example.ui.keyboard.model.KeyboardThemeType
+import com.example.ui.keyboard.model.KeyAction
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +61,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     val editorValue by viewModel.editorValue.collectAsState()
     val allSnippets by viewModel.allSnippets.collectAsState()
-    val pinnedSnippets by viewModel.pinnedSnippets.collectAsState()
     val currentThemeType by viewModel.themeType.collectAsState()
     val isLaptopBarVisible by viewModel.isLaptopBarVisible.collectAsState()
     val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
@@ -79,8 +69,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     val colors = viewModel.currentColors
 
-    var showClipboardSheet by remember { mutableStateOf(false) }
-    var showExtendedPcSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
     fun openImeSettings() {
@@ -88,6 +76,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    fun openImePicker() {
+        try {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showInputMethodPicker()
         } catch (_: Exception) {}
     }
 
@@ -129,13 +124,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "KeyPro Gboard",
+                            text = "KeyPro Keyboard",
                             color = colors.letterKeyTextColor,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${currentThemeType.displayName} • Laptop Keys",
+                            text = "${currentThemeType.displayName} • Gboard Layout",
                             color = colors.letterKeySecondaryTextColor,
                             fontSize = 11.sp
                         )
@@ -143,37 +138,57 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Quick Action: Enable System Keyboard
+                    // Step 1: Enable in Settings
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.functionKeyBackground)
                             .clickable { openImeSettings() }
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                            .testTag("btn_top_enable_system"),
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .testTag("btn_top_enable_settings"),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Enable IME",
+                            text = "1. Enable",
                             color = colors.enterKeyBackground,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
+
+                    // Step 2: Select Keyboard
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.enterKeyBackground)
+                            .clickable { openImePicker() }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .testTag("btn_top_select_keyboard"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "2. Select",
+                            color = colors.enterKeyTextColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
 
                     IconButton(
                         onClick = { viewModel.clearEditor() },
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .testTag("btn_top_clear")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Clear,
                             contentDescription = "Clear Pad",
                             tint = colors.toolbarIconTint,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
@@ -212,7 +227,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     }
 
                     Text(
-                        text = "${editorValue.text.length} chars • Cursor: ${editorValue.selection.start}",
+                        text = "${editorValue.text.length} chars • Pos: ${editorValue.selection.start}",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -247,7 +262,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         ),
                         placeholder = {
                             Text(
-                                text = "Tap keys below or snippets to start typing...",
+                                text = "Tap keys below or test hold-to-delete...",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 14.sp
                             )
@@ -264,47 +279,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             // Keyboard Container (Bottom Half)
             KeyProKeyboardView(
                 colors = colors,
-                pinnedSnippets = pinnedSnippets,
+                allSnippets = allSnippets,
                 isSoundEnabled = isSoundEnabled,
                 isHapticEnabled = isHapticEnabled,
                 initialLaptopBarVisible = isLaptopBarVisible,
                 onAction = { action -> viewModel.handleKeyboardAction(action) },
-                onOpenClipboardSheet = { showClipboardSheet = true },
-                onOpenExtendedPcSheet = { showExtendedPcSheet = true },
-                onOpenThemePicker = { showSettingsSheet = true },
+                onTogglePin = { viewModel.togglePin(it) },
+                onDeleteSnippet = { viewModel.deleteSnippet(it) },
+                onSaveSnippet = { title, content, isPinned, category ->
+                    viewModel.saveSnippet(title, content, isPinned, category)
+                },
                 onOpenSettings = { showSettingsSheet = true }
             )
         }
     }
 
-    // Modal Sheet 1: Clipboard & Pinned Snippets
-    if (showClipboardSheet) {
-        ClipboardSheet(
-            snippets = allSnippets,
-            colors = colors,
-            onDismiss = { showClipboardSheet = false },
-            onSnippetSelected = { text ->
-                viewModel.handleKeyboardAction(com.example.ui.keyboard.model.KeyAction.InsertText(text))
-            },
-            onTogglePin = { viewModel.togglePin(it) },
-            onDeleteSnippet = { viewModel.deleteSnippet(it) },
-            onSaveSnippet = { title, content, isPinned, category ->
-                viewModel.saveSnippet(title, content, isPinned, category)
-            },
-            onClearHistory = { viewModel.clearUnpinnedHistory() }
-        )
-    }
-
-    // Modal Sheet 2: Extended PC Keys (F1-F12, Dev symbols, Cursor controls)
-    if (showExtendedPcSheet) {
-        ExtendedPcKeysSheet(
-            colors = colors,
-            onDismiss = { showExtendedPcSheet = false },
-            onAction = { action -> viewModel.handleKeyboardAction(action) }
-        )
-    }
-
-    // Modal Sheet 3: Settings & Themes
+    // Modal Sheet: Settings & Themes
     if (showSettingsSheet) {
         KeyboardSettingsSheet(
             colors = colors,

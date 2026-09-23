@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,6 +22,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.example.data.SnippetEntity
 import com.example.ui.keyboard.components.EmojiPickerView
+import com.example.ui.keyboard.components.InKeyboardClipboardView
 import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
@@ -34,15 +37,15 @@ import com.example.ui.keyboard.util.FeedbackUtil
 @Composable
 fun KeyProKeyboardView(
     colors: KeyboardColors,
-    pinnedSnippets: List<SnippetEntity>,
+    allSnippets: List<SnippetEntity> = emptyList(),
     isSoundEnabled: Boolean = true,
     isHapticEnabled: Boolean = true,
     initialLaptopBarVisible: Boolean = true,
     onAction: (KeyAction) -> Unit,
-    onOpenClipboardSheet: () -> Unit,
-    onOpenExtendedPcSheet: () -> Unit,
-    onOpenThemePicker: () -> Unit,
-    onOpenSettings: () -> Unit
+    onTogglePin: (SnippetEntity) -> Unit = {},
+    onDeleteSnippet: (Long) -> Unit = {},
+    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit = { _, _, _, _ -> },
+    onOpenSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -113,11 +116,22 @@ fun KeyProKeyboardView(
             is KeyAction.SwitchToNumpad -> {
                 layoutMode = KeyboardLayoutMode.NUMPAD
             }
+            is KeyAction.SwitchToExtendedPc -> {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.EXTENDED_PC
+                }
+            }
             is KeyAction.SwitchToEmoji -> {
                 layoutMode = KeyboardLayoutMode.EMOJI
             }
             is KeyAction.SwitchToClipboard -> {
-                onOpenClipboardSheet()
+                layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.CLIPBOARD
+                }
             }
             is KeyAction.ToggleCtrl -> {
                 isCtrlActive = !isCtrlActive
@@ -156,21 +170,27 @@ fun KeyProKeyboardView(
             )
         }
 
-        // Toolbar
+        // Toolbar: ONLY the 4 requested buttons (Laptop key switch, Extended PC keys, Clipboard, Settings)
         KeyboardToolbar(
             colors = colors,
             isLaptopBarVisible = isLaptopBarVisible,
-            pinnedSnippets = pinnedSnippets,
+            isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
             onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
-            onOpenExtendedPcKeys = onOpenExtendedPcSheet,
-            onOpenEmoji = { layoutMode = KeyboardLayoutMode.EMOJI },
-            onOpenClipboard = onOpenClipboardSheet,
-            onOpenThemePicker = onOpenThemePicker,
-            onOpenSettings = onOpenSettings,
-            onInsertSnippet = { text ->
-                FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
-                onAction(KeyAction.InsertText(text))
-            }
+            onToggleExtendedPcKeys = {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.EXTENDED_PC
+                }
+            },
+            onOpenClipboard = {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.CLIPBOARD
+                }
+            },
+            onOpenSettings = onOpenSettings
         )
 
         // Main Keyboard Area
@@ -186,12 +206,28 @@ fun KeyProKeyboardView(
                     onBackspace = { handleKeyAction(KeyAction.Backspace) }
                 )
             }
+            KeyboardLayoutMode.CLIPBOARD -> {
+                InKeyboardClipboardView(
+                    snippets = allSnippets,
+                    colors = colors,
+                    onSnippetSelected = { text ->
+                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                        onAction(KeyAction.InsertText(text))
+                    },
+                    onTogglePin = onTogglePin,
+                    onDeleteSnippet = onDeleteSnippet,
+                    onSaveSnippet = onSaveSnippet,
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
+                )
+            }
             else -> {
+                // Layout is either TEXT, SYMBOLS_1, SYMBOLS_2, NUMPAD, or EXTENDED_PC (special set of laptop keys!)
                 val currentRows = when (layoutMode) {
                     KeyboardLayoutMode.TEXT -> KeyboardLayoutGenerator.getQwertyRows(shiftState)
                     KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows()
                     KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows()
                     KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows()
+                    KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getExtendedPcRows()
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState)
                 }
 
@@ -219,5 +255,8 @@ fun KeyProKeyboardView(
                 }
             }
         }
+
+        // Space below the last row of keys as requested
+        Spacer(modifier = Modifier.height(14.dp))
     }
 }

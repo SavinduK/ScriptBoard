@@ -1,15 +1,21 @@
 package com.example.ime
 
+import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
@@ -23,9 +29,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class KeyProInputMethodService : InputMethodService(), LifecycleOwner, SavedStateRegistryOwner {
+class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
+    private val mViewModelStore = ViewModelStore()
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     private val serviceScope = CoroutineScope(Dispatchers.Main)
 
@@ -33,6 +40,9 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, SavedStat
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
+
+    override val viewModelStore: ViewModelStore
+        get() = mViewModelStore
 
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
@@ -46,32 +56,66 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, SavedStat
         repository = SnippetRepository(db.snippetDao())
     }
 
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
+    override fun onEvaluateInputViewShown(): Boolean = true
+
     override fun onCreateInputView(): View {
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        window?.window?.decorView?.let { decorView ->
+            decorView.setViewTreeLifecycleOwner(this)
+            decorView.setViewTreeViewModelStoreOwner(this)
+            decorView.setViewTreeSavedStateRegistryOwner(this)
+        }
 
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@KeyProInputMethodService)
+            setViewTreeViewModelStoreOwner(this@KeyProInputMethodService)
             setViewTreeSavedStateRegistryOwner(this@KeyProInputMethodService)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 
             setContent {
-                val pinnedSnippets by repository.pinnedSnippets.collectAsState(initial = emptyList())
+                val allSnippets by repository.allSnippets.collectAsState(initial = emptyList())
 
                 KeyProKeyboardView(
                     colors = KeyboardThemes.GboardDark,
-                    pinnedSnippets = pinnedSnippets,
+                    allSnippets = allSnippets,
                     isSoundEnabled = true,
                     isHapticEnabled = true,
                     initialLaptopBarVisible = true,
                     onAction = { action -> handleImeAction(action) },
-                    onOpenClipboardSheet = { /* Handled in in-app activity */ },
-                    onOpenExtendedPcSheet = { /* Handled in in-app activity */ },
-                    onOpenThemePicker = { /* Handled in settings */ },
-                    onOpenSettings = { /* Handled in app */ }
+                    onTogglePin = { snippet ->
+                        serviceScope.launch { repository.togglePin(snippet.id, snippet.isPinned) }
+                    },
+                    onDeleteSnippet = { id ->
+                        serviceScope.launch { repository.deleteSnippet(id) }
+                    },
+                    onSaveSnippet = { title, content, isPinned, category ->
+                        serviceScope.launch { repository.insertSnippet(title, content, isPinned, category) }
+                    },
+                    onOpenSettings = {
+                        // Launch settings activity
+                        try {
+                            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            if (intent != null) startActivity(intent)
+                        } catch (_: Exception) {}
+                    }
                 )
             }
         }
         return composeView
+    }
+
+    override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
 
     private fun handleImeAction(action: KeyAction) {
@@ -178,6 +222,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, SavedStat
 
     override fun onDestroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        mViewModelStore.clear()
         super.onDestroy()
     }
 }
