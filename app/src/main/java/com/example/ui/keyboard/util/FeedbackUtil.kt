@@ -16,6 +16,9 @@ object FeedbackUtil {
         soundEnabled: Boolean,
         hapticEnabled: Boolean
     ) {
+        // Explicitly ensure view does not play unwanted sound effects when disabled
+        view?.isSoundEffectsEnabled = soundEnabled
+
         if (soundEnabled) {
             try {
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -25,26 +28,21 @@ object FeedbackUtil {
         }
 
         if (hapticEnabled) {
-            if (view != null) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            } else {
-                try {
-                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    if (vibrator != null && vibrator.hasVibrator()) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            vibrator.vibrate(
-                                VibrationEffect.createOneShot(
-                                    15,
-                                    VibrationEffect.DEFAULT_AMPLITUDE
-                                )
-                            )
-                        } else {
-                            @Suppress("DEPRECATION")
-                            vibrator.vibrate(15)
-                        }
+            try {
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(
+                            VibrationEffect.createOneShot(12, VibrationEffect.DEFAULT_AMPLITUDE)
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(12)
                     }
-                } catch (_: Exception) {
+                } else if (view != null) {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 }
+            } catch (_: Exception) {
             }
         }
     }

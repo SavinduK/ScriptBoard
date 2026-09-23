@@ -7,6 +7,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -25,6 +26,7 @@ import com.example.data.SnippetRepository
 import com.example.ui.keyboard.KeyProKeyboardView
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyboardThemes
+import com.example.ui.keyboard.util.KeyboardPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,6 +39,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     private val serviceScope = CoroutineScope(Dispatchers.Main)
 
     private lateinit var repository: SnippetRepository
+    private lateinit var keyboardPrefs: KeyboardPreferences
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -54,6 +57,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
         val db = AppDatabase.getDatabase(this)
         repository = SnippetRepository(db.snippetDao())
+        keyboardPrefs = KeyboardPreferences.getInstance(this)
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
@@ -75,13 +79,17 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
             setContent {
                 val allSnippets by repository.allSnippets.collectAsState(initial = emptyList())
+                val soundEnabled by keyboardPrefs.soundEnabled.collectAsState()
+                val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
+                val themeType by keyboardPrefs.themeType.collectAsState()
+                val laptopBarVisible by keyboardPrefs.laptopBarVisible.collectAsState()
 
                 KeyProKeyboardView(
-                    colors = KeyboardThemes.GboardDark,
+                    colors = KeyboardThemes.getTheme(themeType),
                     allSnippets = allSnippets,
-                    isSoundEnabled = true,
-                    isHapticEnabled = true,
-                    initialLaptopBarVisible = true,
+                    isSoundEnabled = soundEnabled,
+                    isHapticEnabled = hapticEnabled,
+                    initialLaptopBarVisible = laptopBarVisible,
                     onAction = { action -> handleImeAction(action) },
                     onTogglePin = { snippet ->
                         serviceScope.launch { repository.togglePin(snippet.id, snippet.isPinned) }
@@ -93,7 +101,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                         serviceScope.launch { repository.insertSnippet(title, content, isPinned, category) }
                     },
                     onOpenSettings = {
-                        // Launch settings activity
                         try {
                             val intent = packageManager.getLaunchIntentForPackage(packageName)
                             intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)

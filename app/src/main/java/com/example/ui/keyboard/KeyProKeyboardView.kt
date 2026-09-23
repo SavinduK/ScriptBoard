@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,11 @@ fun KeyProKeyboardView(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+
+    DisposableEffect(isSoundEnabled) {
+        view.isSoundEffectsEnabled = isSoundEnabled
+        onDispose { }
+    }
 
     var layoutMode by remember { mutableStateOf(KeyboardLayoutMode.TEXT) }
     var shiftState by remember { mutableStateOf(ShiftState.OFF) }
@@ -256,7 +262,7 @@ fun KeyProKeyboardView(
             }
         }
 
-        // Space below the last row of keys as requested
-        Spacer(modifier = Modifier.height(14.dp))
+        // Empty space below the last row of keys (similar height of a row of keys)
+        Spacer(modifier = Modifier.height(48.dp))
     }
 }

@@ -21,11 +21,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,6 +74,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val colors = viewModel.currentColors
 
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var showSetupDropdown by remember { mutableStateOf(false) }
 
     fun openImeSettings() {
         try {
@@ -138,45 +143,106 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Step 1: Enable in Settings
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.functionKeyBackground)
-                            .clickable { openImeSettings() }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                            .testTag("btn_top_enable_settings"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "1. Enable",
-                            color = colors.enterKeyBackground,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    // Dropdown menu for Keyboard Setup (Enable & Select)
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(colors.enterKeyBackground)
+                                .clickable { showSetupDropdown = true }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("btn_top_setup_dropdown"),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Setup",
+                                color = colors.enterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Setup Options Dropdown",
+                                tint = colors.enterKeyTextColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showSetupDropdown,
+                            onDismissRequest = { showSetupDropdown = false },
+                            modifier = Modifier
+                                .background(colors.toolbarBackground)
+                                .testTag("menu_keyboard_setup")
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            tint = colors.enterKeyBackground,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "1. Enable in Settings",
+                                                color = colors.letterKeyTextColor,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = "Turn KeyPro on in Android Settings",
+                                                color = colors.letterKeySecondaryTextColor,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    showSetupDropdown = false
+                                    openImeSettings()
+                                },
+                                modifier = Modifier.testTag("menu_item_enable_settings")
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Keyboard,
+                                            contentDescription = null,
+                                            tint = colors.enterKeyBackground,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "2. Select Active Keyboard",
+                                                color = colors.letterKeyTextColor,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = "Switch input method to KeyPro",
+                                                color = colors.letterKeySecondaryTextColor,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    showSetupDropdown = false
+                                    openImePicker()
+                                },
+                                modifier = Modifier.testTag("menu_item_select_keyboard")
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(5.dp))
-
-                    // Step 2: Select Keyboard
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.enterKeyBackground)
-                            .clickable { openImePicker() }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                            .testTag("btn_top_select_keyboard"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "2. Select",
-                            color = colors.enterKeyTextColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     IconButton(
                         onClick = { viewModel.clearEditor() },

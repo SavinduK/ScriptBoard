@@ -1,6 +1,9 @@
 package com.example.ui.keyboard.components
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,10 +18,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
@@ -28,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,7 +61,29 @@ fun InKeyboardClipboardView(
     onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
     onBackToLetters: () -> Unit
 ) {
+    val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+
+    var lastCopiedText by remember { mutableStateOf<String?>(null) }
+    var copiedItemSaved by remember { mutableStateOf(false) }
+
+    // Read latest system clipboard content
+    LaunchedEffect(Unit) {
+        try {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            if (cm != null && cm.hasPrimaryClip()) {
+                val clip = cm.primaryClip
+                if (clip != null && clip.itemCount > 0) {
+                    val text = clip.getItemAt(0).text?.toString()
+                    if (!text.isNullOrBlank()) {
+                        lastCopiedText = text
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    val isAlreadyInSnippets = lastCopiedText != null && snippets.any { it.content == lastCopiedText }
 
     Column(
         modifier = Modifier
@@ -62,7 +91,7 @@ fun InKeyboardClipboardView(
             .height(290.dp)
             .background(colors.background)
     ) {
-        // Top Bar
+        // Top Navigation Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -90,7 +119,7 @@ fun InKeyboardClipboardView(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Clipboard & Pinned",
+                    text = "Clipboard Manager",
                     color = colors.letterKeyTextColor,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
@@ -111,38 +140,185 @@ fun InKeyboardClipboardView(
             }
         }
 
-        // Snippets list
-        if (snippets.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "No snippets saved yet",
-                        color = colors.letterKeySecondaryTextColor,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Tap + above to add a snippet to pin!",
-                        color = colors.enterKeyBackground,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(vertical = 6.dp)
+        ) {
+            // Section 1: Last Copied Content in Clipboard
+            item {
+                Text(
+                    text = "LAST COPIED CONTENT",
+                    color = colors.enterKeyBackground,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
+                )
+
+                if (lastCopiedText != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, colors.enterKeyBackground.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSnippetSelected(lastCopiedText!!) }
+                            .testTag("last_copied_clipboard_card"),
+                        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = "Copied",
+                                        tint = colors.enterKeyBackground,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Current Clipboard",
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Save / Pin action
+                                if (copiedItemSaved || isAlreadyInSnippets) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(colors.enterKeyBackground.copy(alpha = 0.2f))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Saved",
+                                            tint = colors.enterKeyBackground,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Saved",
+                                            color = colors.enterKeyBackground,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(colors.enterKeyBackground)
+                                            .clickable {
+                                                val snippetTitle = if (lastCopiedText!!.length > 25) {
+                                                    lastCopiedText!!.take(25) + "..."
+                                                } else {
+                                                    lastCopiedText!!
+                                                }
+                                                onSaveSnippet(snippetTitle, lastCopiedText!!, true, "Clipboard")
+                                                copiedItemSaved = true
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("btn_save_last_copied"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.BookmarkAdd,
+                                                contentDescription = "Save Snippet",
+                                                tint = colors.enterKeyTextColor,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Save",
+                                                color = colors.enterKeyTextColor,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = lastCopiedText!!,
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 12.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Tap to paste into active field",
+                                color = colors.enterKeyBackground,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp)),
+                        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "No recent text copied yet. Copy any text to see it here.",
+                            color = colors.letterKeySecondaryTextColor,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "SAVED & PINNED (${snippets.size})",
+                    color = colors.letterKeySecondaryTextColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)
+                )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(vertical = 6.dp)
-            ) {
+
+            // Section 2: Saved and Pinned Snippets
+            if (snippets.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No saved snippets. Tap \"Save\" above or + to pin snippets!",
+                            color = colors.letterKeySecondaryTextColor,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            } else {
                 items(snippets, key = { it.id }) { snippet ->
                     Card(
                         modifier = Modifier

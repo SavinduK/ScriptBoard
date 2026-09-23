@@ -15,6 +15,7 @@ import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.keyboard.model.KeyboardThemeType
 import com.example.ui.keyboard.model.KeyboardThemes
+import com.example.ui.keyboard.util.KeyboardPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: SnippetRepository
     private val clipboardManager = application.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val keyboardPrefs = KeyboardPreferences.getInstance(application)
 
     init {
         val db = AppDatabase.getDatabase(application)
@@ -51,20 +53,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val undoStack = mutableListOf<TextFieldValue>()
     private val redoStack = mutableListOf<TextFieldValue>()
 
-    private val _themeType = MutableStateFlow(KeyboardThemeType.GBOARD_DARK)
-    val themeType: StateFlow<KeyboardThemeType> = _themeType.asStateFlow()
+    val themeType: StateFlow<KeyboardThemeType> = keyboardPrefs.themeType
+    val isLaptopBarVisible: StateFlow<Boolean> = keyboardPrefs.laptopBarVisible
+    val isSoundEnabled: StateFlow<Boolean> = keyboardPrefs.soundEnabled
+    val isHapticEnabled: StateFlow<Boolean> = keyboardPrefs.hapticEnabled
 
     val currentColors: KeyboardColors
-        get() = KeyboardThemes.getTheme(_themeType.value)
-
-    private val _isLaptopBarVisible = MutableStateFlow(true)
-    val isLaptopBarVisible: StateFlow<Boolean> = _isLaptopBarVisible.asStateFlow()
-
-    private val _isSoundEnabled = MutableStateFlow(true)
-    val isSoundEnabled: StateFlow<Boolean> = _isSoundEnabled.asStateFlow()
-
-    private val _isHapticEnabled = MutableStateFlow(true)
-    val isHapticEnabled: StateFlow<Boolean> = _isHapticEnabled.asStateFlow()
+        get() = KeyboardThemes.getTheme(themeType.value)
 
     private val _lastActionStatus = MutableStateFlow<String?>("Ready • Tap any key to test")
     val lastActionStatus: StateFlow<String?> = _lastActionStatus.asStateFlow()
@@ -74,21 +69,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTheme(type: KeyboardThemeType) {
-        _themeType.value = type
+        keyboardPrefs.setThemeType(type)
         _lastActionStatus.value = "Theme changed to ${type.displayName}"
     }
 
     fun toggleLaptopBar(visible: Boolean? = null) {
-        _isLaptopBarVisible.value = visible ?: !_isLaptopBarVisible.value
-        _lastActionStatus.value = if (_isLaptopBarVisible.value) "Laptop Keys Bar: Visible" else "Laptop Keys Bar: Hidden"
+        val next = visible ?: !isLaptopBarVisible.value
+        keyboardPrefs.setLaptopBarVisible(next)
+        _lastActionStatus.value = if (next) "Laptop Keys Bar: Visible" else "Laptop Keys Bar: Hidden"
     }
 
     fun toggleSound(enabled: Boolean) {
-        _isSoundEnabled.value = enabled
+        keyboardPrefs.setSoundEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Typing sound: ON" else "Typing sound: OFF"
     }
 
     fun toggleHaptic(enabled: Boolean) {
-        _isHapticEnabled.value = enabled
+        keyboardPrefs.setHapticEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Haptic vibration: ON" else "Haptic vibration: OFF"
     }
 
     fun clearEditor() {
@@ -114,7 +112,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is KeyAction.Enter -> insertText("\n")
             is KeyAction.Tab -> insertTab()
             is KeyAction.Escape -> {
-                // Laptop ESC: clear selection or unfocus
                 val current = _editorValue.value
                 _editorValue.value = current.copy(selection = TextRange(current.selection.end))
                 _lastActionStatus.value = "ESC pressed (selection cleared)"
@@ -156,7 +153,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun insertTab() {
         saveUndoState()
         val current = _editorValue.value
-        val tabSpaces = "    " // 4 spaces standard laptop tab indentation
+        val tabSpaces = "    "
         val originalText = current.text
         val selStart = current.selection.min
         val selEnd = current.selection.max
@@ -224,7 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var colInLine = 0
 
         for (i in lines.indices) {
-            val lineLen = lines[i].length + 1 // including \n
+            val lineLen = lines[i].length + 1
             if (current.selection.start in charCount until (charCount + lineLen)) {
                 currentLineIndex = i
                 colInLine = current.selection.start - charCount
