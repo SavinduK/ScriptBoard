@@ -15,6 +15,9 @@ interface SnippetDao {
     @Query("SELECT * FROM snippets WHERE isPinned = 1 ORDER BY timestamp DESC")
     fun getPinnedSnippets(): Flow<List<SnippetEntity>>
 
+    @Query("SELECT * FROM snippets WHERE isPinned = 0 ORDER BY timestamp DESC")
+    fun getHistorySnippets(): Flow<List<SnippetEntity>>
+
     @Query("SELECT * FROM snippets WHERE content = :text LIMIT 1")
     suspend fun findByContent(text: String): SnippetEntity?
 

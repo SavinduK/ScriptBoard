@@ -25,20 +25,36 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: SnippetRepository
+    private val repository: SnippetRepository = SnippetRepository(AppDatabase.getDatabase(application).snippetDao())
     private val clipboardManager = application.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val keyboardPrefs = KeyboardPreferences.getInstance(application)
-
-    init {
-        val db = AppDatabase.getDatabase(application)
-        repository = SnippetRepository(db.snippetDao())
-    }
 
     val allSnippets: StateFlow<List<SnippetEntity>> = repository.allSnippets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val pinnedSnippets: StateFlow<List<SnippetEntity>> = repository.pinnedSnippets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val historySnippets: StateFlow<List<SnippetEntity>> = repository.historySnippets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        try {
+            clipboardManager.addPrimaryClipChangedListener {
+                try {
+                    val clip = clipboardManager.primaryClip
+                    if (clip != null && clip.itemCount > 0) {
+                        val text = clip.getItemAt(0).text?.toString()
+                        if (!text.isNullOrBlank()) {
+                            viewModelScope.launch {
+                                repository.saveToClipboardHistory(text)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+    }
 
     private val _editorValue = MutableStateFlow(
         TextFieldValue(
@@ -88,6 +104,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         keyboardPrefs.setHapticEnabled(enabled)
         _lastActionStatus.value = if (enabled) "Haptic vibration: ON" else "Haptic vibration: OFF"
     }
+
+    fun setSoundEnabled(enabled: Boolean) = toggleSound(enabled)
+    fun setHapticEnabled(enabled: Boolean) = toggleHaptic(enabled)
+    fun setLaptopBarVisible(visible: Boolean) = toggleLaptopBar(visible)
+
+    fun toggleSnippetPin(snippet: SnippetEntity) = togglePin(snippet)
+    fun insertSnippet(title: String, content: String, isPinned: Boolean, category: String) =
+        saveSnippet(title, content, isPinned, category)
+    fun handleKeyAction(action: KeyAction) = handleKeyboardAction(action)
 
     fun clearEditor() {
         saveUndoState()

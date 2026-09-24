@@ -128,14 +128,18 @@ fun RowScope.KeyCap(
         }
 
         // Primary text
+        val isFunctionKey = key.action is KeyAction.FunctionKey || key.primaryText.matches(Regex("F\\d+"))
+
         Text(
             text = key.primaryText,
             color = textColor,
             fontSize = when {
+                isFunctionKey -> 12.sp
+                key.primaryText.length == 1 && key.primaryText[0].isLetter() -> 22.sp
+                key.primaryText.length == 1 && key.primaryText[0].isDigit() -> 20.sp
                 key.primaryText == "English" -> 14.sp
                 key.primaryText == "12\n34" -> 10.sp
                 isSmallFont -> 12.sp
-                key.primaryText.length == 1 && key.primaryText[0].isLetterOrDigit() -> 19.sp
                 else -> 17.sp
             },
             fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,

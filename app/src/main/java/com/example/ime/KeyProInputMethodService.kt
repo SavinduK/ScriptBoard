@@ -1,5 +1,6 @@
 package com.example.ime
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
@@ -40,6 +41,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
     private lateinit var repository: SnippetRepository
     private lateinit var keyboardPrefs: KeyboardPreferences
+    private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -58,6 +60,27 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         val db = AppDatabase.getDatabase(this)
         repository = SnippetRepository(db.snippetDao())
         keyboardPrefs = KeyboardPreferences.getInstance(this)
+
+        // Clipboard history auto-save listener (Request #4)
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+                try {
+                    if (cm != null && cm.hasPrimaryClip()) {
+                        val clip = cm.primaryClip
+                        if (clip != null && clip.itemCount > 0) {
+                            val text = clip.getItemAt(0).text?.toString()
+                            if (!text.isNullOrBlank()) {
+                                serviceScope.launch(Dispatchers.IO) {
+                                    repository.saveToClipboardHistory(text)
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            cm?.addPrimaryClipChangedListener(clipboardListener)
+        } catch (_: Exception) {}
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
@@ -79,6 +102,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
             setContent {
                 val allSnippets by repository.allSnippets.collectAsState(initial = emptyList())
+                val pinnedSnippets by repository.pinnedSnippets.collectAsState(initial = emptyList())
+                val historySnippets by repository.historySnippets.collectAsState(initial = emptyList())
                 val soundEnabled by keyboardPrefs.soundEnabled.collectAsState()
                 val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
                 val themeType by keyboardPrefs.themeType.collectAsState()
@@ -87,6 +112,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 KeyProKeyboardView(
                     colors = KeyboardThemes.getTheme(themeType),
                     allSnippets = allSnippets,
+                    pinnedSnippets = pinnedSnippets,
+                    historySnippets = historySnippets,
                     isSoundEnabled = soundEnabled,
                     isHapticEnabled = hapticEnabled,
                     initialLaptopBarVisible = laptopBarVisible,
@@ -100,12 +127,11 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     onSaveSnippet = { title, content, isPinned, category ->
                         serviceScope.launch { repository.insertSnippet(title, content, isPinned, category) }
                     },
+                    onClearHistory = {
+                        serviceScope.launch { repository.clearUnpinned() }
+                    },
                     onOpenSettings = {
-                        try {
-                            val intent = packageManager.getLaunchIntentForPackage(packageName)
-                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            if (intent != null) startActivity(intent)
-                        } catch (_: Exception) {}
+                        // Handled in-keyboard without opening the app (Request #3)
                     }
                 )
             }
@@ -194,7 +220,22 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 ic.performContextMenuAction(android.R.id.cut)
             }
             is KeyAction.Paste -> {
-                ic.performContextMenuAction(android.R.id.paste)
+                try {
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val clip = cm?.primaryClip
+                    if (clip != null && clip.itemCount > 0) {
+                        val text = clip.getItemAt(0).text?.toString()
+                        if (!text.isNullOrEmpty()) {
+                            ic.commitText(text, 1)
+                        } else {
+                            ic.performContextMenuAction(android.R.id.paste)
+                        }
+                    } else {
+                        ic.performContextMenuAction(android.R.id.paste)
+                    }
+                } catch (_: Exception) {
+                    ic.performContextMenuAction(android.R.id.paste)
+                }
             }
             is KeyAction.Undo -> {
                 ic.performContextMenuAction(android.R.id.undo)
@@ -228,6 +269,11 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     }
 
     override fun onDestroy() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboardListener?.let { cm?.removePrimaryClipChangedListener(it) }
+        } catch (_: Exception) {}
+
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         mViewModelStore.clear()
         super.onDestroy()

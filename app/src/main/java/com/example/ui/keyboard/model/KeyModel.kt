@@ -7,7 +7,8 @@ enum class KeyboardLayoutMode {
     NUMPAD,        // 1234
     EXTENDED_PC,   // Laptop / PC special keys in-place
     EMOJI,
-    CLIPBOARD
+    CLIPBOARD,
+    SETTINGS
 }
 
 enum class ShiftState {

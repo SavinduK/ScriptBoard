@@ -12,8 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,20 +34,20 @@ fun KeyboardToolbar(
     isExtendedPcActive: Boolean,
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
+    onPasteCopiedContent: () -> Unit,
     onOpenClipboard: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    // Main Toolbar Row with ONLY the 4 requested buttons
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
             .background(colors.toolbarBackground)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Laptop key switch button (Icon only, NO text)
+        // 1. Laptop key switch button
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -60,11 +61,11 @@ fun KeyboardToolbar(
                 imageVector = Icons.Default.Laptop,
                 contentDescription = "Toggle Laptop Keys Bar",
                 tint = if (isLaptopBarVisible) colors.laptopKeyActiveTextColor else colors.toolbarIconActiveTint,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        // 2. Extended laptop keyboard buttons (Switches keyboard keys to PC keys layout)
+        // 2. Extended laptop keyboard buttons
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -78,11 +79,26 @@ fun KeyboardToolbar(
                 imageVector = Icons.Default.Keyboard,
                 contentDescription = "Extended Laptop Keyboard Layout",
                 tint = if (isExtendedPcActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        // 3. Clipboard button
+        // 3. Paste currently copied content button (Request #6)
+        IconButton(
+            onClick = onPasteCopiedContent,
+            modifier = Modifier
+                .size(38.dp)
+                .testTag("btn_toolbar_paste")
+        ) {
+            Icon(
+                imageVector = Icons.Default.ContentPasteGo,
+                contentDescription = "Paste Currently Copied Content",
+                tint = colors.enterKeyBackground,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // 4. Clipboard manager button
         IconButton(
             onClick = onOpenClipboard,
             modifier = Modifier
@@ -93,11 +109,11 @@ fun KeyboardToolbar(
                 imageVector = Icons.Default.ContentPaste,
                 contentDescription = "Clipboard Manager",
                 tint = colors.toolbarIconTint,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        // 4. Settings button
+        // 5. Settings button
         IconButton(
             onClick = onOpenSettings,
             modifier = Modifier
@@ -108,7 +124,7 @@ fun KeyboardToolbar(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "Settings",
                 tint = colors.toolbarIconTint,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
     }

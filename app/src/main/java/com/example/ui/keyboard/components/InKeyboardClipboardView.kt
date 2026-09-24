@@ -21,10 +21,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BookmarkAdd
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Card
@@ -51,23 +50,27 @@ import androidx.compose.ui.unit.sp
 import com.example.data.SnippetEntity
 import com.example.ui.keyboard.model.KeyboardColors
 
+private enum class ClipboardTab {
+    ALL, PINNED, HISTORY
+}
+
 @Composable
 fun InKeyboardClipboardView(
-    snippets: List<SnippetEntity>,
+    pinnedSnippets: List<SnippetEntity>,
+    historySnippets: List<SnippetEntity>,
     colors: KeyboardColors,
     onSnippetSelected: (String) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
     onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
+    onClearHistory: () -> Unit = {},
     onBackToLetters: () -> Unit
 ) {
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(ClipboardTab.ALL) }
 
-    var lastCopiedText by remember { mutableStateOf<String?>(null) }
-    var copiedItemSaved by remember { mutableStateOf(false) }
-
-    // Read latest system clipboard content
+    // On mount, auto-capture current system clipboard into history if new
     LaunchedEffect(Unit) {
         try {
             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -76,14 +79,17 @@ fun InKeyboardClipboardView(
                 if (clip != null && clip.itemCount > 0) {
                     val text = clip.getItemAt(0).text?.toString()
                     if (!text.isNullOrBlank()) {
-                        lastCopiedText = text
+                        val alreadyInHistory = historySnippets.any { it.content == text } ||
+                                pinnedSnippets.any { it.content == text }
+                        if (!alreadyInHistory) {
+                            val title = text.lineSequence().firstOrNull()?.trim()?.take(25)?.ifEmpty { "Clipboard Item" } ?: "Clipboard Item"
+                            onSaveSnippet(title, text, false, "History")
+                        }
                     }
                 }
             }
         } catch (_: Exception) {}
     }
-
-    val isAlreadyInSnippets = lastCopiedText != null && snippets.any { it.content == lastCopiedText }
 
     Column(
         modifier = Modifier
@@ -96,7 +102,7 @@ fun InKeyboardClipboardView(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.toolbarBackground)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -106,7 +112,7 @@ fun InKeyboardClipboardView(
                         .clip(RoundedCornerShape(14.dp))
                         .background(colors.enterKeyBackground)
                         .clickable(onClick = onBackToLetters)
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
                         .testTag("btn_clipboard_to_abc"),
                     contentAlignment = Alignment.Center
                 ) {
@@ -117,29 +123,74 @@ fun InKeyboardClipboardView(
                         fontSize = 13.sp
                     )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Clipboard Manager",
-                    color = colors.letterKeyTextColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Tabs: All, Pinned, History
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.functionKeyBackground)
+                        .padding(2.dp)
+                ) {
+                    TabChip(
+                        label = "All",
+                        isSelected = selectedTab == ClipboardTab.ALL,
+                        colors = colors,
+                        onClick = { selectedTab = ClipboardTab.ALL },
+                        testTag = "tab_clipboard_all"
+                    )
+                    TabChip(
+                        label = "Pinned (${pinnedSnippets.size})",
+                        isSelected = selectedTab == ClipboardTab.PINNED,
+                        colors = colors,
+                        onClick = { selectedTab = ClipboardTab.PINNED },
+                        testTag = "tab_clipboard_pinned"
+                    )
+                    TabChip(
+                        label = "History (${historySnippets.size})",
+                        isSelected = selectedTab == ClipboardTab.HISTORY,
+                        colors = colors,
+                        onClick = { selectedTab = ClipboardTab.HISTORY },
+                        testTag = "tab_clipboard_history"
+                    )
+                }
             }
 
-            IconButton(
-                onClick = { showAddDialog = true },
-                modifier = Modifier
-                    .size(32.dp)
-                    .testTag("btn_add_snippet_inline")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New Snippet",
-                    tint = colors.enterKeyBackground
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (historySnippets.isNotEmpty() && (selectedTab == ClipboardTab.HISTORY || selectedTab == ClipboardTab.ALL)) {
+                    IconButton(
+                        onClick = onClearHistory,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .testTag("btn_clear_clipboard_history")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ClearAll,
+                            contentDescription = "Clear History",
+                            tint = colors.toolbarIconTint,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier
+                        .size(30.dp)
+                        .testTag("btn_add_snippet_inline")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "New Pinned Snippet",
+                        tint = colors.enterKeyBackground,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
+        // Two Separate Sections (Pinned Messages & Clipboard History)
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -148,248 +199,65 @@ fun InKeyboardClipboardView(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 6.dp)
         ) {
-            // Section 1: Last Copied Content in Clipboard
-            item {
-                Text(
-                    text = "LAST COPIED CONTENT",
-                    color = colors.enterKeyBackground,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
-                )
+            // SECTION 1: PINNED MESSAGES
+            if (selectedTab == ClipboardTab.ALL || selectedTab == ClipboardTab.PINNED) {
+                item {
+                    SectionHeader(
+                        icon = Icons.Default.PushPin,
+                        title = "PINNED MESSAGES (${pinnedSnippets.size})",
+                        colors = colors
+                    )
+                }
 
-                if (lastCopiedText != null) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, colors.enterKeyBackground.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSnippetSelected(lastCopiedText!!) }
-                            .testTag("last_copied_clipboard_card"),
-                        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentPaste,
-                                        contentDescription = "Copied",
-                                        tint = colors.enterKeyBackground,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Current Clipboard",
-                                        color = colors.letterKeyTextColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                // Save / Pin action
-                                if (copiedItemSaved || isAlreadyInSnippets) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(colors.enterKeyBackground.copy(alpha = 0.2f))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Saved",
-                                            tint = colors.enterKeyBackground,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Saved",
-                                            color = colors.enterKeyBackground,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(colors.enterKeyBackground)
-                                            .clickable {
-                                                val snippetTitle = if (lastCopiedText!!.length > 25) {
-                                                    lastCopiedText!!.take(25) + "..."
-                                                } else {
-                                                    lastCopiedText!!
-                                                }
-                                                onSaveSnippet(snippetTitle, lastCopiedText!!, true, "Clipboard")
-                                                copiedItemSaved = true
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                            .testTag("btn_save_last_copied"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.BookmarkAdd,
-                                                contentDescription = "Save Snippet",
-                                                tint = colors.enterKeyTextColor,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Save",
-                                                color = colors.enterKeyTextColor,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = lastCopiedText!!,
-                                color = colors.letterKeySecondaryTextColor,
-                                fontSize = 12.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = "Tap to paste into active field",
-                                color = colors.enterKeyBackground,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                if (pinnedSnippets.isEmpty()) {
+                    item {
+                        EmptySectionPlaceholder(
+                            text = "No pinned messages yet. Tap pin icon on any history item to keep it pinned!",
+                            colors = colors
+                        )
                     }
                 } else {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)),
-                        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "No recent text copied yet. Copy any text to see it here.",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(10.dp)
+                    items(pinnedSnippets, key = { "pinned_${it.id}" }) { snippet ->
+                        SnippetItemCard(
+                            snippet = snippet,
+                            colors = colors,
+                            onSelect = { onSnippetSelected(snippet.content) },
+                            onTogglePin = { onTogglePin(snippet) },
+                            onDelete = { onDeleteSnippet(snippet.id) },
+                            testTagPrefix = "pinned_item"
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "SAVED & PINNED (${snippets.size})",
-                    color = colors.letterKeySecondaryTextColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)
-                )
             }
 
-            // Section 2: Saved and Pinned Snippets
-            if (snippets.isEmpty()) {
+            // SECTION 2: CLIPBOARD HISTORY
+            if (selectedTab == ClipboardTab.ALL || selectedTab == ClipboardTab.HISTORY) {
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No saved snippets. Tap \"Save\" above or + to pin snippets!",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 12.sp
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SectionHeader(
+                        icon = Icons.Default.History,
+                        title = "CLIPBOARD HISTORY (${historySnippets.size})",
+                        colors = colors
+                    )
+                }
+
+                if (historySnippets.isEmpty()) {
+                    item {
+                        EmptySectionPlaceholder(
+                            text = "Clipboard history is empty. Text copied anywhere on your device will automatically save here!",
+                            colors = colors
                         )
                     }
-                }
-            } else {
-                items(snippets, key = { it.id }) { snippet ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSnippetSelected(snippet.content) }
-                            .testTag("inline_snippet_${snippet.id}"),
-                        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (snippet.isPinned) {
-                                        Icon(
-                                            imageVector = Icons.Filled.PushPin,
-                                            contentDescription = "Pinned",
-                                            tint = colors.enterKeyBackground,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                    }
-                                    Text(
-                                        text = snippet.title,
-                                        color = colors.letterKeyTextColor,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Text(
-                                    text = snippet.content,
-                                    color = colors.letterKeySecondaryTextColor,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { onTogglePin(snippet) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (snippet.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                        contentDescription = "Toggle Pin",
-                                        tint = if (snippet.isPinned) colors.enterKeyBackground else colors.toolbarIconTint,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onDeleteSnippet(snippet.id) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = Color(0xFFEF5350),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
+                } else {
+                    items(historySnippets, key = { "history_${it.id}" }) { snippet ->
+                        SnippetItemCard(
+                            snippet = snippet,
+                            colors = colors,
+                            onSelect = { onSnippetSelected(snippet.content) },
+                            onTogglePin = { onTogglePin(snippet) },
+                            onDelete = { onDeleteSnippet(snippet.id) },
+                            testTagPrefix = "history_item"
+                        )
                     }
                 }
             }
@@ -403,12 +271,165 @@ fun InKeyboardClipboardView(
             initialContent = "",
             initialCategory = "Pinned",
             initialPinned = true,
-            dialogTitle = "Add Pinned Snippet",
+            dialogTitle = "Add Pinned Message",
             onDismiss = { showAddDialog = false },
             onConfirm = { title, content, isPinned, category ->
                 onSaveSnippet(title, content, isPinned, category)
                 showAddDialog = false
             }
         )
+    }
+}
+
+@Composable
+private fun TabChip(
+    label: String,
+    isSelected: Boolean,
+    colors: KeyboardColors,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) colors.enterKeyBackground else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    colors: KeyboardColors
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = colors.enterKeyBackground,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = title,
+            color = colors.enterKeyBackground,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun EmptySectionPlaceholder(
+    text: String,
+    colors: KeyboardColors
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = text,
+            color = colors.letterKeySecondaryTextColor,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(10.dp)
+        )
+    }
+}
+
+@Composable
+private fun SnippetItemCard(
+    snippet: SnippetEntity,
+    colors: KeyboardColors,
+    onSelect: () -> Unit,
+    onTogglePin: () -> Unit,
+    onDelete: () -> Unit,
+    testTagPrefix: String
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onSelect)
+            .testTag("${testTagPrefix}_${snippet.id}"),
+        colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (snippet.isPinned) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = "Pinned",
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = snippet.title,
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = snippet.content,
+                    color = colors.letterKeySecondaryTextColor,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onTogglePin,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (snippet.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = if (snippet.isPinned) "Unpin message" else "Pin to top",
+                        tint = if (snippet.isPinned) colors.enterKeyBackground else colors.toolbarIconTint,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = Color(0xFFEF5350),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.SnippetEntity
 import com.example.ui.keyboard.components.EmojiPickerView
 import com.example.ui.keyboard.components.InKeyboardClipboardView
+import com.example.ui.keyboard.components.InKeyboardSettingsView
 import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
@@ -39,6 +40,8 @@ import com.example.ui.keyboard.util.FeedbackUtil
 fun KeyProKeyboardView(
     colors: KeyboardColors,
     allSnippets: List<SnippetEntity> = emptyList(),
+    pinnedSnippets: List<SnippetEntity> = allSnippets.filter { it.isPinned },
+    historySnippets: List<SnippetEntity> = allSnippets.filter { !it.isPinned },
     isSoundEnabled: Boolean = true,
     isHapticEnabled: Boolean = true,
     initialLaptopBarVisible: Boolean = true,
@@ -46,6 +49,7 @@ fun KeyProKeyboardView(
     onTogglePin: (SnippetEntity) -> Unit = {},
     onDeleteSnippet: (Long) -> Unit = {},
     onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit = { _, _, _, _ -> },
+    onClearHistory: () -> Unit = {},
     onOpenSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -115,6 +119,9 @@ fun KeyProKeyboardView(
             }
             is KeyAction.SwitchToLetters -> {
                 layoutMode = KeyboardLayoutMode.TEXT
+                if (shiftState == ShiftState.ONCE) {
+                    shiftState = ShiftState.OFF
+                }
             }
             is KeyAction.SwitchToMoreSymbols -> {
                 layoutMode = KeyboardLayoutMode.SYMBOLS_2
@@ -123,21 +130,13 @@ fun KeyProKeyboardView(
                 layoutMode = KeyboardLayoutMode.NUMPAD
             }
             is KeyAction.SwitchToExtendedPc -> {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.EXTENDED_PC
-                }
+                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) KeyboardLayoutMode.TEXT else KeyboardLayoutMode.EXTENDED_PC
             }
             is KeyAction.SwitchToEmoji -> {
                 layoutMode = KeyboardLayoutMode.EMOJI
             }
             is KeyAction.SwitchToClipboard -> {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.CLIPBOARD
-                }
+                layoutMode = KeyboardLayoutMode.CLIPBOARD
             }
             is KeyAction.ToggleCtrl -> {
                 isCtrlActive = !isCtrlActive
@@ -162,7 +161,7 @@ fun KeyProKeyboardView(
             .fillMaxWidth()
             .background(colors.background)
     ) {
-        // Laptop Keys Bar (Special laptop keys: ESC, /, —, HOME, ↑, END, PGUP, ↹, CTRL, ALT, ←, ↓, →, PGDN)
+        // Laptop Quick Access Bar (Esc, Tab, Ctrl, Alt, Arrow keys)
         AnimatedVisibility(
             visible = isLaptopBarVisible,
             enter = expandVertically(),
@@ -176,7 +175,7 @@ fun KeyProKeyboardView(
             )
         }
 
-        // Toolbar: ONLY the 4 requested buttons (Laptop key switch, Extended PC keys, Clipboard, Settings)
+        // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Settings
         KeyboardToolbar(
             colors = colors,
             isLaptopBarVisible = isLaptopBarVisible,
@@ -189,6 +188,9 @@ fun KeyProKeyboardView(
                     KeyboardLayoutMode.EXTENDED_PC
                 }
             },
+            onPasteCopiedContent = {
+                handleKeyAction(KeyAction.Paste)
+            },
             onOpenClipboard = {
                 layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
                     KeyboardLayoutMode.TEXT
@@ -196,7 +198,15 @@ fun KeyProKeyboardView(
                     KeyboardLayoutMode.CLIPBOARD
                 }
             },
-            onOpenSettings = onOpenSettings
+            onOpenSettings = {
+                // Open settings directly from the keyboard itself without opening the app (Request #3)
+                layoutMode = if (layoutMode == KeyboardLayoutMode.SETTINGS) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.SETTINGS
+                }
+                onOpenSettings()
+            }
         )
 
         // Main Keyboard Area
@@ -214,7 +224,8 @@ fun KeyProKeyboardView(
             }
             KeyboardLayoutMode.CLIPBOARD -> {
                 InKeyboardClipboardView(
-                    snippets = allSnippets,
+                    pinnedSnippets = pinnedSnippets,
+                    historySnippets = historySnippets,
                     colors = colors,
                     onSnippetSelected = { text ->
                         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
@@ -223,6 +234,13 @@ fun KeyProKeyboardView(
                     onTogglePin = onTogglePin,
                     onDeleteSnippet = onDeleteSnippet,
                     onSaveSnippet = onSaveSnippet,
+                    onClearHistory = onClearHistory,
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
+                )
+            }
+            KeyboardLayoutMode.SETTINGS -> {
+                InKeyboardSettingsView(
+                    colors = colors,
                     onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
                 )
             }
