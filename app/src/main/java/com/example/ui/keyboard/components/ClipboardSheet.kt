@@ -71,7 +71,7 @@ fun ClipboardSheet(
     onSnippetSelected: (String) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
-    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
+    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -278,10 +278,11 @@ fun ClipboardSheet(
             initialContent = "",
             initialCategory = "Quick Text",
             initialPinned = true,
+            initialShortcut = "",
             dialogTitle = "New Pinned Snippet",
             onDismiss = { showAddDialog = false },
-            onConfirm = { title, content, isPinned, category ->
-                onSaveSnippet(title, content, isPinned, category)
+            onConfirm = { title, content, isPinned, category, shortcut ->
+                onSaveSnippet(title, content, isPinned, category, shortcut)
                 showAddDialog = false
             }
         )
@@ -295,10 +296,11 @@ fun ClipboardSheet(
             initialContent = snippet.content,
             initialCategory = snippet.category,
             initialPinned = snippet.isPinned,
+            initialShortcut = snippet.shortcut,
             dialogTitle = "Edit Snippet",
             onDismiss = { editingSnippet = null },
-            onConfirm = { title, content, isPinned, category ->
-                onSaveSnippet(title, content, isPinned, category)
+            onConfirm = { title, content, isPinned, category, shortcut ->
+                onSaveSnippet(title, content, isPinned, category, shortcut)
                 onDeleteSnippet(snippet.id) // replace
                 editingSnippet = null
             }
@@ -365,6 +367,22 @@ fun SnippetItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (snippet.shortcut.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.enterKeyBackground.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = snippet.shortcut,
+                                color = colors.enterKeyBackground,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
@@ -437,13 +455,15 @@ fun SnippetEditorDialog(
     initialContent: String,
     initialCategory: String,
     initialPinned: Boolean,
+    initialShortcut: String = "",
     dialogTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (title: String, content: String, isPinned: Boolean, category: String) -> Unit
+    onConfirm: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit
 ) {
     var title by remember { mutableStateOf(initialTitle) }
     var content by remember { mutableStateOf(initialContent) }
     var category by remember { mutableStateOf(initialCategory) }
+    var shortcut by remember { mutableStateOf(initialShortcut) }
     var isPinned by remember { mutableStateOf(initialPinned) }
 
     AlertDialog(
@@ -463,6 +483,23 @@ fun SnippetEditorDialog(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("Snippet Title", color = colors.letterKeySecondaryTextColor) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = colors.letterKeyTextColor,
+                        unfocusedTextColor = colors.letterKeyTextColor,
+                        focusedBorderColor = colors.enterKeyBackground,
+                        unfocusedBorderColor = colors.functionKeyBackground
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = shortcut,
+                    onValueChange = { shortcut = it },
+                    label = { Text("Shortcut Phrase (e.g. @email, @sig)", color = colors.letterKeySecondaryTextColor) },
+                    placeholder = { Text("@email", color = colors.letterKeySecondaryTextColor.copy(alpha = 0.5f)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -533,7 +570,8 @@ fun SnippetEditorDialog(
             Button(
                 onClick = {
                     if (content.isNotBlank()) {
-                        onConfirm(title.ifBlank { content.take(15) }, content, isPinned, category.ifBlank { "General" })
+                        val cleanShortcut = if (shortcut.isNotBlank() && !shortcut.startsWith("@")) "@$shortcut" else shortcut.trim()
+                        onConfirm(title.ifBlank { content.take(15) }, content, isPinned, category.ifBlank { "General" }, cleanShortcut)
                     }
                 },
                 enabled = content.isNotBlank(),

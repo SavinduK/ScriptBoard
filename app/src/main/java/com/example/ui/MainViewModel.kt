@@ -73,9 +73,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isLaptopBarVisible: StateFlow<Boolean> = keyboardPrefs.laptopBarVisible
     val isSoundEnabled: StateFlow<Boolean> = keyboardPrefs.soundEnabled
     val isHapticEnabled: StateFlow<Boolean> = keyboardPrefs.hapticEnabled
+    val isHoldForSymbolsEnabled: StateFlow<Boolean> = keyboardPrefs.holdForSymbolsEnabled
 
     val currentColors: KeyboardColors
-        get() = KeyboardThemes.getTheme(themeType.value)
+        get() = if (themeType.value == KeyboardThemeType.CUSTOM) {
+            keyboardPrefs.getCustomKeyboardColors()
+        } else {
+            KeyboardThemes.getTheme(themeType.value)
+        }
 
     private val _lastActionStatus = MutableStateFlow<String?>("Ready • Tap any key to test")
     val lastActionStatus: StateFlow<String?> = _lastActionStatus.asStateFlow()
@@ -105,13 +110,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _lastActionStatus.value = if (enabled) "Haptic vibration: ON" else "Haptic vibration: OFF"
     }
 
+    fun setHoldForSymbolsEnabled(enabled: Boolean) {
+        keyboardPrefs.setHoldForSymbolsEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Hold key for symbols: ON" else "Hold key for symbols: OFF"
+    }
+
     fun setSoundEnabled(enabled: Boolean) = toggleSound(enabled)
     fun setHapticEnabled(enabled: Boolean) = toggleHaptic(enabled)
     fun setLaptopBarVisible(visible: Boolean) = toggleLaptopBar(visible)
 
     fun toggleSnippetPin(snippet: SnippetEntity) = togglePin(snippet)
-    fun insertSnippet(title: String, content: String, isPinned: Boolean, category: String) =
-        saveSnippet(title, content, isPinned, category)
+    fun insertSnippet(title: String, content: String, isPinned: Boolean, category: String, shortcut: String = "") =
+        saveSnippet(title, content, isPinned, category, shortcut)
     fun handleKeyAction(action: KeyAction) = handleKeyboardAction(action)
 
     fun clearEditor() {
@@ -155,6 +165,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is KeyAction.Paste -> pasteText()
             is KeyAction.Undo -> undo()
             is KeyAction.Redo -> redo()
+            is KeyAction.ExpandShortcut -> {
+                insertText(action.fullContent)
+                _lastActionStatus.value = "Expanded phrase: ${action.shortcutText}"
+            }
             is KeyAction.FunctionKey -> {
                 _lastActionStatus.value = "F${action.fNumber} executed"
             }
@@ -407,9 +421,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveSnippet(title: String, content: String, isPinned: Boolean, category: String) {
+    fun saveSnippet(title: String, content: String, isPinned: Boolean, category: String, shortcut: String = "") {
         viewModelScope.launch {
-            repository.insertSnippet(title, content, isPinned, category)
+            repository.insertSnippet(title, content, isPinned, category, shortcut)
             _lastActionStatus.value = "Snippet saved: $title"
         }
     }

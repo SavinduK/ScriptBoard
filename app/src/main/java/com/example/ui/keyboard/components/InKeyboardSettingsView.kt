@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VolumeUp
@@ -40,7 +41,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +71,9 @@ fun InKeyboardSettingsView(
     val soundEnabled by keyboardPrefs.soundEnabled.collectAsState()
     val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
     val laptopBarEnabled by keyboardPrefs.laptopBarVisible.collectAsState()
+    val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
+
+    var showRgbThemeDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -145,22 +151,42 @@ fun InKeyboardSettingsView(
         ) {
             // Section 1: Themes
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = colors.enterKeyBackground,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "KEYBOARD THEME",
-                    color = colors.enterKeyBackground,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        tint = colors.enterKeyBackground,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "KEYBOARD THEME",
+                        color = colors.enterKeyBackground,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.enterKeyBackground.copy(alpha = 0.15f))
+                        .clickable { showRgbThemeDialog = true }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .testTag("btn_open_rgb_palette_inline"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🎨 Custom RGB Palette",
+                        color = colors.enterKeyBackground,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             LazyRow(
@@ -169,13 +195,18 @@ fun InKeyboardSettingsView(
             ) {
                 items(KeyboardThemeType.values()) { theme ->
                     val isSelected = theme == currentTheme
-                    val previewColors = KeyboardThemes.getTheme(theme)
+                    val previewColors = if (theme == KeyboardThemeType.CUSTOM) keyboardPrefs.getCustomKeyboardColors() else KeyboardThemes.getTheme(theme)
 
                     Card(
                         modifier = Modifier
                             .width(96.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { keyboardPrefs.setThemeType(theme) }
+                            .clickable {
+                                keyboardPrefs.setThemeType(theme)
+                                if (theme == KeyboardThemeType.CUSTOM && isSelected) {
+                                    showRgbThemeDialog = true
+                                }
+                            }
                             .testTag("inline_theme_${theme.name}"),
                         colors = CardDefaults.cardColors(containerColor = previewColors.background),
                         border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, colors.enterKeyBackground) else null,
@@ -233,6 +264,19 @@ fun InKeyboardSettingsView(
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    // Hold Key for Symbols (Request #1)
+                    SettingToggleRow(
+                        icon = Icons.Default.TextFields,
+                        title = "Hold Key for Symbols",
+                        subtitle = "Hold letters for @, #, $, 0-9 & symbols",
+                        checked = holdForSymbolsEnabled,
+                        onCheckedChange = { keyboardPrefs.setHoldForSymbolsEnabled(it) },
+                        colors = colors,
+                        testTag = "switch_hold_for_symbols_inline"
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
                     // Sound
                     SettingToggleRow(
                         icon = Icons.Default.VolumeUp,
@@ -315,6 +359,18 @@ fun InKeyboardSettingsView(
                 )
             }
         }
+    }
+
+    if (showRgbThemeDialog) {
+        RgbCustomThemeDialog(
+            initialColors = if (currentTheme == KeyboardThemeType.CUSTOM) keyboardPrefs.getCustomKeyboardColors() else colors,
+            onDismiss = { showRgbThemeDialog = false },
+            onApply = { bg, keyBg, text, accent ->
+                keyboardPrefs.setCustomThemeColors(bg, keyBg, text, accent)
+                keyboardPrefs.setThemeType(KeyboardThemeType.CUSTOM)
+                showRgbThemeDialog = false
+            }
+        )
     }
 }
 

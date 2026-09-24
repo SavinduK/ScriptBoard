@@ -6,7 +6,8 @@ enum class KeyboardThemeType(val displayName: String) {
     GBOARD_DARK("Gboard Dark"),
     AMOLED_BLACK("Pitch Black"),
     GBOARD_LIGHT("Gboard Light"),
-    CYBER_NAVY("Cyber Navy")
+    CYBER_NAVY("Cyber Navy"),
+    CUSTOM("Custom RGB")
 }
 
 data class KeyboardColors(
@@ -130,12 +131,57 @@ object KeyboardThemes {
         isDark = true
     )
 
-    fun getTheme(type: KeyboardThemeType): KeyboardColors {
+    fun buildCustomTheme(
+        background: Color,
+        letterKeyBackground: Color,
+        letterKeyTextColor: Color,
+        enterKeyBackground: Color
+    ): KeyboardColors {
+        val luminance = (background.red * 0.299f + background.green * 0.587f + background.blue * 0.114f)
+        val isDark = luminance < 0.5f
+        val secondaryTextColor = if (isDark) letterKeyTextColor.copy(alpha = 0.65f) else letterKeyTextColor.copy(alpha = 0.6f)
+        val enterLuminance = (enterKeyBackground.red * 0.299f + enterKeyBackground.green * 0.587f + enterKeyBackground.blue * 0.114f)
+        val enterTextColor = if (enterLuminance < 0.55f) Color.White else Color.Black
+
+        return KeyboardColors(
+            background = background,
+            toolbarBackground = if (isDark) background.copy(alpha = 0.85f) else background.copy(alpha = 0.9f),
+            toolbarIconTint = letterKeyTextColor.copy(alpha = 0.8f),
+            toolbarIconActiveTint = enterKeyBackground,
+            letterKeyBackground = letterKeyBackground,
+            letterKeyTextColor = letterKeyTextColor,
+            letterKeySecondaryTextColor = secondaryTextColor,
+            functionKeyBackground = if (isDark) letterKeyBackground.copy(alpha = 0.75f) else letterKeyBackground.copy(alpha = 0.8f),
+            functionKeyTextColor = letterKeyTextColor,
+            enterKeyBackground = enterKeyBackground,
+            enterKeyTextColor = enterTextColor,
+            laptopRowBackground = if (isDark) background.copy(alpha = 0.65f) else background.copy(alpha = 0.8f),
+            laptopKeyBackground = letterKeyBackground,
+            laptopKeyTextColor = enterKeyBackground,
+            laptopKeyActiveBackground = enterKeyBackground,
+            laptopKeyActiveTextColor = enterTextColor,
+            popupBackground = if (isDark) Color(0xFF25262B) else Color(0xFFFAFAFA),
+            popupTextColor = if (isDark) Color.White else Color.Black,
+            chipBackground = letterKeyBackground,
+            chipTextColor = letterKeyTextColor,
+            isDark = isDark
+        )
+    }
+
+    val DefaultCustomTheme = buildCustomTheme(
+        background = Color(0xFF1B263B),
+        letterKeyBackground = Color(0xFF2E3D59),
+        letterKeyTextColor = Color(0xFFE0E1DD),
+        enterKeyBackground = Color(0xFF00B4D8)
+    )
+
+    fun getTheme(type: KeyboardThemeType, customColors: KeyboardColors? = null): KeyboardColors {
         return when (type) {
             KeyboardThemeType.GBOARD_DARK -> GboardDark
             KeyboardThemeType.AMOLED_BLACK -> AmoledBlack
             KeyboardThemeType.GBOARD_LIGHT -> GboardLight
             KeyboardThemeType.CYBER_NAVY -> CyberNavy
+            KeyboardThemeType.CUSTOM -> customColors ?: DefaultCustomTheme
         }
     }
 }

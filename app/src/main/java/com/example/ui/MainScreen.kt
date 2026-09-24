@@ -87,6 +87,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isLaptopBarVisible by viewModel.isLaptopBarVisible.collectAsState()
     val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
+    val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
     val lastActionStatus by viewModel.lastActionStatus.collectAsState()
 
     val colors = viewModel.currentColors
@@ -307,8 +308,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onAction = { viewModel.handleKeyAction(it) },
                         onTogglePin = { viewModel.toggleSnippetPin(it) },
                         onDeleteSnippet = { viewModel.deleteSnippet(it) },
-                        onSaveSnippet = { title, content, isPinned, category ->
-                            viewModel.insertSnippet(title, content, isPinned, category)
+                        onSaveSnippet = { title, content, isPinned, category, shortcut ->
+                            viewModel.insertSnippet(title, content, isPinned, category, shortcut)
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() },
                         onClearEditor = { viewModel.clearEditor() },
@@ -320,14 +321,20 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     SettingsPageView(
                         colors = colors,
                         currentThemeType = currentThemeType,
+                        customColors = viewModel.keyboardPrefs.getCustomKeyboardColors(),
                         isSoundEnabled = isSoundEnabled,
                         isHapticEnabled = isHapticEnabled,
                         isLaptopBarEnabled = isLaptopBarVisible,
+                        isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
                         onToggleSound = { viewModel.setSoundEnabled(it) },
                         onToggleHaptic = { viewModel.setHapticEnabled(it) },
-                        onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) }
+                        onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
+                        onToggleHoldForSymbols = { viewModel.setHoldForSymbolsEnabled(it) },
+                        onCustomColorsChanged = { bg, keyBg, text, accent ->
+                            viewModel.keyboardPrefs.setCustomThemeColors(bg, keyBg, text, accent)
+                        }
                     )
                 }
 
@@ -339,8 +346,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onBack = { currentSection = MainScreenSection.HUB },
                         onTogglePin = { viewModel.toggleSnippetPin(it) },
                         onDeleteSnippet = { viewModel.deleteSnippet(it) },
-                        onSaveSnippet = { title, content, isPinned, category ->
-                            viewModel.insertSnippet(title, content, isPinned, category)
+                        onSaveSnippet = { title, content, isPinned, category, shortcut ->
+                            viewModel.insertSnippet(title, content, isPinned, category, shortcut)
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() }
                     )

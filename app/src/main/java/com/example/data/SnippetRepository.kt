@@ -7,13 +7,21 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
     val pinnedSnippets: Flow<List<SnippetEntity>> = snippetDao.getPinnedSnippets()
     val historySnippets: Flow<List<SnippetEntity>> = snippetDao.getHistorySnippets()
 
-    suspend fun insertSnippet(title: String, content: String, isPinned: Boolean, category: String): Long {
+    suspend fun insertSnippet(
+        title: String,
+        content: String,
+        isPinned: Boolean,
+        category: String,
+        shortcut: String = ""
+    ): Long {
+        val cleanShortcut = if (shortcut.isNotBlank() && !shortcut.startsWith("@")) "@$shortcut" else shortcut.trim()
         return snippetDao.insertSnippet(
             SnippetEntity(
                 title = title.ifBlank { content.lineSequence().firstOrNull()?.trim()?.take(25) ?: "Snippet" },
                 content = content,
                 isPinned = isPinned,
                 category = category,
+                shortcut = cleanShortcut,
                 timestamp = System.currentTimeMillis()
             )
         )

@@ -62,7 +62,7 @@ fun InKeyboardClipboardView(
     onSnippetSelected: (String) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
-    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
+    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit,
     onClearHistory: () -> Unit = {},
     onBackToLetters: () -> Unit
 ) {
@@ -83,7 +83,7 @@ fun InKeyboardClipboardView(
                                 pinnedSnippets.any { it.content == text }
                         if (!alreadyInHistory) {
                             val title = text.lineSequence().firstOrNull()?.trim()?.take(25)?.ifEmpty { "Clipboard Item" } ?: "Clipboard Item"
-                            onSaveSnippet(title, text, false, "History")
+                            onSaveSnippet(title, text, false, "History", "")
                         }
                     }
                 }
@@ -271,10 +271,11 @@ fun InKeyboardClipboardView(
             initialContent = "",
             initialCategory = "Pinned",
             initialPinned = true,
+            initialShortcut = "",
             dialogTitle = "Add Pinned Message",
             onDismiss = { showAddDialog = false },
-            onConfirm = { title, content, isPinned, category ->
-                onSaveSnippet(title, content, isPinned, category)
+            onConfirm = { title, content, isPinned, category, shortcut ->
+                onSaveSnippet(title, content, isPinned, category, shortcut)
                 showAddDialog = false
             }
         )
@@ -396,6 +397,22 @@ private fun SnippetItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (snippet.shortcut.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.enterKeyBackground.copy(alpha = 0.2f))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = snippet.shortcut,
+                                color = colors.enterKeyBackground,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = snippet.content,

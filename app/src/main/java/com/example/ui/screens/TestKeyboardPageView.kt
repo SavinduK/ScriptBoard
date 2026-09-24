@@ -52,7 +52,7 @@ fun TestKeyboardPageView(
     onAction: (KeyAction) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
-    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
+    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit,
     onClearHistory: () -> Unit,
     onClearEditor: () -> Unit,
     onBack: () -> Unit

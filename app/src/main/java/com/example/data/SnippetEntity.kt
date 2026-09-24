@@ -11,5 +11,6 @@ data class SnippetEntity(
     val content: String,
     val isPinned: Boolean = true,
     val category: String = "Quick Text",
+    val shortcut: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,12 +26,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -39,6 +44,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +57,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.keyboard.components.RgbCustomThemeDialog
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.keyboard.model.KeyboardThemeType
 import com.example.ui.keyboard.model.KeyboardThemes
@@ -56,16 +66,21 @@ import com.example.ui.keyboard.model.KeyboardThemes
 fun SettingsPageView(
     colors: KeyboardColors,
     currentThemeType: KeyboardThemeType,
+    customColors: KeyboardColors,
     isSoundEnabled: Boolean,
     isHapticEnabled: Boolean,
     isLaptopBarEnabled: Boolean,
+    isHoldForSymbolsEnabled: Boolean,
     onBack: () -> Unit,
     onThemeSelected: (KeyboardThemeType) -> Unit,
     onToggleSound: (Boolean) -> Unit,
     onToggleHaptic: (Boolean) -> Unit,
-    onToggleLaptopBar: (Boolean) -> Unit
+    onToggleLaptopBar: (Boolean) -> Unit,
+    onToggleHoldForSymbols: (Boolean) -> Unit,
+    onCustomColorsChanged: (bg: Int, keyBg: Int, text: Int, accent: Int) -> Unit
 ) {
     val context = LocalContext.current
+    var showRgbThemeDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -124,20 +139,41 @@ fun SettingsPageView(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Palette,
-                            contentDescription = null,
-                            tint = colors.enterKeyBackground,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Keyboard Theme",
-                            color = colors.letterKeyTextColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Keyboard Theme",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = { showRgbThemeDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.enterKeyBackground,
+                                contentColor = colors.enterKeyTextColor
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("btn_page_custom_rgb_palette")
+                        ) {
+                            Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("RGB Studio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -152,13 +188,18 @@ fun SettingsPageView(
                     ) {
                         items(KeyboardThemeType.values()) { theme ->
                             val isSelected = theme == currentThemeType
-                            val themeColors = KeyboardThemes.getTheme(theme)
+                            val themeColors = if (theme == KeyboardThemeType.CUSTOM) customColors else KeyboardThemes.getTheme(theme)
 
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable { onThemeSelected(theme) }
+                                    .clickable {
+                                        onThemeSelected(theme)
+                                        if (theme == KeyboardThemeType.CUSTOM && isSelected) {
+                                            showRgbThemeDialog = true
+                                        }
+                                    }
                                     .testTag("theme_card_${theme.name}"),
                                 colors = CardDefaults.cardColors(containerColor = themeColors.background),
                                 border = if (isSelected) BorderStroke(2.5.dp, colors.enterKeyBackground) else BorderStroke(1.dp, themeColors.letterKeyBackground),
@@ -222,6 +263,19 @@ fun SettingsPageView(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
+
+                    // Hold Key for Symbols
+                    SettingsPageToggle(
+                        icon = Icons.Default.TextFields,
+                        title = "Hold Key for Symbols",
+                        subtitle = "Long press letter keys for @, #, $, 0-9 & symbols",
+                        checked = isHoldForSymbolsEnabled,
+                        onCheckedChange = onToggleHoldForSymbols,
+                        colors = colors,
+                        testTag = "page_switch_hold_symbols"
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     SettingsPageToggle(
                         icon = Icons.Default.VolumeUp,
@@ -303,6 +357,18 @@ fun SettingsPageView(
                 }
             }
         }
+    }
+
+    if (showRgbThemeDialog) {
+        RgbCustomThemeDialog(
+            initialColors = if (currentThemeType == KeyboardThemeType.CUSTOM) customColors else colors,
+            onDismiss = { showRgbThemeDialog = false },
+            onApply = { bg, keyBg, text, accent ->
+                onCustomColorsChanged(bg, keyBg, text, accent)
+                onThemeSelected(KeyboardThemeType.CUSTOM)
+                showRgbThemeDialog = false
+            }
+        )
     }
 }
 

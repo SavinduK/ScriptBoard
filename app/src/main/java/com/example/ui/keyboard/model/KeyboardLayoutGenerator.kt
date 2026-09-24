@@ -26,7 +26,7 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2)
     }
 
-    fun getQwertyRows(shiftState: ShiftState): List<List<KeyItem>> {
+    fun getQwertyRows(shiftState: ShiftState, holdForSymbols: Boolean = true): List<List<KeyItem>> {
         val isUpper = shiftState != ShiftState.OFF
         val row1Letters = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
         val row1Digits = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
@@ -34,7 +34,7 @@ object KeyboardLayoutGenerator {
             val text = if (isUpper) char.uppercase() else char
             KeyItem(
                 primaryText = text,
-                secondaryText = row1Digits[idx],
+                secondaryText = if (holdForSymbols) row1Digits[idx] else null,
                 action = KeyAction.InsertText(text),
                 weight = 1f,
                 testTag = "key_char_$char"
@@ -42,10 +42,12 @@ object KeyboardLayoutGenerator {
         }
 
         val row2Letters = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
-        val row2 = row2Letters.map { char ->
+        val row2Symbols = listOf("@", "#", "$", "%", "&", "-", "+", "(", ")")
+        val row2 = row2Letters.mapIndexed { idx, char ->
             val text = if (isUpper) char.uppercase() else char
             KeyItem(
                 primaryText = text,
+                secondaryText = if (holdForSymbols) row2Symbols[idx] else null,
                 action = KeyAction.InsertText(text),
                 weight = 1f,
                 testTag = "key_char_$char"
@@ -58,10 +60,12 @@ object KeyboardLayoutGenerator {
             ShiftState.CAPS_LOCKED -> "▲"
         }
         val row3Letters = listOf("z", "x", "c", "v", "b", "n", "m")
-        val row3Middle = row3Letters.map { char ->
+        val row3Symbols = listOf("*", "\"", "'", ":", ";", "!", "?")
+        val row3Middle = row3Letters.mapIndexed { idx, char ->
             val text = if (isUpper) char.uppercase() else char
             KeyItem(
                 primaryText = text,
+                secondaryText = if (holdForSymbols) row3Symbols[idx] else null,
                 action = KeyAction.InsertText(text),
                 weight = 1f,
                 testTag = "key_char_$char"
@@ -90,7 +94,7 @@ object KeyboardLayoutGenerator {
             KeyItem(",", action = KeyAction.InsertText(","), weight = 1.0f, isFunctional = true, testTag = "key_comma"),
             KeyItem("☺", action = KeyAction.SwitchToEmoji, weight = 1.0f, isFunctional = true, testTag = "key_emoji"),
             KeyItem("English", action = KeyAction.Space, weight = 3.9f, testTag = "key_space"),
-            KeyItem(".", action = KeyAction.InsertText("."), weight = 1.0f, isFunctional = true, testTag = "key_period"),
+            KeyItem(".", secondaryText = if (holdForSymbols) "/" else null, action = KeyAction.InsertText("."), weight = 1.0f, isFunctional = true, testTag = "key_period"),
             KeyItem("↵", action = KeyAction.Enter, weight = 1.45f, isAccent = true, testTag = "key_enter")
         )
 

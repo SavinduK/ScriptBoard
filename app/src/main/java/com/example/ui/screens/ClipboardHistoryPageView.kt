@@ -68,7 +68,7 @@ fun ClipboardHistoryPageView(
     onBack: () -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
-    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String) -> Unit,
+    onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     val context = LocalContext.current
@@ -82,14 +82,18 @@ fun ClipboardHistoryPageView(
     val filteredPinned = remember(pinnedSnippets, searchQuery) {
         if (searchQuery.isBlank()) pinnedSnippets
         else pinnedSnippets.filter {
-            it.title.contains(searchQuery, ignoreCase = true) || it.content.contains(searchQuery, ignoreCase = true)
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                    it.content.contains(searchQuery, ignoreCase = true) ||
+                    it.shortcut.contains(searchQuery, ignoreCase = true)
         }
     }
 
     val filteredHistory = remember(historySnippets, searchQuery) {
         if (searchQuery.isBlank()) historySnippets
         else historySnippets.filter {
-            it.title.contains(searchQuery, ignoreCase = true) || it.content.contains(searchQuery, ignoreCase = true)
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                    it.content.contains(searchQuery, ignoreCase = true) ||
+                    it.shortcut.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -361,10 +365,11 @@ fun ClipboardHistoryPageView(
             initialContent = "",
             initialCategory = "Pinned",
             initialPinned = true,
+            initialShortcut = "",
             dialogTitle = "Add Pinned Message",
             onDismiss = { showAddDialog = false },
-            onConfirm = { title, content, isPinned, category ->
-                onSaveSnippet(title, content, isPinned, category)
+            onConfirm = { title, content, isPinned, category, shortcut ->
+                onSaveSnippet(title, content, isPinned, category, shortcut)
                 showAddDialog = false
             }
         )
@@ -438,6 +443,22 @@ private fun SnippetDetailCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (snippet.shortcut.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.enterKeyBackground.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = snippet.shortcut,
+                                color = colors.enterKeyBackground,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {

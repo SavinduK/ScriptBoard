@@ -109,23 +109,29 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 val themeType by keyboardPrefs.themeType.collectAsState()
                 val laptopBarVisible by keyboardPrefs.laptopBarVisible.collectAsState()
 
+                val colors = if (themeType == com.example.ui.keyboard.model.KeyboardThemeType.CUSTOM) {
+                    keyboardPrefs.getCustomKeyboardColors()
+                } else {
+                    KeyboardThemes.getTheme(themeType)
+                }
+
                 KeyProKeyboardView(
-                    colors = KeyboardThemes.getTheme(themeType),
+                    colors = colors,
                     allSnippets = allSnippets,
                     pinnedSnippets = pinnedSnippets,
                     historySnippets = historySnippets,
                     isSoundEnabled = soundEnabled,
                     isHapticEnabled = hapticEnabled,
                     initialLaptopBarVisible = laptopBarVisible,
-                    onAction = { action -> handleImeAction(action) },
+                    onAction = { action -> handleImeAction(action, pinnedSnippets) },
                     onTogglePin = { snippet ->
                         serviceScope.launch { repository.togglePin(snippet.id, snippet.isPinned) }
                     },
                     onDeleteSnippet = { id ->
                         serviceScope.launch { repository.deleteSnippet(id) }
                     },
-                    onSaveSnippet = { title, content, isPinned, category ->
-                        serviceScope.launch { repository.insertSnippet(title, content, isPinned, category) }
+                    onSaveSnippet = { title, content, isPinned, category, shortcut ->
+                        serviceScope.launch { repository.insertSnippet(title, content, isPinned, category, shortcut) }
                     },
                     onClearHistory = {
                         serviceScope.launch { repository.clearUnpinned() }
@@ -151,7 +157,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
 
-    private fun handleImeAction(action: KeyAction) {
+    private fun handleImeAction(action: KeyAction, pinnedSnippets: List<com.example.data.SnippetEntity> = emptyList()) {
         val ic = currentInputConnection ?: return
 
         when (action) {
@@ -159,7 +165,28 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 ic.commitText(action.text, 1)
             }
             is KeyAction.Space -> {
-                ic.commitText(" ", 1)
+                // Check if the preceding word matches a pinned snippet's shortcut (Request #2)
+                val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
+                val lastWord = before.split(Regex("\\s+")).lastOrNull() ?: ""
+                val matched = if (lastWord.isNotBlank()) {
+                    pinnedSnippets.firstOrNull { it.shortcut.isNotBlank() && it.shortcut.equals(lastWord, ignoreCase = true) }
+                } else null
+
+                if (matched != null) {
+                    ic.deleteSurroundingText(lastWord.length, 0)
+                    ic.commitText(matched.content + " ", 1)
+                } else {
+                    ic.commitText(" ", 1)
+                }
+            }
+            is KeyAction.ExpandShortcut -> {
+                if (action.shortcutText.isNotEmpty()) {
+                    val before = ic.getTextBeforeCursor(action.shortcutText.length, 0)?.toString()
+                    if (before == action.shortcutText) {
+                        ic.deleteSurroundingText(action.shortcutText.length, 0)
+                    }
+                }
+                ic.commitText(action.fullContent, 1)
             }
             is KeyAction.Backspace -> {
                 ic.deleteSurroundingText(1, 0)

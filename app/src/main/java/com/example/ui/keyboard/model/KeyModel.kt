@@ -52,6 +52,7 @@ sealed class KeyAction {
     object Undo : KeyAction()
     object Redo : KeyAction()
     data class FunctionKey(val fNumber: Int) : KeyAction()
+    data class ExpandShortcut(val shortcutText: String, val fullContent: String) : KeyAction()
 }
 
 data class KeyItem(
