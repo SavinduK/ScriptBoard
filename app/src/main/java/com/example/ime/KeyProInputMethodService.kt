@@ -177,6 +177,14 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     ic.commitText(matched.content + " ", 1)
                 } else {
                     ic.commitText(" ", 1)
+                    if (lastWord.isNotBlank()) {
+                        serviceScope.launch {
+                            try {
+                                val wordDao = com.example.data.AppDatabase.getDatabase(this@KeyProInputMethodService).wordFrequencyDao()
+                                com.example.data.WordSuggestionManager(wordDao).recordWordUsed(lastWord)
+                            } catch (_: Exception) {}
+                        }
+                    }
                 }
             }
             is KeyAction.ExpandShortcut -> {
@@ -187,6 +195,21 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     }
                 }
                 ic.commitText(action.fullContent, 1)
+            }
+            is KeyAction.ApplySuggestion -> {
+                if (action.typedWord.isNotEmpty()) {
+                    val before = ic.getTextBeforeCursor(action.typedWord.length, 0)?.toString()
+                    if (before == action.typedWord) {
+                        ic.deleteSurroundingText(action.typedWord.length, 0)
+                    }
+                }
+                ic.commitText(action.suggestedWord + " ", 1)
+                serviceScope.launch {
+                    try {
+                        val wordDao = com.example.data.AppDatabase.getDatabase(this@KeyProInputMethodService).wordFrequencyDao()
+                        com.example.data.WordSuggestionManager(wordDao).recordWordUsed(action.suggestedWord)
+                    } catch (_: Exception) {}
+                }
             }
             is KeyAction.Backspace -> {
                 ic.deleteSurroundingText(1, 0)

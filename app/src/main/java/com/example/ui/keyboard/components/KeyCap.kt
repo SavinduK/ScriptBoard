@@ -43,6 +43,7 @@ fun RowScope.KeyCap(
     key: KeyItem,
     colors: KeyboardColors,
     heightDp: Int = 46,
+    characterFontSize: Float = 24f,
     onKeyClick: (KeyItem) -> Unit,
     onKeyLongClick: ((KeyItem) -> Unit)? = null
 ) {
@@ -135,11 +136,12 @@ fun RowScope.KeyCap(
             color = textColor,
             fontSize = when {
                 isFunctionKey -> 11.5.sp // Matches F12 label size for all function keys
-                key.primaryText.length == 1 && key.primaryText[0].isLetter() -> 24.sp // Slightly increased for English letters (upper and lower case)
-                key.primaryText.length == 1 && key.primaryText[0].isDigit() -> 20.sp
+                key.primaryText.length == 1 && key.primaryText[0].isLetter() -> characterFontSize.sp
+                key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.85f).sp
                 key.primaryText == "English" -> 14.sp
                 key.primaryText == "12\n34" -> 10.sp
                 isSmallFont -> 11.5.sp
+                key.primaryText.length == 1 -> (characterFontSize * 0.8f).sp
                 else -> 17.sp
             },
             fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,

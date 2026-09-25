@@ -40,6 +40,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -71,8 +73,10 @@ fun SettingsPageView(
     isHapticEnabled: Boolean,
     isLaptopBarEnabled: Boolean,
     isHoldForSymbolsEnabled: Boolean,
+    keyFontSize: Float = 24f,
     onBack: () -> Unit,
     onThemeSelected: (KeyboardThemeType) -> Unit,
+    onKeyFontSizeChanged: (Float) -> Unit = {},
     onToggleSound: (Boolean) -> Unit,
     onToggleHaptic: (Boolean) -> Unit,
     onToggleLaptopBar: (Boolean) -> Unit,
@@ -248,6 +252,153 @@ fun SettingsPageView(
                     }
                 }
             }
+
+            // Section: Key Character Font Size (Request #2)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TextFields,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Key Character Font Size",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Customize character size on keyboard keys",
+                                    color = colors.letterKeySecondaryTextColor,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.enterKeyBackground)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${keyFontSize.toInt()} sp",
+                                color = colors.enterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Preset buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "Small\n(20sp)" to 20f,
+                            "Normal\n(24sp)" to 24f,
+                            "Large\n(27sp)" to 27f,
+                            "X-Large\n(30sp)" to 30f
+                        ).forEach { (label, size) ->
+                            val isSelected = keyFontSize.toInt() == size.toInt()
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                    .clickable { onKeyFontSizeChanged(size) }
+                                    .padding(vertical = 8.dp)
+                                    .testTag("btn_font_size_${size.toInt()}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Fine-tuning Slider
+                    Slider(
+                        value = keyFontSize,
+                        onValueChange = { onKeyFontSizeChanged(it) },
+                        valueRange = 18f..32f,
+                        steps = 13,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("page_slider_key_font_size"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.enterKeyBackground,
+                            activeTrackColor = colors.enterKeyBackground,
+                            inactiveTrackColor = colors.background
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Live Keycap Preview Box
+                    Text(
+                        text = "LIVE KEYCAP PREVIEW",
+                        color = colors.letterKeySecondaryTextColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.background)
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf("Q", "W", "E", "R", "T").forEach { letter ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(colors.letterKeyBackground),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = letter,
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = keyFontSize.sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Section 2: Typing Feedback
             Card(

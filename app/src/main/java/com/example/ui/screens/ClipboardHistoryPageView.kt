@@ -3,7 +3,13 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +29,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PushPin
@@ -46,18 +54,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.SnippetEntity
 import com.example.ui.keyboard.components.SnippetEditorDialog
 import com.example.ui.keyboard.model.KeyboardColors
 
 private enum class HistoryFilter {
-    ALL, PINNED, HISTORY
+    ALL, PINNED, HISTORY, IMAGES
 }
 
 @Composable
@@ -69,6 +79,7 @@ fun ClipboardHistoryPageView(
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
     onSaveSnippet: (title: String, content: String, isPinned: Boolean, category: String, shortcut: String) -> Unit,
+    onSaveImage: (uri: String) -> Unit = {},
     onClearHistory: () -> Unit
 ) {
     val context = LocalContext.current
@@ -78,6 +89,18 @@ fun ClipboardHistoryPageView(
     var selectedFilter by remember { mutableStateOf(HistoryFilter.ALL) }
     var showAddDialog by remember { mutableStateOf(false) }
     var copiedFeedbackId by remember { mutableStateOf<Long?>(null) }
+
+    // Photo picker for adding images to clipboard (compliance with Play policy zero-permission picker)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            onSaveImage(uri.toString())
+            Toast.makeText(context, "Image added to clipboard history!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val allList = remember(pinnedSnippets, historySnippets) { pinnedSnippets + historySnippets }
 
     val filteredPinned = remember(pinnedSnippets, searchQuery) {
         if (searchQuery.isBlank()) pinnedSnippets
@@ -95,6 +118,12 @@ fun ClipboardHistoryPageView(
                     it.content.contains(searchQuery, ignoreCase = true) ||
                     it.shortcut.contains(searchQuery, ignoreCase = true)
         }
+    }
+
+    val filteredImages = remember(allList, searchQuery) {
+        val images = allList.filter { it.isImage || !it.imageUri.isNullOrBlank() }
+        if (searchQuery.isBlank()) images
+        else images.filter { it.title.contains(searchQuery, ignoreCase = true) }
     }
 
     Column(
@@ -134,7 +163,7 @@ fun ClipboardHistoryPageView(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${pinnedSnippets.size} pinned • ${historySnippets.size} history clips",
+                        text = "${pinnedSnippets.size} pinned • ${historySnippets.size} history clips • ${filteredImages.size} images",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 11.sp
                     )
@@ -153,6 +182,22 @@ fun ClipboardHistoryPageView(
                             tint = colors.toolbarIconTint
                         )
                     }
+                }
+
+                // Add Image button (Photo Picker)
+                IconButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier.testTag("btn_page_add_image")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "Add Image to Clipboard",
+                        tint = colors.enterKeyBackground
+                    )
                 }
 
                 IconButton(
@@ -182,7 +227,7 @@ fun ClipboardHistoryPageView(
                     .testTag("input_search_clipboard"),
                 placeholder = {
                     Text(
-                        text = "Search pinned or history...",
+                        text = "Search text, shortcuts, or images...",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 13.sp
                     )
@@ -230,6 +275,12 @@ fun ClipboardHistoryPageView(
                     colors = colors,
                     onClick = { selectedFilter = HistoryFilter.HISTORY }
                 )
+                FilterTabButton(
+                    label = "🖼️ Images (${filteredImages.size})",
+                    isSelected = selectedFilter == HistoryFilter.IMAGES,
+                    colors = colors,
+                    onClick = { selectedFilter = HistoryFilter.IMAGES }
+                )
             }
         }
 
@@ -241,6 +292,61 @@ fun ClipboardHistoryPageView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            // IMAGES SECTION (when Images tab selected)
+            if (selectedFilter == HistoryFilter.IMAGES) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "SAVED IMAGES (${filteredImages.size})",
+                            color = colors.enterKeyBackground,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                if (filteredImages.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = "No image clips yet. Tap the image icon in the top right to add photos from your gallery!",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+                } else {
+                    items(filteredImages, key = { "page_img_${it.id}" }) { snippet ->
+                        SnippetDetailCard(
+                            snippet = snippet,
+                            colors = colors,
+                            isCopied = copiedFeedbackId == snippet.id,
+                            onCopy = {
+                                copyToSystemClipboard(context, clipboardManager, snippet)
+                                copiedFeedbackId = snippet.id
+                            },
+                            onTogglePin = { onTogglePin(snippet) },
+                            onDelete = { onDeleteSnippet(snippet.id) }
+                        )
+                    }
+                }
+            }
+
             // Pinned section
             if (selectedFilter == HistoryFilter.ALL || selectedFilter == HistoryFilter.PINNED) {
                 item {
@@ -272,8 +378,8 @@ fun ClipboardHistoryPageView(
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Text(
-                                text = if (searchQuery.isNotEmpty()) "No pinned messages match \"$searchQuery\""
-                                else "No pinned messages yet. Tap the + icon or pin from history below to save frequent text!",
+                                text = if (searchQuery.isNotEmpty()) "No pinned items match \"$searchQuery\""
+                                else "No pinned messages yet. Tap the + icon or pin from history below to save frequent text and images!",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(14.dp)
@@ -287,8 +393,7 @@ fun ClipboardHistoryPageView(
                             colors = colors,
                             isCopied = copiedFeedbackId == snippet.id,
                             onCopy = {
-                                val clip = ClipData.newPlainText("KeyPro Text", snippet.content)
-                                clipboardManager.setPrimaryClip(clip)
+                                copyToSystemClipboard(context, clipboardManager, snippet)
                                 copiedFeedbackId = snippet.id
                             },
                             onTogglePin = { onTogglePin(snippet) },
@@ -331,7 +436,7 @@ fun ClipboardHistoryPageView(
                         ) {
                             Text(
                                 text = if (searchQuery.isNotEmpty()) "No history clips match \"$searchQuery\""
-                                else "Clipboard history is empty. Anything you copy on your phone is automatically preserved here!",
+                                else "Clipboard history is empty. Anything you copy on your phone (text or image) is automatically preserved here!",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(14.dp)
@@ -345,8 +450,7 @@ fun ClipboardHistoryPageView(
                             colors = colors,
                             isCopied = copiedFeedbackId == snippet.id,
                             onCopy = {
-                                val clip = ClipData.newPlainText("KeyPro Text", snippet.content)
-                                clipboardManager.setPrimaryClip(clip)
+                                copyToSystemClipboard(context, clipboardManager, snippet)
                                 copiedFeedbackId = snippet.id
                             },
                             onTogglePin = { onTogglePin(snippet) },
@@ -376,6 +480,21 @@ fun ClipboardHistoryPageView(
     }
 }
 
+private fun copyToSystemClipboard(context: Context, clipboardManager: ClipboardManager, snippet: SnippetEntity) {
+    try {
+        if (snippet.isImage || !snippet.imageUri.isNullOrBlank()) {
+            val uriStr = snippet.imageUri ?: snippet.content
+            val clip = ClipData.newUri(context.contentResolver, "Image Clip", Uri.parse(uriStr))
+            clipboardManager.setPrimaryClip(clip)
+            Toast.makeText(context, "Image copied to clipboard!", Toast.LENGTH_SHORT).show()
+        } else {
+            val clip = ClipData.newPlainText("KeyPro Text", snippet.content)
+            clipboardManager.setPrimaryClip(clip)
+            Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
+        }
+    } catch (_: Exception) {}
+}
+
 @Composable
 private fun FilterTabButton(
     label: String,
@@ -388,13 +507,13 @@ private fun FilterTabButton(
             .clip(RoundedCornerShape(20.dp))
             .background(if (isSelected) colors.enterKeyBackground else colors.letterKeyBackground)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
             color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-            fontSize = 12.sp,
+            fontSize = 11.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
         )
     }
@@ -409,6 +528,8 @@ private fun SnippetDetailCard(
     onTogglePin: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isImageClip = snippet.isImage || !snippet.imageUri.isNullOrBlank()
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -459,6 +580,22 @@ private fun SnippetDetailCard(
                             )
                         }
                     }
+                    if (isImageClip) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.enterKeyBackground.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "IMAGE",
+                                color = colors.enterKeyBackground,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -500,20 +637,39 @@ private fun SnippetDetailCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            Text(
-                text = snippet.content,
-                color = colors.letterKeySecondaryTextColor,
-                fontSize = 13.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (isImageClip) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.functionKeyBackground)
+                        .border(1.dp, colors.functionKeyBackground, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = snippet.imageUri ?: snippet.content,
+                        contentDescription = snippet.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            } else {
+                Text(
+                    text = snippet.content,
+                    color = colors.letterKeySecondaryTextColor,
+                    fontSize = 13.sp,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             if (isCopied) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "✓ Copied to clipboard!",
+                    text = if (isImageClip) "✓ Image copied to clipboard!" else "✓ Copied to clipboard!",
                     color = colors.enterKeyBackground,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold

@@ -4,12 +4,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,21 +27,27 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.AppDatabase
 import com.example.data.SnippetEntity
+import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.components.EmojiPickerView
 import com.example.ui.keyboard.components.InKeyboardClipboardView
 import com.example.ui.keyboard.components.InKeyboardSettingsView
@@ -54,6 +62,7 @@ import com.example.ui.keyboard.model.KeyboardLayoutMode
 import com.example.ui.keyboard.model.ShiftState
 import com.example.ui.keyboard.util.FeedbackUtil
 import com.example.ui.keyboard.util.KeyboardPreferences
+import kotlinx.coroutines.launch
 
 @Composable
 fun KeyProKeyboardView(
@@ -73,8 +82,14 @@ fun KeyProKeyboardView(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val coroutineScope = rememberCoroutineScope()
     val keyboardPrefs = remember { KeyboardPreferences.getInstance(context) }
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
+    val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+
+    val wordSuggestionManager = remember {
+        WordSuggestionManager(AppDatabase.getDatabase(context).wordFrequencyDao())
+    }
 
     DisposableEffect(isSoundEnabled) {
         view.isSoundEffectsEnabled = isSoundEnabled
@@ -87,8 +102,15 @@ fun KeyProKeyboardView(
     var isCtrlActive by remember { mutableStateOf(false) }
     var isAltActive by remember { mutableStateOf(false) }
     var currentWordBuffer by remember { mutableStateOf("") }
+    var suggestedWords by remember { mutableStateOf(listOf("I", "The", "Thanks")) }
 
-    // Matching shortcuts for phrase expansion (Request #2)
+    // Update 3 word suggestions dynamically as user types (Request #3)
+    LaunchedEffect(currentWordBuffer) {
+        val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer)
+        suggestedWords = suggestions
+    }
+
+    // Matching shortcuts for phrase expansion
     val matchingShortcuts = remember(currentWordBuffer, pinnedSnippets) {
         if (currentWordBuffer.isNotBlank()) {
             val query = currentWordBuffer.trim()
@@ -109,12 +131,16 @@ fun KeyProKeyboardView(
     fun handleKeyAction(action: KeyAction) {
         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
 
-        // Track typed word buffer for short phrase expansions
+        // Track typed word buffer for suggestions and phrase expansions
         when (action) {
             is KeyAction.InsertText -> {
                 if (action.text.length == 1 && (action.text[0].isLetterOrDigit() || action.text in listOf("@", "/", "#", "_", "-", "."))) {
                     currentWordBuffer += action.text
                 } else {
+                    if (currentWordBuffer.isNotBlank()) {
+                        val wordToRecord = currentWordBuffer
+                        coroutineScope.launch { wordSuggestionManager.recordWordUsed(wordToRecord) }
+                    }
                     currentWordBuffer = ""
                 }
             }
@@ -124,11 +150,25 @@ fun KeyProKeyboardView(
                 }
             }
             is KeyAction.Space -> {
+                // Check if user typed an exact shortcut
                 val matched = pinnedSnippets.firstOrNull { it.shortcut.isNotBlank() && it.shortcut.equals(currentWordBuffer.trim(), ignoreCase = true) }
                 if (matched != null) {
                     onAction(KeyAction.ExpandShortcut(currentWordBuffer, matched.content + " "))
                     currentWordBuffer = ""
                     return
+                }
+                // Record typed word into typing history (Request #3: same word used more -> suggest more)
+                // Note: Typed word is NOT autocorrected (no auto correct only suggest)
+                if (currentWordBuffer.isNotBlank()) {
+                    val wordToRecord = currentWordBuffer
+                    coroutineScope.launch { wordSuggestionManager.recordWordUsed(wordToRecord) }
+                }
+                currentWordBuffer = ""
+            }
+            is KeyAction.Enter -> {
+                if (currentWordBuffer.isNotBlank()) {
+                    val wordToRecord = currentWordBuffer
+                    coroutineScope.launch { wordSuggestionManager.recordWordUsed(wordToRecord) }
                 }
                 currentWordBuffer = ""
             }
@@ -151,13 +191,13 @@ fun KeyProKeyboardView(
                     isCtrlActive = false
                     return
                 }
-                "v" -> {
-                    onAction(KeyAction.Paste)
+                "x" -> {
+                    onAction(KeyAction.Cut)
                     isCtrlActive = false
                     return
                 }
-                "x" -> {
-                    onAction(KeyAction.Cut)
+                "v" -> {
+                    onAction(KeyAction.Paste)
                     isCtrlActive = false
                     return
                 }
@@ -174,6 +214,7 @@ fun KeyProKeyboardView(
             }
         }
 
+        // Standard actions
         when (action) {
             is KeyAction.ToggleShift -> {
                 shiftState = when (shiftState) {
@@ -182,45 +223,22 @@ fun KeyProKeyboardView(
                     ShiftState.CAPS_LOCKED -> ShiftState.OFF
                 }
             }
-            is KeyAction.SwitchToSymbols -> {
-                layoutMode = KeyboardLayoutMode.SYMBOLS_1
-            }
-            is KeyAction.SwitchToLetters -> {
-                layoutMode = KeyboardLayoutMode.TEXT
-                if (shiftState == ShiftState.ONCE) {
-                    shiftState = ShiftState.OFF
-                }
-            }
-            is KeyAction.SwitchToMoreSymbols -> {
-                layoutMode = KeyboardLayoutMode.SYMBOLS_2
-            }
-            is KeyAction.SwitchToNumpad -> {
-                layoutMode = KeyboardLayoutMode.NUMPAD
-            }
-            is KeyAction.SwitchToExtendedPc -> {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) KeyboardLayoutMode.TEXT else KeyboardLayoutMode.EXTENDED_PC
-            }
-            is KeyAction.SwitchToEmoji -> {
-                layoutMode = KeyboardLayoutMode.EMOJI
-            }
-            is KeyAction.SwitchToClipboard -> {
-                layoutMode = KeyboardLayoutMode.CLIPBOARD
-            }
-            is KeyAction.ToggleCtrl -> {
-                isCtrlActive = !isCtrlActive
-            }
-            is KeyAction.ToggleAlt -> {
-                isAltActive = !isAltActive
-            }
+            is KeyAction.SwitchToSymbols -> layoutMode = KeyboardLayoutMode.SYMBOLS_1
+            is KeyAction.SwitchToLetters -> layoutMode = KeyboardLayoutMode.TEXT
+            is KeyAction.SwitchToMoreSymbols -> layoutMode = KeyboardLayoutMode.SYMBOLS_2
+            is KeyAction.SwitchToNumpad -> layoutMode = KeyboardLayoutMode.NUMPAD
+            is KeyAction.SwitchToExtendedPc -> layoutMode = KeyboardLayoutMode.EXTENDED_PC
+            is KeyAction.SwitchToEmoji -> layoutMode = KeyboardLayoutMode.EMOJI
+            is KeyAction.SwitchToClipboard -> layoutMode = KeyboardLayoutMode.CLIPBOARD
+            is KeyAction.ToggleCtrl -> isCtrlActive = !isCtrlActive
+            is KeyAction.ToggleAlt -> isAltActive = !isAltActive
             is KeyAction.InsertText -> {
                 onAction(action)
                 if (shiftState == ShiftState.ONCE) {
                     shiftState = ShiftState.OFF
                 }
             }
-            else -> {
-                onAction(action)
-            }
+            else -> onAction(action)
         }
     }
 
@@ -229,9 +247,9 @@ fun KeyProKeyboardView(
             .fillMaxWidth()
             .background(colors.background)
     ) {
-        // Laptop Quick Access Bar (Esc, Tab, Ctrl, Alt, Arrow keys)
+        // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
         AnimatedVisibility(
-            visible = isLaptopBarVisible,
+            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS),
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
@@ -267,7 +285,7 @@ fun KeyProKeyboardView(
                 }
             },
             onOpenSettings = {
-                // Open settings directly from the keyboard itself without opening the app (Request #3)
+                // Open settings directly from the keyboard itself without opening the app
                 layoutMode = if (layoutMode == KeyboardLayoutMode.SETTINGS) {
                     KeyboardLayoutMode.TEXT
                 } else {
@@ -276,7 +294,7 @@ fun KeyProKeyboardView(
             }
         )
 
-        // Shortcut suggestion bar (Request #2: short phrase expansion)
+        // Shortcut suggestion bar (when shortcut matches query)
         AnimatedVisibility(
             visible = matchingShortcuts.isNotEmpty() && layoutMode == KeyboardLayoutMode.TEXT,
             enter = expandVertically(),
@@ -285,7 +303,7 @@ fun KeyProKeyboardView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
+                    .height(36.dp)
                     .background(colors.toolbarBackground)
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp),
@@ -338,6 +356,72 @@ fun KeyProKeyboardView(
             }
         }
 
+        // Request #3: Auto Suggest Words Feature - Show 3 Suggested Words on Top
+        // Displays 3 suggestions with user typing history frequency prioritization
+        // Tapping replaces the word. User typing space/enter leaves typed word unchanged.
+        if (layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2, KeyboardLayoutMode.NUMPAD, KeyboardLayoutMode.EXTENDED_PC)) {
+            val suggestionsToDisplay = remember(suggestedWords) {
+                val list = suggestedWords.toMutableList()
+                while (list.size < 3) {
+                    list.add("")
+                }
+                list.take(3)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .background(colors.toolbarBackground.copy(alpha = 0.95f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .testTag("row_auto_suggest_words"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                suggestionsToDisplay.forEachIndexed { index, word ->
+                    if (index > 0) {
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(16.dp)
+                                .background(colors.functionKeyBackground.copy(alpha = 0.6f))
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(horizontal = 2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = word.isNotBlank()) {
+                                if (word.isNotBlank()) {
+                                    FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                                    onAction(KeyAction.ApplySuggestion(currentWordBuffer, word))
+                                    coroutineScope.launch {
+                                        wordSuggestionManager.recordWordUsed(word)
+                                    }
+                                    currentWordBuffer = ""
+                                }
+                            }
+                            .testTag("suggested_word_$index"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (word.isNotBlank()) {
+                            Text(
+                                text = word,
+                                color = if (index == 1) colors.enterKeyBackground else colors.letterKeyTextColor,
+                                fontSize = if (index == 1) 14.sp else 13.sp,
+                                fontWeight = if (index == 1) FontWeight.Bold else FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Main Keyboard Area
         when (layoutMode) {
             KeyboardLayoutMode.EMOJI -> {
@@ -374,7 +458,7 @@ fun KeyProKeyboardView(
                 )
             }
             else -> {
-                // Layout is either TEXT, SYMBOLS_1, SYMBOLS_2, NUMPAD, or EXTENDED_PC (special set of laptop keys!)
+                // Layout is either TEXT, SYMBOLS_1, SYMBOLS_2, NUMPAD, or EXTENDED_PC
                 val currentRows = when (layoutMode) {
                     KeyboardLayoutMode.TEXT -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled)
                     KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows()
@@ -400,6 +484,7 @@ fun KeyProKeyboardView(
                                     key = key,
                                     colors = colors,
                                     heightDp = 46,
+                                    characterFontSize = keyFontSize,
                                     onKeyClick = { handleKeyAction(it.action) }
                                 )
                             }
@@ -409,7 +494,7 @@ fun KeyProKeyboardView(
             }
         }
 
-        // Empty space below the last row of keys (similar height of a row of keys)
+        // Bottom spacer
         Spacer(modifier = Modifier.height(48.dp))
     }
 }

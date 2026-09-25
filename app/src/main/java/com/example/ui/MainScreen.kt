@@ -88,6 +88,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
     val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
+    val keyFontSize by viewModel.keyFontSize.collectAsState()
     val lastActionStatus by viewModel.lastActionStatus.collectAsState()
 
     val colors = viewModel.currentColors
@@ -326,8 +327,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isHapticEnabled = isHapticEnabled,
                         isLaptopBarEnabled = isLaptopBarVisible,
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
+                        keyFontSize = keyFontSize,
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
+                        onKeyFontSizeChanged = { viewModel.setKeyFontSize(it) },
                         onToggleSound = { viewModel.setSoundEnabled(it) },
                         onToggleHaptic = { viewModel.setHapticEnabled(it) },
                         onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
@@ -348,6 +351,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onDeleteSnippet = { viewModel.deleteSnippet(it) },
                         onSaveSnippet = { title, content, isPinned, category, shortcut ->
                             viewModel.insertSnippet(title, content, isPinned, category, shortcut)
+                        },
+                        onSaveImage = { uri ->
+                            viewModel.saveImageSnippet(uri)
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() }
                     )

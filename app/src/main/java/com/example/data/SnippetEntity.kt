@@ -12,5 +12,8 @@ data class SnippetEntity(
     val isPinned: Boolean = true,
     val category: String = "Quick Text",
     val shortcut: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val imageUri: String? = null,
+    val isImage: Boolean = false,
+    val mimeType: String? = null
 )

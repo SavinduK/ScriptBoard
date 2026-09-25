@@ -72,6 +72,7 @@ fun InKeyboardSettingsView(
     val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
     val laptopBarEnabled by keyboardPrefs.laptopBarVisible.collectAsState()
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
+    val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
 
     var showRgbThemeDialog by remember { mutableStateOf(false) }
 
@@ -254,6 +255,75 @@ fun InKeyboardSettingsView(
                     }
                 }
             }
+
+            // Section: Key Character Font Size (Request #2)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp)),
+                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TextFields,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Key Character Font Size",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "${keyFontSize.toInt()} sp",
+                            color = colors.enterKeyBackground,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Small (20sp)" to 20f, "Normal (24sp)" to 24f, "Large (27sp)" to 27f, "XL (30sp)" to 30f).forEach { (label, size) ->
+                            val isSelected = keyFontSize.toInt() == size.toInt()
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) colors.enterKeyBackground else colors.functionKeyBackground)
+                                    .clickable { keyboardPrefs.setKeyFontSize(size) }
+                                    .padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Section 2: Preferences Switches
             Card(

@@ -27,6 +27,9 @@ class KeyboardPreferences(context: Context) {
     private val _holdForSymbolsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HOLD_FOR_SYMBOLS, true))
     val holdForSymbolsEnabled: StateFlow<Boolean> = _holdForSymbolsEnabled.asStateFlow()
 
+    private val _keyFontSize = MutableStateFlow(prefs.getFloat(KEY_KEY_FONT_SIZE, 24f))
+    val keyFontSize: StateFlow<Float> = _keyFontSize.asStateFlow()
+
     private val _themeType = MutableStateFlow(
         try {
             KeyboardThemeType.valueOf(prefs.getString(KEY_THEME_TYPE, KeyboardThemeType.GBOARD_DARK.name) ?: KeyboardThemeType.GBOARD_DARK.name)
@@ -69,6 +72,11 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_HOLD_FOR_SYMBOLS, enabled).apply()
     }
 
+    fun setKeyFontSize(size: Float) {
+        _keyFontSize.value = size
+        prefs.edit().putFloat(KEY_KEY_FONT_SIZE, size).apply()
+    }
+
     fun setThemeType(type: KeyboardThemeType) {
         _themeType.value = type
         prefs.edit().putString(KEY_THEME_TYPE, type.name).apply()
@@ -101,6 +109,7 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_HAPTIC_ENABLED = "haptic_enabled"
         private const val KEY_LAPTOP_BAR_VISIBLE = "laptop_bar_visible"
         private const val KEY_HOLD_FOR_SYMBOLS = "hold_for_symbols"
+        private const val KEY_KEY_FONT_SIZE = "key_character_font_size"
         private const val KEY_THEME_TYPE = "theme_type"
         private const val KEY_CUSTOM_BG = "custom_bg"
         private const val KEY_CUSTOM_KEY_BG = "custom_key_bg"

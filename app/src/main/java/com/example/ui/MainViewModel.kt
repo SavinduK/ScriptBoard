@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.SnippetEntity
 import com.example.data.SnippetRepository
+import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.keyboard.model.KeyboardThemeType
@@ -38,16 +39,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val historySnippets: StateFlow<List<SnippetEntity>> = repository.historySnippets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val wordSuggestionManager = WordSuggestionManager(AppDatabase.getDatabase(application).wordFrequencyDao())
+
     init {
         try {
             clipboardManager.addPrimaryClipChangedListener {
                 try {
                     val clip = clipboardManager.primaryClip
                     if (clip != null && clip.itemCount > 0) {
-                        val text = clip.getItemAt(0).text?.toString()
-                        if (!text.isNullOrBlank()) {
+                        val item = clip.getItemAt(0)
+                        val uri = item.uri
+                        if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
                             viewModelScope.launch {
-                                repository.saveToClipboardHistory(text)
+                                repository.saveImageToClipboard(uri.toString())
+                            }
+                        } else {
+                            val text = item.text?.toString()
+                            if (!text.isNullOrBlank()) {
+                                viewModelScope.launch {
+                                    repository.saveToClipboardHistory(text)
+                                }
                             }
                         }
                     }
@@ -74,6 +85,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isSoundEnabled: StateFlow<Boolean> = keyboardPrefs.soundEnabled
     val isHapticEnabled: StateFlow<Boolean> = keyboardPrefs.hapticEnabled
     val isHoldForSymbolsEnabled: StateFlow<Boolean> = keyboardPrefs.holdForSymbolsEnabled
+    val keyFontSize: StateFlow<Float> = keyboardPrefs.keyFontSize
 
     val currentColors: KeyboardColors
         get() = if (themeType.value == KeyboardThemeType.CUSTOM) {
@@ -115,6 +127,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _lastActionStatus.value = if (enabled) "Hold key for symbols: ON" else "Hold key for symbols: OFF"
     }
 
+    fun setKeyFontSize(size: Float) {
+        keyboardPrefs.setKeyFontSize(size)
+        _lastActionStatus.value = "Key font size: ${size.toInt()}sp"
+    }
+
+    fun saveImageSnippet(uri: String, title: String? = null, isPinned: Boolean = false) {
+        viewModelScope.launch {
+            repository.saveImageToClipboard(uri, title, isPinned)
+            _lastActionStatus.value = "Image saved to clipboard"
+        }
+    }
+
     fun setSoundEnabled(enabled: Boolean) = toggleSound(enabled)
     fun setHapticEnabled(enabled: Boolean) = toggleHaptic(enabled)
     fun setLaptopBarVisible(visible: Boolean) = toggleLaptopBar(visible)
@@ -141,10 +165,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun handleKeyboardAction(action: KeyAction) {
         when (action) {
             is KeyAction.InsertText -> insertText(action.text)
-            is KeyAction.Space -> insertText(" ")
+            is KeyAction.Space -> {
+                val current = _editorValue.value
+                val before = current.text.substring(0, current.selection.min)
+                val lastWord = before.split(Regex("\\s+")).lastOrNull()?.trim() ?: ""
+                if (lastWord.isNotBlank()) {
+                    viewModelScope.launch {
+                        wordSuggestionManager.recordWordUsed(lastWord)
+                    }
+                }
+                insertText(" ")
+            }
             is KeyAction.Backspace -> backspace()
             is KeyAction.DeleteForward -> deleteForward()
-            is KeyAction.Enter -> insertText("\n")
+            is KeyAction.Enter -> {
+                val current = _editorValue.value
+                val before = current.text.substring(0, current.selection.min)
+                val lastWord = before.split(Regex("\\s+")).lastOrNull()?.trim() ?: ""
+                if (lastWord.isNotBlank()) {
+                    viewModelScope.launch {
+                        wordSuggestionManager.recordWordUsed(lastWord)
+                    }
+                }
+                insertText("\n")
+            }
             is KeyAction.Tab -> insertTab()
             is KeyAction.Escape -> {
                 val current = _editorValue.value
@@ -165,6 +209,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is KeyAction.Paste -> pasteText()
             is KeyAction.Undo -> undo()
             is KeyAction.Redo -> redo()
+            is KeyAction.ApplySuggestion -> {
+                applySuggestion(action.typedWord, action.suggestedWord)
+            }
             is KeyAction.ExpandShortcut -> {
                 insertText(action.fullContent)
                 _lastActionStatus.value = "Expanded phrase: ${action.shortcutText}"
@@ -187,6 +234,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val newCursor = selStart + text.length
         _editorValue.value = TextFieldValue(newText, TextRange(newCursor))
         _lastActionStatus.value = "Typed: \"$text\""
+    }
+
+    private fun applySuggestion(typedWord: String, suggestedWord: String) {
+        saveUndoState()
+        val current = _editorValue.value
+        val text = current.text
+        val selStart = current.selection.min
+        val prefixLen = typedWord.length
+        val replaceStart = (selStart - prefixLen).coerceAtLeast(0)
+        val newText = text.substring(0, replaceStart) + suggestedWord + " " + text.substring(selStart)
+        val newCursor = replaceStart + suggestedWord.length + 1
+        _editorValue.value = TextFieldValue(newText, TextRange(newCursor))
+        _lastActionStatus.value = "Suggested word applied: \"$suggestedWord\""
+        viewModelScope.launch {
+            wordSuggestionManager.recordWordUsed(suggestedWord)
+        }
     }
 
     private fun insertTab() {

@@ -53,6 +53,7 @@ sealed class KeyAction {
     object Redo : KeyAction()
     data class FunctionKey(val fNumber: Int) : KeyAction()
     data class ExpandShortcut(val shortcutText: String, val fullContent: String) : KeyAction()
+    data class ApplySuggestion(val typedWord: String, val suggestedWord: String) : KeyAction()
 }
 
 data class KeyItem(
