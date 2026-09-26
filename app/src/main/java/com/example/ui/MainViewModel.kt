@@ -219,6 +219,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is KeyAction.FunctionKey -> {
                 _lastActionStatus.value = "F${action.fNumber} executed"
             }
+            is KeyAction.InsertSticker -> {
+                insertText(" [Sticker: ${action.name}] ")
+                _lastActionStatus.value = "Sticker inserted: ${action.name}"
+            }
             else -> {}
         }
     }

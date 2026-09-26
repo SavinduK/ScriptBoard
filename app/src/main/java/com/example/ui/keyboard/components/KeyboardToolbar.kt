@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.Keyboard
@@ -32,10 +33,12 @@ fun KeyboardToolbar(
     colors: KeyboardColors,
     isLaptopBarVisible: Boolean,
     isExtendedPcActive: Boolean,
+    isStickersActive: Boolean = false,
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
     onPasteCopiedContent: () -> Unit,
     onOpenClipboard: () -> Unit,
+    onToggleStickers: () -> Unit = {},
     onOpenSettings: () -> Unit
 ) {
     Row(
@@ -113,7 +116,22 @@ fun KeyboardToolbar(
             )
         }
 
-        // 5. Settings button
+        // 5. Stickers tray button
+        IconButton(
+            onClick = onToggleStickers,
+            modifier = Modifier
+                .size(38.dp)
+                .testTag("btn_toolbar_stickers")
+        ) {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = "Stickers Tray",
+                tint = if (isStickersActive) colors.enterKeyBackground else colors.toolbarIconTint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // 6. Settings button
         IconButton(
             onClick = onOpenSettings,
             modifier = Modifier

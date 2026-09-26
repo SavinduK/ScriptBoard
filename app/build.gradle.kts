@@ -112,6 +112,8 @@ dependencies {
   // implementation(libs.googleid)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
+  implementation(libs.mlkit.subject.segmentation)
+  implementation(libs.mlkit.selfie.segmentation)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)

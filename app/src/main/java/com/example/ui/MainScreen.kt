@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.History
@@ -65,13 +67,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.screens.ClipboardHistoryPageView
 import com.example.ui.screens.SettingsPageView
+import com.example.ui.screens.StickersScreen
 import com.example.ui.screens.TestKeyboardPageView
 
 enum class MainScreenSection {
     HUB,
     TEST_KEYBOARD,
     SETTINGS_PAGE,
-    CLIPBOARD_HISTORY
+    CLIPBOARD_HISTORY,
+    STICKERS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,6 +99,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     var currentSection by remember { mutableStateOf(MainScreenSection.HUB) }
     var showSetupDropdown by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = currentSection != MainScreenSection.HUB) {
+        currentSection = MainScreenSection.HUB
+    }
 
     fun openImeSettings() {
         try {
@@ -289,6 +297,16 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                 onClick = { currentSection = MainScreenSection.CLIPBOARD_HISTORY }
                             )
 
+                            // CARD D: STICKERS
+                            HubNavigationCard(
+                                icon = Icons.Default.AutoAwesome,
+                                title = "Stickers",
+                                description = "Import sticker packs from WhatsApp, generate custom stickers from gallery photos with AI subject cutout, and use them in chats.",
+                                colors = colors,
+                                testTag = "card_stickers",
+                                onClick = { currentSection = MainScreenSection.STICKERS }
+                            )
+
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
@@ -356,6 +374,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             viewModel.saveImageSnippet(uri)
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() }
+                    )
+                }
+
+                MainScreenSection.STICKERS -> {
+                    StickersScreen(
+                        colors = colors,
+                        onBack = { currentSection = MainScreenSection.HUB }
                     )
                 }
             }

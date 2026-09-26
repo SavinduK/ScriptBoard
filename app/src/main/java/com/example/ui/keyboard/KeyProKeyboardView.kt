@@ -47,10 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AppDatabase
 import com.example.data.SnippetEntity
+import com.example.data.StickerEntity
+import com.example.data.StickerRepository
 import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.components.EmojiPickerView
 import com.example.ui.keyboard.components.InKeyboardClipboardView
 import com.example.ui.keyboard.components.InKeyboardSettingsView
+import com.example.ui.keyboard.components.InKeyboardStickerView
 import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
@@ -70,6 +73,7 @@ fun KeyProKeyboardView(
     allSnippets: List<SnippetEntity> = emptyList(),
     pinnedSnippets: List<SnippetEntity> = allSnippets.filter { it.isPinned },
     historySnippets: List<SnippetEntity> = allSnippets.filter { !it.isPinned },
+    stickers: List<StickerEntity> = emptyList(),
     isSoundEnabled: Boolean = true,
     isHapticEnabled: Boolean = true,
     initialLaptopBarVisible: Boolean = true,
@@ -86,6 +90,10 @@ fun KeyProKeyboardView(
     val keyboardPrefs = remember { KeyboardPreferences.getInstance(context) }
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+
+    val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
+    val localStickers by stickerRepo.allStickers.collectAsState(initial = emptyList())
+    val displayStickers = if (stickers.isNotEmpty()) stickers else localStickers
 
     val wordSuggestionManager = remember {
         WordSuggestionManager(AppDatabase.getDatabase(context).wordFrequencyDao())
@@ -266,6 +274,7 @@ fun KeyProKeyboardView(
             colors = colors,
             isLaptopBarVisible = isLaptopBarVisible,
             isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
+            isStickersActive = layoutMode == KeyboardLayoutMode.STICKERS,
             onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
             onToggleExtendedPcKeys = {
                 layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
@@ -282,6 +291,13 @@ fun KeyProKeyboardView(
                     KeyboardLayoutMode.TEXT
                 } else {
                     KeyboardLayoutMode.CLIPBOARD
+                }
+            },
+            onToggleStickers = {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.STICKERS) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.STICKERS
                 }
             },
             onOpenSettings = {
@@ -454,6 +470,17 @@ fun KeyProKeyboardView(
             KeyboardLayoutMode.SETTINGS -> {
                 InKeyboardSettingsView(
                     colors = colors,
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
+                )
+            }
+            KeyboardLayoutMode.STICKERS -> {
+                InKeyboardStickerView(
+                    stickers = displayStickers,
+                    colors = colors,
+                    onStickerSelected = { sticker ->
+                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                        onAction(KeyAction.InsertSticker(sticker.filePath, sticker.name))
+                    },
                     onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
                 )
             }

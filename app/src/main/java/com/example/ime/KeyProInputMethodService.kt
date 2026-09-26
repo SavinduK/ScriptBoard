@@ -314,6 +314,58 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keycode))
                 }
             }
+            is KeyAction.InsertSticker -> {
+                try {
+                    val file = java.io.File(action.filePath)
+                    if (file.exists()) {
+                        val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                            this,
+                            "${packageName}.fileprovider",
+                            file
+                        )
+                        val description = android.content.ClipDescription(
+                            action.name,
+                            arrayOf("image/webp", "image/png", "image/*")
+                        )
+                        val inputContentInfo = androidx.core.view.inputmethod.InputContentInfoCompat(
+                            contentUri,
+                            description,
+                            null
+                        )
+
+                        val editorInfo = currentInputEditorInfo
+                        var flags = 0
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N_MR1) {
+                            flags = flags or androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
+                        }
+
+                        val committed = if (editorInfo != null) {
+                            androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+                                ic,
+                                editorInfo,
+                                inputContentInfo,
+                                flags,
+                                null
+                            )
+                        } else false
+
+                        // Also copy to clipboard for apps that support clipboard paste
+                        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clip = android.content.ClipData.newUri(contentResolver, action.name, contentUri)
+                        cm?.setPrimaryClip(clip)
+
+                        if (!committed) {
+                            android.widget.Toast.makeText(
+                                this,
+                                "Sticker copied to clipboard! Paste it into your message.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                } catch (_: Exception) {
+                    android.widget.Toast.makeText(this, "Could not send sticker", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
             else -> {}
         }
     }

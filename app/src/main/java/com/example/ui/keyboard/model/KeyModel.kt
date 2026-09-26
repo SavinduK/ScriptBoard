@@ -8,7 +8,8 @@ enum class KeyboardLayoutMode {
     EXTENDED_PC,   // Laptop / PC special keys in-place
     EMOJI,
     CLIPBOARD,
-    SETTINGS
+    SETTINGS,
+    STICKERS
 }
 
 enum class ShiftState {
@@ -19,6 +20,7 @@ enum class ShiftState {
 
 sealed class KeyAction {
     data class InsertText(val text: String) : KeyAction()
+    data class InsertSticker(val filePath: String, val name: String = "Sticker") : KeyAction()
     object Backspace : KeyAction()
     object DeleteForward : KeyAction()
     object Enter : KeyAction()

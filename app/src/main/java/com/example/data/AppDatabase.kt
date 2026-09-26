@@ -9,10 +9,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [SnippetEntity::class, WordFrequencyEntity::class], version = 3, exportSchema = false)
+@Database(entities = [SnippetEntity::class, WordFrequencyEntity::class, StickerEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun snippetDao(): SnippetDao
     abstract fun wordFrequencyDao(): WordFrequencyDao
+    abstract fun stickerDao(): StickerDao
 
     companion object {
         @Volatile
