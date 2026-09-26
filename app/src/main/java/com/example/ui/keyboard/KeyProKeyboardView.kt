@@ -53,7 +53,6 @@ import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.components.EmojiPickerView
 import com.example.ui.keyboard.components.InKeyboardClipboardView
 import com.example.ui.keyboard.components.InKeyboardSettingsView
-import com.example.ui.keyboard.components.InKeyboardStickerView
 import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
@@ -89,6 +88,7 @@ fun KeyProKeyboardView(
     val coroutineScope = rememberCoroutineScope()
     val keyboardPrefs = remember { KeyboardPreferences.getInstance(context) }
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
+    val autoSuggestWordsEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
 
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
@@ -112,10 +112,14 @@ fun KeyProKeyboardView(
     var currentWordBuffer by remember { mutableStateOf("") }
     var suggestedWords by remember { mutableStateOf(listOf("I", "The", "Thanks")) }
 
-    // Update 3 word suggestions dynamically as user types (Request #3)
-    LaunchedEffect(currentWordBuffer) {
-        val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer)
-        suggestedWords = suggestions
+    // Update 3 word suggestions dynamically as user types (toggleable in settings)
+    LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled) {
+        if (autoSuggestWordsEnabled) {
+            val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer)
+            suggestedWords = suggestions
+        } else {
+            suggestedWords = emptyList()
+        }
     }
 
     // Matching shortcuts for phrase expansion
@@ -372,10 +376,10 @@ fun KeyProKeyboardView(
             }
         }
 
-        // Request #3: Auto Suggest Words Feature - Show 3 Suggested Words on Top
+        // Auto Suggest Words Feature - Show 3 Suggested Words on Top (toggleable in settings)
         // Displays 3 suggestions with user typing history frequency prioritization
         // Tapping replaces the word. User typing space/enter leaves typed word unchanged.
-        if (layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2, KeyboardLayoutMode.NUMPAD, KeyboardLayoutMode.EXTENDED_PC)) {
+        if (autoSuggestWordsEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2, KeyboardLayoutMode.NUMPAD, KeyboardLayoutMode.EXTENDED_PC)) {
             val suggestionsToDisplay = remember(suggestedWords) {
                 val list = suggestedWords.toMutableList()
                 while (list.size < 3) {
@@ -443,9 +447,19 @@ fun KeyProKeyboardView(
             KeyboardLayoutMode.EMOJI -> {
                 EmojiPickerView(
                     colors = colors,
+                    stickers = displayStickers,
+                    initialSection = com.example.ui.keyboard.components.MediaPickerSection.EMOJIS,
                     onEmojiSelected = { emoji ->
                         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
                         onAction(KeyAction.InsertText(emoji))
+                    },
+                    onStickerSelected = { sticker ->
+                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                        onAction(KeyAction.InsertSticker(sticker.filePath, sticker.name))
+                        coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }
+                    },
+                    onDeleteSticker = { sticker ->
+                        coroutineScope.launch { stickerRepo.deleteSticker(sticker) }
                     },
                     onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT },
                     onBackspace = { handleKeyAction(KeyAction.Backspace) }
@@ -474,14 +488,24 @@ fun KeyProKeyboardView(
                 )
             }
             KeyboardLayoutMode.STICKERS -> {
-                InKeyboardStickerView(
-                    stickers = displayStickers,
+                EmojiPickerView(
                     colors = colors,
+                    stickers = displayStickers,
+                    initialSection = com.example.ui.keyboard.components.MediaPickerSection.STICKERS,
+                    onEmojiSelected = { emoji ->
+                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                        onAction(KeyAction.InsertText(emoji))
+                    },
                     onStickerSelected = { sticker ->
                         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
                         onAction(KeyAction.InsertSticker(sticker.filePath, sticker.name))
+                        coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }
                     },
-                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
+                    onDeleteSticker = { sticker ->
+                        coroutineScope.launch { stickerRepo.deleteSticker(sticker) }
+                    },
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT },
+                    onBackspace = { handleKeyAction(KeyAction.Backspace) }
                 )
             }
             else -> {

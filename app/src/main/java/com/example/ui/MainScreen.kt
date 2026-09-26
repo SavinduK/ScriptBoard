@@ -92,6 +92,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
     val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
+    val isAutoSuggestEnabled by viewModel.isAutoSuggestEnabled.collectAsState()
     val keyFontSize by viewModel.keyFontSize.collectAsState()
     val lastActionStatus by viewModel.lastActionStatus.collectAsState()
 
@@ -345,6 +346,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isHapticEnabled = isHapticEnabled,
                         isLaptopBarEnabled = isLaptopBarVisible,
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
+                        isAutoSuggestEnabled = isAutoSuggestEnabled,
                         keyFontSize = keyFontSize,
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
@@ -353,6 +355,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onToggleHaptic = { viewModel.setHapticEnabled(it) },
                         onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
                         onToggleHoldForSymbols = { viewModel.setHoldForSymbolsEnabled(it) },
+                        onToggleAutoSuggest = { viewModel.setAutoSuggestEnabled(it) },
                         onCustomColorsChanged = { bg, keyBg, text, accent ->
                             viewModel.keyboardPrefs.setCustomThemeColors(bg, keyBg, text, accent)
                         }

@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
@@ -72,6 +73,7 @@ fun InKeyboardSettingsView(
     val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
     val laptopBarEnabled by keyboardPrefs.laptopBarVisible.collectAsState()
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
+    val autoSuggestEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
 
     var showRgbThemeDialog by remember { mutableStateOf(false) }
@@ -343,6 +345,19 @@ fun InKeyboardSettingsView(
                         onCheckedChange = { keyboardPrefs.setHoldForSymbolsEnabled(it) },
                         colors = colors,
                         testTag = "switch_hold_for_symbols_inline"
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Auto-suggest Words
+                    SettingToggleRow(
+                        icon = Icons.Default.AutoFixHigh,
+                        title = "Auto-suggest Words",
+                        subtitle = "Display 3 suggested words while typing",
+                        checked = autoSuggestEnabled,
+                        onCheckedChange = { keyboardPrefs.setAutoSuggestEnabled(it) },
+                        colors = colors,
+                        testTag = "switch_auto_suggest_inline"
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))

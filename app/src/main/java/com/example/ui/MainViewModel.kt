@@ -85,6 +85,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isSoundEnabled: StateFlow<Boolean> = keyboardPrefs.soundEnabled
     val isHapticEnabled: StateFlow<Boolean> = keyboardPrefs.hapticEnabled
     val isHoldForSymbolsEnabled: StateFlow<Boolean> = keyboardPrefs.holdForSymbolsEnabled
+    val isAutoSuggestEnabled: StateFlow<Boolean> = keyboardPrefs.autoSuggestEnabled
     val keyFontSize: StateFlow<Float> = keyboardPrefs.keyFontSize
 
     val currentColors: KeyboardColors
@@ -125,6 +126,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setHoldForSymbolsEnabled(enabled: Boolean) {
         keyboardPrefs.setHoldForSymbolsEnabled(enabled)
         _lastActionStatus.value = if (enabled) "Hold key for symbols: ON" else "Hold key for symbols: OFF"
+    }
+
+    fun setAutoSuggestEnabled(enabled: Boolean) {
+        keyboardPrefs.setAutoSuggestEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Auto-suggest: ON" else "Auto-suggest: OFF"
     }
 
     fun setKeyFontSize(size: Float) {

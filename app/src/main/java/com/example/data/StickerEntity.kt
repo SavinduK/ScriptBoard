@@ -11,5 +11,6 @@ data class StickerEntity(
     val name: String = "Sticker",
     val source: String = "gallery", // "whatsapp", "gallery", "imported"
     val dateAdded: Long = System.currentTimeMillis(),
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val usageCount: Int = 0
 )

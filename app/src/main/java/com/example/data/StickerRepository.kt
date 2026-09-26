@@ -23,35 +23,8 @@ class StickerRepository(private val stickerDao: StickerDao) {
         return dir
     }
 
-    suspend fun saveStickerBitmap(
-        context: Context,
-        bitmap: Bitmap,
-        name: String = "Sticker",
-        source: String = "gallery"
-    ): StickerEntity = withContext(Dispatchers.IO) {
-        val stickersDir = getStickersDirectory(context)
-        val fileName = "sticker_${System.currentTimeMillis()}.webp"
-        val destFile = File(stickersDir, fileName)
-
-        val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSLESS
-        } else {
-            @Suppress("DEPRECATION")
-            Bitmap.CompressFormat.WEBP
-        }
-
-        FileOutputStream(destFile).use { out ->
-            bitmap.compress(format, 100, out)
-        }
-
-        val entity = StickerEntity(
-            filePath = destFile.absolutePath,
-            name = name,
-            source = source,
-            dateAdded = System.currentTimeMillis()
-        )
-        val id = stickerDao.insert(entity)
-        entity.copy(id = id)
+    suspend fun recordStickerUsed(stickerId: Long) = withContext(Dispatchers.IO) {
+        stickerDao.incrementUsage(stickerId)
     }
 
     suspend fun importStickersFromUris(

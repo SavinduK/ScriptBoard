@@ -27,6 +27,12 @@ class KeyboardPreferences(context: Context) {
     private val _holdForSymbolsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HOLD_FOR_SYMBOLS, true))
     val holdForSymbolsEnabled: StateFlow<Boolean> = _holdForSymbolsEnabled.asStateFlow()
 
+    private val _autoSuggestEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SUGGEST_ENABLED, true))
+    val autoSuggestEnabled: StateFlow<Boolean> = _autoSuggestEnabled.asStateFlow()
+
+    private val _recentEmojis = MutableStateFlow(loadRecentEmojis())
+    val recentEmojis: StateFlow<List<String>> = _recentEmojis.asStateFlow()
+
     private val _keyFontSize = MutableStateFlow(prefs.getFloat(KEY_KEY_FONT_SIZE, 24f))
     val keyFontSize: StateFlow<Float> = _keyFontSize.asStateFlow()
 
@@ -72,6 +78,30 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_HOLD_FOR_SYMBOLS, enabled).apply()
     }
 
+    fun setAutoSuggestEnabled(enabled: Boolean) {
+        _autoSuggestEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_AUTO_SUGGEST_ENABLED, enabled).apply()
+    }
+
+    private fun loadRecentEmojis(): List<String> {
+        val saved = prefs.getString(KEY_RECENT_EMOJIS, null)
+        return if (!saved.isNullOrBlank()) {
+            saved.split(",").filter { it.isNotBlank() }
+        } else {
+            listOf("😊", "😂", "❤️", "👍", "🔥", "🎉", "✨", "🙌")
+        }
+    }
+
+    fun addRecentEmoji(emoji: String) {
+        if (emoji.isBlank()) return
+        val current = _recentEmojis.value.toMutableList()
+        current.remove(emoji)
+        current.add(0, emoji)
+        val capped = current.take(30)
+        _recentEmojis.value = capped
+        prefs.edit().putString(KEY_RECENT_EMOJIS, capped.joinToString(",")).apply()
+    }
+
     fun setKeyFontSize(size: Float) {
         _keyFontSize.value = size
         prefs.edit().putFloat(KEY_KEY_FONT_SIZE, size).apply()
@@ -109,6 +139,8 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_HAPTIC_ENABLED = "haptic_enabled"
         private const val KEY_LAPTOP_BAR_VISIBLE = "laptop_bar_visible"
         private const val KEY_HOLD_FOR_SYMBOLS = "hold_for_symbols"
+        private const val KEY_AUTO_SUGGEST_ENABLED = "auto_suggest_enabled"
+        private const val KEY_RECENT_EMOJIS = "recent_emojis"
         private const val KEY_KEY_FONT_SIZE = "key_character_font_size"
         private const val KEY_THEME_TYPE = "theme_type"
         private const val KEY_CUSTOM_BG = "custom_bg"

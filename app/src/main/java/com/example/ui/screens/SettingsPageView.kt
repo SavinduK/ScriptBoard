@@ -73,6 +73,7 @@ fun SettingsPageView(
     isHapticEnabled: Boolean,
     isLaptopBarEnabled: Boolean,
     isHoldForSymbolsEnabled: Boolean,
+    isAutoSuggestEnabled: Boolean = true,
     keyFontSize: Float = 24f,
     onBack: () -> Unit,
     onThemeSelected: (KeyboardThemeType) -> Unit,
@@ -81,6 +82,7 @@ fun SettingsPageView(
     onToggleHaptic: (Boolean) -> Unit,
     onToggleLaptopBar: (Boolean) -> Unit,
     onToggleHoldForSymbols: (Boolean) -> Unit,
+    onToggleAutoSuggest: (Boolean) -> Unit = {},
     onCustomColorsChanged: (bg: Int, keyBg: Int, text: Int, accent: Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -424,6 +426,19 @@ fun SettingsPageView(
                         onCheckedChange = onToggleHoldForSymbols,
                         colors = colors,
                         testTag = "page_switch_hold_symbols"
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Auto-suggest Words
+                    SettingsPageToggle(
+                        icon = Icons.Default.AutoFixHigh,
+                        title = "Auto-suggest Words",
+                        subtitle = "Show 3 suggested word completions above the keyboard",
+                        checked = isAutoSuggestEnabled,
+                        onCheckedChange = onToggleAutoSuggest,
+                        colors = colors,
+                        testTag = "page_switch_auto_suggest"
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))

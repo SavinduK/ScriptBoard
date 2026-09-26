@@ -10,8 +10,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface StickerDao {
-    @Query("SELECT * FROM stickers ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM stickers ORDER BY usageCount DESC, dateAdded DESC")
     fun getAllStickers(): Flow<List<StickerEntity>>
+
+    @Query("UPDATE stickers SET usageCount = usageCount + 1 WHERE id = :id")
+    suspend fun incrementUsage(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(sticker: StickerEntity): Long
