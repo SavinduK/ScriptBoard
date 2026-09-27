@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 
 enum class KeyboardThemeType(val displayName: String) {
     GBOARD_DARK("Gboard Dark"),
-    AMOLED_BLACK("Pitch Black"),
     GBOARD_LIGHT("Gboard Light"),
     CYBER_NAVY("Cyber Navy"),
     CUSTOM("Custom RGB")
@@ -178,7 +177,6 @@ object KeyboardThemes {
     fun getTheme(type: KeyboardThemeType, customColors: KeyboardColors? = null): KeyboardColors {
         return when (type) {
             KeyboardThemeType.GBOARD_DARK -> GboardDark
-            KeyboardThemeType.AMOLED_BLACK -> AmoledBlack
             KeyboardThemeType.GBOARD_LIGHT -> GboardLight
             KeyboardThemeType.CYBER_NAVY -> CyberNavy
             KeyboardThemeType.CUSTOM -> customColors ?: DefaultCustomTheme

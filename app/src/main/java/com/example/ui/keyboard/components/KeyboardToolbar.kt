@@ -11,11 +11,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,12 +34,14 @@ fun KeyboardToolbar(
     colors: KeyboardColors,
     isLaptopBarVisible: Boolean,
     isExtendedPcActive: Boolean,
-    isStickersActive: Boolean = false,
+    isEmojiActive: Boolean = false,
+    isVoiceTypeActive: Boolean = false,
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
     onPasteCopiedContent: () -> Unit,
     onOpenClipboard: () -> Unit,
-    onToggleStickers: () -> Unit = {},
+    onOpenEmoji: () -> Unit = {},
+    onTriggerVoiceType: () -> Unit = {},
     onOpenSettings: () -> Unit
 ) {
     Row(
@@ -116,22 +119,40 @@ fun KeyboardToolbar(
             )
         }
 
-        // 5. Stickers tray button
+        // 5. Emoji & Stickers button (keep only emoji button to open the menu)
         IconButton(
-            onClick = onToggleStickers,
+            onClick = onOpenEmoji,
             modifier = Modifier
                 .size(38.dp)
-                .testTag("btn_toolbar_stickers")
+                .testTag("btn_toolbar_emoji")
         ) {
             Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = "Stickers Tray",
-                tint = if (isStickersActive) colors.enterKeyBackground else colors.toolbarIconTint,
+                imageVector = Icons.Default.SentimentSatisfiedAlt,
+                contentDescription = "Emoji & Stickers",
+                tint = if (isEmojiActive) colors.enterKeyBackground else colors.toolbarIconTint,
                 modifier = Modifier.size(20.dp)
             )
         }
 
-        // 6. Settings button
+        // 6. Voice typing button (microphone icon)
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isVoiceTypeActive) colors.laptopKeyActiveBackground else Color.Transparent)
+                .clickable(onClick = onTriggerVoiceType)
+                .testTag("btn_toolbar_voice_type"),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = "Voice Typing",
+                tint = if (isVoiceTypeActive) colors.enterKeyBackground else colors.toolbarIconTint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // 7. Settings button
         IconButton(
             onClick = onOpenSettings,
             modifier = Modifier

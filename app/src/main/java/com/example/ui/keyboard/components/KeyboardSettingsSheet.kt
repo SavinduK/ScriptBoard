@@ -178,7 +178,6 @@ fun KeyboardSettingsSheet(
                                 .background(
                                     when (themeType) {
                                         KeyboardThemeType.GBOARD_DARK -> Color(0xFF1E1F24)
-                                        KeyboardThemeType.AMOLED_BLACK -> Color(0xFF000000)
                                         KeyboardThemeType.GBOARD_LIGHT -> Color(0xFFECEFF1)
                                         KeyboardThemeType.CYBER_NAVY -> Color(0xFF00E5FF)
                                         KeyboardThemeType.CUSTOM -> colors.enterKeyBackground

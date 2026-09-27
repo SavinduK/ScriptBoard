@@ -9,7 +9,8 @@ enum class KeyboardLayoutMode {
     EMOJI,
     CLIPBOARD,
     SETTINGS,
-    STICKERS
+    STICKERS,
+    VOICE_TYPING
 }
 
 enum class ShiftState {

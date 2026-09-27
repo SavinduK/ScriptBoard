@@ -302,7 +302,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             HubNavigationCard(
                                 icon = Icons.Default.AutoAwesome,
                                 title = "Stickers",
-                                description = "Import sticker packs from WhatsApp, generate custom stickers from gallery photos with AI subject cutout, and use them in chats.",
+                                description = "Import sticker packs from WhatsApp or storage folders, and send them directly in your chats.",
                                 colors = colors,
                                 testTag = "card_stickers",
                                 onClick = { currentSection = MainScreenSection.STICKERS }

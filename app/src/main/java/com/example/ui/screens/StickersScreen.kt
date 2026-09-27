@@ -176,7 +176,7 @@ fun StickersScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${stickers.size} saved sticker${if (stickers.size == 1) "" else "s"}",
+                    text = "Stickers",
                     color = colors.letterKeySecondaryTextColor,
                     fontSize = 12.sp
                 )
@@ -298,7 +298,7 @@ fun StickersScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "SAVED STICKERS (${stickers.size})",
+                        text = "SAVED STICKERS",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,

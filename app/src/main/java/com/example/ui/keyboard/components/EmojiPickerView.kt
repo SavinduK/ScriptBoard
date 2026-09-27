@@ -26,9 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -37,8 +35,6 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -87,15 +83,12 @@ fun EmojiPickerView(
 
     var currentSection by remember { mutableStateOf(initialSection) }
     var selectedCategoryIndex by remember { mutableIntStateOf(0) } // 0 is Recents, 1..N are EmojiData categories
-    var searchQuery by remember { mutableStateOf("") }
     var stickerPendingDelete by remember { mutableStateOf<StickerEntity?>(null) }
 
     val isRecentsSelected = selectedCategoryIndex == 0
     val currentCategory = if (!isRecentsSelected) EmojiData.categories[selectedCategoryIndex - 1] else null
 
-    val displayedEmojis = if (searchQuery.isNotBlank()) {
-        EmojiData.categories.flatMap { it.emojis }.distinct()
-    } else if (isRecentsSelected) {
+    val displayedEmojis = if (isRecentsSelected) {
         recentEmojis
     } else {
         currentCategory?.emojis ?: emptyList()
@@ -163,23 +156,12 @@ fun EmojiPickerView(
                         .testTag("tab_section_stickers"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "✨ Stickers",
-                            color = if (currentSection == MediaPickerSection.STICKERS) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
-                            fontSize = 12.sp,
-                            fontWeight = if (currentSection == MediaPickerSection.STICKERS) FontWeight.Bold else FontWeight.Medium
-                        )
-                        if (stickers.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "(${stickers.size})",
-                                color = if (currentSection == MediaPickerSection.STICKERS) colors.enterKeyTextColor else colors.enterKeyBackground,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    Text(
+                        text = "✨ Stickers",
+                        color = if (currentSection == MediaPickerSection.STICKERS) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = if (currentSection == MediaPickerSection.STICKERS) FontWeight.Bold else FontWeight.Medium
+                    )
                 }
             }
 
@@ -205,55 +187,7 @@ fun EmojiPickerView(
         // Section Content
         when (currentSection) {
             MediaPickerSection.EMOJIS -> {
-                // Search Bar for Emojis
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search emojis...", color = colors.letterKeySecondaryTextColor, fontSize = 12.sp) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .testTag("search_emojis_field"),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = colors.toolbarIconTint,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Clear",
-                                        tint = colors.toolbarIconTint,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                            }
-                        },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = colors.functionKeyBackground,
-                            unfocusedContainerColor = colors.functionKeyBackground,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            focusedTextColor = colors.letterKeyTextColor,
-                            unfocusedTextColor = colors.letterKeyTextColor
-                        ),
-                        shape = RoundedCornerShape(18.dp)
-                    )
-                }
-
-                // Category Tab Row (Tab 0 is Recents 🕒)
+                // Category Tab Row (Tab 0 is Recents 🕒) - Search bar removed per user request
                 ScrollableTabRow(
                     selectedTabIndex = selectedCategoryIndex,
                     containerColor = colors.toolbarBackground,
@@ -266,7 +200,6 @@ fun EmojiPickerView(
                         selected = selectedCategoryIndex == 0,
                         onClick = {
                             selectedCategoryIndex = 0
-                            searchQuery = ""
                         },
                         modifier = Modifier.padding(horizontal = 2.dp)
                     ) {
@@ -287,7 +220,6 @@ fun EmojiPickerView(
                             selected = selectedCategoryIndex == index + 1,
                             onClick = {
                                 selectedCategoryIndex = index + 1
-                                searchQuery = ""
                             },
                             modifier = Modifier.padding(horizontal = 2.dp)
                         ) {

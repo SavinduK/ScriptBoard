@@ -67,7 +67,7 @@ import com.example.ui.keyboard.components.SnippetEditorDialog
 import com.example.ui.keyboard.model.KeyboardColors
 
 private enum class HistoryFilter {
-    ALL, PINNED, HISTORY, IMAGES
+    PINNED, HISTORY, IMAGES
 }
 
 @Composable
@@ -86,7 +86,7 @@ fun ClipboardHistoryPageView(
     val clipboardManager = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
 
     var searchQuery by remember { mutableStateOf("") }
-    var selectedFilter by remember { mutableStateOf(HistoryFilter.ALL) }
+    var selectedFilter by remember { mutableStateOf(HistoryFilter.PINNED) }
     var showAddDialog by remember { mutableStateOf(false) }
     var copiedFeedbackId by remember { mutableStateOf<Long?>(null) }
 
@@ -171,19 +171,6 @@ fun ClipboardHistoryPageView(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (historySnippets.isNotEmpty()) {
-                    IconButton(
-                        onClick = onClearHistory,
-                        modifier = Modifier.testTag("btn_page_clear_history")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ClearAll,
-                            contentDescription = "Clear History",
-                            tint = colors.toolbarIconTint
-                        )
-                    }
-                }
-
                 // Add Image button (Photo Picker)
                 IconButton(
                     onClick = {
@@ -252,31 +239,25 @@ fun ClipboardHistoryPageView(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Filter Chips
+            // Filter Chips (All button removed, icons removed - text only)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterTabButton(
-                    label = "All (${pinnedSnippets.size + historySnippets.size})",
-                    isSelected = selectedFilter == HistoryFilter.ALL,
-                    colors = colors,
-                    onClick = { selectedFilter = HistoryFilter.ALL }
-                )
-                FilterTabButton(
-                    label = "📌 Pinned (${pinnedSnippets.size})",
+                    label = "Pinned (${pinnedSnippets.size})",
                     isSelected = selectedFilter == HistoryFilter.PINNED,
                     colors = colors,
                     onClick = { selectedFilter = HistoryFilter.PINNED }
                 )
                 FilterTabButton(
-                    label = "🕒 History (${historySnippets.size})",
+                    label = "History (${historySnippets.size})",
                     isSelected = selectedFilter == HistoryFilter.HISTORY,
                     colors = colors,
                     onClick = { selectedFilter = HistoryFilter.HISTORY }
                 )
                 FilterTabButton(
-                    label = "🖼️ Images (${filteredImages.size})",
+                    label = "Images (${filteredImages.size})",
                     isSelected = selectedFilter == HistoryFilter.IMAGES,
                     colors = colors,
                     onClick = { selectedFilter = HistoryFilter.IMAGES }
@@ -299,13 +280,6 @@ fun ClipboardHistoryPageView(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = null,
-                            tint = colors.enterKeyBackground,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "SAVED IMAGES (${filteredImages.size})",
                             color = colors.enterKeyBackground,
@@ -348,19 +322,12 @@ fun ClipboardHistoryPageView(
             }
 
             // Pinned section
-            if (selectedFilter == HistoryFilter.ALL || selectedFilter == HistoryFilter.PINNED) {
+            if (selectedFilter == HistoryFilter.PINNED) {
                 item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = null,
-                            tint = colors.enterKeyBackground,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "PINNED MESSAGES (${filteredPinned.size})",
                             color = colors.enterKeyBackground,
@@ -404,20 +371,13 @@ fun ClipboardHistoryPageView(
             }
 
             // Clipboard History section
-            if (selectedFilter == HistoryFilter.ALL || selectedFilter == HistoryFilter.HISTORY) {
+            if (selectedFilter == HistoryFilter.HISTORY) {
                 item {
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(bottom = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = null,
-                            tint = colors.enterKeyBackground,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "CLIPBOARD HISTORY (${filteredHistory.size})",
                             color = colors.enterKeyBackground,
@@ -611,16 +571,18 @@ private fun SnippetDetailCard(
                         )
                     }
 
-                    IconButton(
-                        onClick = onTogglePin,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (snippet.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = if (snippet.isPinned) "Unpin" else "Pin",
-                            tint = if (snippet.isPinned) colors.enterKeyBackground else colors.toolbarIconTint,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    if (snippet.isPinned) {
+                        IconButton(
+                            onClick = onTogglePin,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PushPin,
+                                contentDescription = "Unpin",
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
 
                     IconButton(

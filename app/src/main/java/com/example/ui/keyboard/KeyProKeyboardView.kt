@@ -56,6 +56,7 @@ import com.example.ui.keyboard.components.InKeyboardSettingsView
 import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
+import com.example.ui.keyboard.components.VoiceTypingView
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyItem
 import com.example.ui.keyboard.model.KeyboardColors
@@ -261,7 +262,7 @@ fun KeyProKeyboardView(
     ) {
         // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
         AnimatedVisibility(
-            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS),
+            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING),
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
@@ -273,12 +274,13 @@ fun KeyProKeyboardView(
             )
         }
 
-        // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Settings
+        // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Emoji/Stickers, Voice Typing, Settings
         KeyboardToolbar(
             colors = colors,
             isLaptopBarVisible = isLaptopBarVisible,
             isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
-            isStickersActive = layoutMode == KeyboardLayoutMode.STICKERS,
+            isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
+            isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
             onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
             onToggleExtendedPcKeys = {
                 layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
@@ -297,11 +299,18 @@ fun KeyProKeyboardView(
                     KeyboardLayoutMode.CLIPBOARD
                 }
             },
-            onToggleStickers = {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.STICKERS) {
+            onOpenEmoji = {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS) {
                     KeyboardLayoutMode.TEXT
                 } else {
-                    KeyboardLayoutMode.STICKERS
+                    KeyboardLayoutMode.EMOJI
+                }
+            },
+            onTriggerVoiceType = {
+                layoutMode = if (layoutMode == KeyboardLayoutMode.VOICE_TYPING) {
+                    KeyboardLayoutMode.TEXT
+                } else {
+                    KeyboardLayoutMode.VOICE_TYPING
                 }
             },
             onOpenSettings = {
@@ -506,6 +515,19 @@ fun KeyProKeyboardView(
                     },
                     onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT },
                     onBackspace = { handleKeyAction(KeyAction.Backspace) }
+                )
+            }
+            KeyboardLayoutMode.VOICE_TYPING -> {
+                VoiceTypingView(
+                    colors = colors,
+                    onInsertText = { text ->
+                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
+                        onAction(KeyAction.InsertText(text))
+                    },
+                    onBackspace = { handleKeyAction(KeyAction.Backspace) },
+                    onEnter = { handleKeyAction(KeyAction.Enter) },
+                    onSpace = { handleKeyAction(KeyAction.Space) },
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
                 )
             }
             else -> {

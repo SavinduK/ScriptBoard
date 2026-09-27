@@ -24,7 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
@@ -190,22 +190,6 @@ fun InKeyboardClipboardView(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (historySnippets.isNotEmpty() && (selectedTab == ClipboardTab.HISTORY || selectedTab == ClipboardTab.ALL)) {
-                    IconButton(
-                        onClick = onClearHistory,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .testTag("btn_clear_clipboard_history")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ClearAll,
-                            contentDescription = "Clear History",
-                            tint = colors.toolbarIconTint,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
                 IconButton(
                     onClick = { showAddDialog = true },
                     modifier = Modifier
@@ -457,6 +441,7 @@ private fun SnippetItemCard(
     onDelete: () -> Unit,
     testTagPrefix: String
 ) {
+    val context = LocalContext.current
     val isImageClip = snippet.isImage || !snippet.imageUri.isNullOrBlank()
 
     Card(
@@ -594,16 +579,39 @@ private fun SnippetItemCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onTogglePin,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = if (snippet.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                        contentDescription = if (snippet.isPinned) "Unpin message" else "Pin to top",
-                        tint = if (snippet.isPinned) colors.enterKeyBackground else colors.toolbarIconTint,
-                        modifier = Modifier.size(16.dp)
-                    )
+                if (snippet.isPinned) {
+                    IconButton(
+                        onClick = onTogglePin,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = "Unpin message",
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = {
+                            if (isImageClip) {
+                                copyImageClip(context, snippet)
+                            } else {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                val clip = ClipData.newPlainText("KeyPro Text", snippet.content)
+                                cm?.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy to clipboard",
+                            tint = colors.toolbarIconTint,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onDelete,
