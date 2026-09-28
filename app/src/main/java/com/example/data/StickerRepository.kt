@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.example.ui.keyboard.util.WebpAnimationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -25,6 +26,54 @@ class StickerRepository(private val stickerDao: StickerDao) {
 
     suspend fun recordStickerUsed(stickerId: Long) = withContext(Dispatchers.IO) {
         stickerDao.incrementUsage(stickerId)
+    }
+
+    suspend fun ensureSampleStickersSeeded(context: Context) = withContext(Dispatchers.IO) {
+        if (stickerDao.getStickerCount() > 0) return@withContext
+        seedSampleStickers(context)
+    }
+
+    suspend fun seedSampleStickers(context: Context): Int = withContext(Dispatchers.IO) {
+        val stickersDir = getStickersDirectory(context)
+        val assetManager = context.assets
+        val sampleList = try {
+            assetManager.list("sample_stickers")?.toList() ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        val entities = mutableListOf<StickerEntity>()
+        for ((index, fileName) in sampleList.withIndex()) {
+            try {
+                val destFile = File(stickersDir, fileName)
+                if (!destFile.exists() || destFile.length() == 0L) {
+                    assetManager.open("sample_stickers/$fileName").use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                if (destFile.exists() && destFile.length() > 0) {
+                    val isAnim = WebpAnimationHelper.isAnimated(destFile)
+                    val readableName = fileName.removeSuffix(".webp").replace('_', ' ')
+                        .split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+                    entities.add(
+                        StickerEntity(
+                            filePath = destFile.absolutePath,
+                            name = readableName,
+                            source = "sample",
+                            isAnimated = isAnim,
+                            dateAdded = System.currentTimeMillis() + index
+                        )
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (entities.isNotEmpty()) {
+            stickerDao.insertAll(entities)
+        }
+        entities.size
     }
 
     suspend fun importStickersFromUris(
@@ -48,11 +97,13 @@ class StickerRepository(private val stickerDao: StickerDao) {
                 }
 
                 if (destFile.exists() && destFile.length() > 0) {
+                    val isAnim = WebpAnimationHelper.isAnimated(destFile)
                     entities.add(
                         StickerEntity(
                             filePath = destFile.absolutePath,
                             name = "Sticker ${System.currentTimeMillis() % 10000}",
                             source = source,
+                            isAnimated = isAnim,
                             dateAdded = System.currentTimeMillis() + index
                         )
                     )
@@ -88,11 +139,13 @@ class StickerRepository(private val stickerDao: StickerDao) {
                 }
 
                 if (destFile.exists() && destFile.length() > 0) {
+                    val isAnim = WebpAnimationHelper.isAnimated(destFile)
                     entities.add(
                         StickerEntity(
                             filePath = destFile.absolutePath,
                             name = file.nameWithoutExtension.take(20).ifBlank { "WA Sticker" },
                             source = source,
+                            isAnimated = isAnim,
                             dateAdded = System.currentTimeMillis() + index
                         )
                     )

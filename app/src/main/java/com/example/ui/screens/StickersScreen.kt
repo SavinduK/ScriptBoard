@@ -261,7 +261,7 @@ fun StickersScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
                                 onClick = { checkAndOpenWhatsAppImport() },
@@ -271,17 +271,36 @@ fun StickersScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground)
                             ) {
-                                Text("WhatsApp Folder", color = colors.enterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("WhatsApp Folder", color = colors.enterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
 
                             OutlinedButton(
-                                onClick = { openDocumentLauncher.launch(arrayOf("image/webp", "image/*")) },
+                                onClick = { openDocumentLauncher.launch(arrayOf("image/webp", "image/png", "image/gif", "image/*", "*/*")) },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("btn_browse_saf_files"),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Browse Files (SAF)", color = colors.letterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Browse (SAF)", color = colors.letterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isProcessing = true
+                                        processingMessage = "Loading demo animated stickers..."
+                                        val count = stickerRepo.seedSampleStickers(context)
+                                        isProcessing = false
+                                        Toast.makeText(context, "Loaded $count demo animated stickers!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("btn_load_demo_stickers"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.functionKeyBackground)
+                            ) {
+                                Text("Demo WebP", color = colors.functionKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -585,20 +604,38 @@ fun StickersScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "Source: ${sticker.source.replaceFirstChar { it.uppercase() }}",
                             color = colors.letterKeySecondaryTextColor,
                             fontSize = 12.sp
                         )
-                        if (sticker.usageCount > 0) {
-                            Text(
-                                text = "Used: ${sticker.usageCount} time${if (sticker.usageCount == 1) "" else "s"}",
-                                color = colors.enterKeyBackground,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (sticker.isAnimated) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(colors.enterKeyBackground.copy(alpha = 0.9f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "ANIMATED .WEBP",
+                                        color = colors.enterKeyTextColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            if (sticker.usageCount > 0) {
+                                Text(
+                                    text = "Used: ${sticker.usageCount}",
+                                    color = colors.enterKeyBackground,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
 
@@ -674,6 +711,23 @@ private fun StickerGridCard(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
+
+            if (sticker.isAnimated) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.enterKeyBackground.copy(alpha = 0.85f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "ANIM",
+                        color = colors.enterKeyTextColor,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }
