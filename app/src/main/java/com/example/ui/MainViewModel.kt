@@ -229,8 +229,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 insertText(" [Sticker: ${action.name}] ")
                 _lastActionStatus.value = "Sticker inserted: ${action.name}"
             }
+            is KeyAction.InsertSinhalaPillam -> {
+                val current = _editorValue.value
+                val text = current.text
+                val cursor = current.selection.min
+                if (cursor > 0 && isSinhalaConsonant(text[cursor - 1])) {
+                    insertText(action.modifier)
+                } else {
+                    insertText(action.baseWithPillam)
+                }
+            }
+            is KeyAction.SwitchLanguage -> {
+                val nextLang = keyboardPrefs.cycleLanguage()
+                _lastActionStatus.value = "Language: ${if (nextLang == "si") "සිංහල" else "English"}"
+            }
             else -> {}
         }
+    }
+
+    private fun isSinhalaConsonant(c: Char): Boolean {
+        return c in '\u0D9A'..'\u0DC6'
     }
 
     private fun insertText(text: String) {

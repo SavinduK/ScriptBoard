@@ -45,6 +45,17 @@ class KeyboardPreferences(context: Context) {
     )
     val themeType: StateFlow<KeyboardThemeType> = _themeType.asStateFlow()
 
+    // Multi-Language Package Support (e.g. English, Sinhala, etc.)
+    private val _installedLanguages = MutableStateFlow(loadInstalledLanguages())
+    val installedLanguages: StateFlow<Set<String>> = _installedLanguages.asStateFlow()
+
+    private val _currentLanguage = MutableStateFlow(prefs.getString(KEY_CURRENT_LANGUAGE, "en") ?: "en")
+    val currentLanguage: StateFlow<String> = _currentLanguage.asStateFlow()
+
+    // Optional dedicated number row
+    private val _numberRowEnabled = MutableStateFlow(prefs.getBoolean(KEY_NUMBER_ROW_ENABLED, false))
+    val numberRowEnabled: StateFlow<Boolean> = _numberRowEnabled.asStateFlow()
+
     // Custom RGB theme colors
     private val _customBgColor = MutableStateFlow(prefs.getInt(KEY_CUSTOM_BG, 0xFF1B263B.toInt()))
     val customBgColor: StateFlow<Int> = _customBgColor.asStateFlow()
@@ -102,6 +113,56 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putString(KEY_RECENT_EMOJIS, capped.joinToString(",")).apply()
     }
 
+    private fun loadInstalledLanguages(): Set<String> {
+        val saved = prefs.getString(KEY_INSTALLED_LANGUAGES, null)
+        return if (!saved.isNullOrBlank()) {
+            saved.split(",").filter { it.isNotBlank() }.toSet()
+        } else {
+            setOf("en") // English built-in
+        }
+    }
+
+    fun installLanguage(langId: String) {
+        val current = _installedLanguages.value.toMutableSet()
+        current.add(langId)
+        _installedLanguages.value = current
+        prefs.edit().putString(KEY_INSTALLED_LANGUAGES, current.joinToString(",")).apply()
+    }
+
+    fun uninstallLanguage(langId: String) {
+        if (langId == "en") return // English is built-in
+        val current = _installedLanguages.value.toMutableSet()
+        current.remove(langId)
+        _installedLanguages.value = current
+        prefs.edit().putString(KEY_INSTALLED_LANGUAGES, current.joinToString(",")).apply()
+        if (_currentLanguage.value == langId) {
+            setCurrentLanguage("en")
+        }
+    }
+
+    fun isLanguageInstalled(langId: String): Boolean {
+        return langId == "en" || _installedLanguages.value.contains(langId)
+    }
+
+    fun setCurrentLanguage(langId: String) {
+        _currentLanguage.value = langId
+        prefs.edit().putString(KEY_CURRENT_LANGUAGE, langId).apply()
+    }
+
+    fun cycleLanguage(): String {
+        val list = _installedLanguages.value.toList().ifEmpty { listOf("en") }
+        val currentIndex = list.indexOf(_currentLanguage.value)
+        val nextIndex = if (currentIndex != -1 && currentIndex + 1 < list.size) currentIndex + 1 else 0
+        val nextLang = list[nextIndex]
+        setCurrentLanguage(nextLang)
+        return nextLang
+    }
+
+    fun setNumberRowEnabled(enabled: Boolean) {
+        _numberRowEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_NUMBER_ROW_ENABLED, enabled).apply()
+    }
+
     fun setKeyFontSize(size: Float) {
         _keyFontSize.value = size
         prefs.edit().putFloat(KEY_KEY_FONT_SIZE, size).apply()
@@ -147,6 +208,9 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_CUSTOM_KEY_BG = "custom_key_bg"
         private const val KEY_CUSTOM_TEXT = "custom_text"
         private const val KEY_CUSTOM_ACCENT = "custom_accent"
+        private const val KEY_INSTALLED_LANGUAGES = "installed_languages"
+        private const val KEY_CURRENT_LANGUAGE = "current_language"
+        private const val KEY_NUMBER_ROW_ENABLED = "number_row_enabled"
 
         @Volatile
         private var instance: KeyboardPreferences? = null

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.screens.ClipboardHistoryPageView
+import com.example.ui.screens.LanguagesScreen
 import com.example.ui.screens.SettingsPageView
 import com.example.ui.screens.StickersScreen
 import com.example.ui.screens.TestKeyboardPageView
@@ -75,7 +77,8 @@ enum class MainScreenSection {
     TEST_KEYBOARD,
     SETTINGS_PAGE,
     CLIPBOARD_HISTORY,
-    STICKERS
+    STICKERS,
+    LANGUAGES
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -308,6 +311,16 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                 onClick = { currentSection = MainScreenSection.STICKERS }
                             )
 
+                            // CARD E: LANGUAGE PACKAGES (Sinhala, etc.)
+                            HubNavigationCard(
+                                icon = Icons.Default.Language,
+                                title = "Language Packages (Sinhala, etc.)",
+                                description = "Download optional language layouts including Sinhala (සිංහල Wijesekara), switch active languages, and manage multi-language typing.",
+                                colors = colors,
+                                testTag = "card_language_packages",
+                                onClick = { currentSection = MainScreenSection.LANGUAGES }
+                            )
+
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
@@ -382,6 +395,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
                 MainScreenSection.STICKERS -> {
                     StickersScreen(
+                        colors = colors,
+                        onBack = { currentSection = MainScreenSection.HUB }
+                    )
+                }
+
+                MainScreenSection.LANGUAGES -> {
+                    LanguagesScreen(
                         colors = colors,
                         onBack = { currentSection = MainScreenSection.HUB }
                     )

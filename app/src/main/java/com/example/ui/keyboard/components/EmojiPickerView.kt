@@ -20,16 +20,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -75,8 +72,6 @@ import java.io.File
 
 enum class MediaPickerSection {
     EMOJIS,
-    MATH,
-    GREEK,
     STICKERS
 }
 
@@ -101,30 +96,6 @@ fun EmojiPickerView(
     var selectedCategoryIndex by remember { mutableIntStateOf(0) } // 0 is Recents, 1..N are EmojiData categories
     var stickerPendingDelete by remember { mutableStateOf<StickerEntity?>(null) }
 
-    // Sub-filters for Math and Greek
-    var selectedMathSubIndex by remember { mutableIntStateOf(0) }
-    var selectedGreekSubIndex by remember { mutableIntStateOf(0) }
-
-    val mathSubcategories = remember {
-        listOf(
-            "All" to EmojiData.mathSymbolsCategory.emojis,
-            "Integrals & Calculus" to listOf("∫", "∬", "∭", "∮", "∯", "∰", "∂", "∇", "∆", "dx", "dy", "dt", "dz", "lim", "d/dx", "∑", "∏", "∐", "∞"),
-            "Roots & Powers" to listOf("√", "∛", "∜", "²", "³", "⁴", "ⁿ", "⁻¹", "½", "⅓", "¼", "¾", "⅛", "⅜", "⅝", "⅞"),
-            "Operators" to listOf("+", "−", "±", "∓", "×", "÷", "·", "∘", "*", "/", "%", "=", "≠", "≈", "≡", "≢", "∼", "≅", "∝", "≤", "≥", "≪", "≫", "<", ">"),
-            "Sets & Logic" to listOf("∈", "∉", "∋", "∌", "⊂", "⊃", "⊆", "⊇", "⊄", "⊅", "∪", "∩", "∖", "∅", "∀", "∃", "∄", "¬", "∧", "∨", "⊕", "⊗", "⇒", "⇔", "∴", "∵", "∎"),
-            "Number Sets" to listOf("ℝ", "ℕ", "ℤ", "ℚ", "ℂ", "ℙ")
-        )
-    }
-
-    val greekSubcategories = remember {
-        listOf(
-            "All" to EmojiData.greekLettersCategory.emojis,
-            "Lowercase (α..ω)" to listOf("α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ", "ς", "τ", "υ", "φ", "χ", "ψ", "ω"),
-            "Uppercase (Α..Ω)" to listOf("Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ", "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ", "Υ", "Φ", "Χ", "Ψ", "Ω"),
-            "Math Variants" to listOf("ϑ", "ϕ", "ϖ", "ϰ", "ϱ", "ϵ")
-        )
-    }
-
     val isRecentsSelected = selectedCategoryIndex == 0
     val currentCategory = if (!isRecentsSelected && selectedCategoryIndex <= EmojiData.categories.size) {
         EmojiData.categories[selectedCategoryIndex - 1]
@@ -142,19 +113,19 @@ fun EmojiPickerView(
             .height(290.dp)
             .background(colors.background)
     ) {
-        // Top Bar: Back button, 4-Way Section Switcher (Emojis, Math, Greek, Stickers), Backspace
+        // Top Bar: Back button, Section Switcher (Emojis vs Stickers only), Backspace
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.toolbarBackground)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = onBackToLetters,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .testTag("btn_emoji_back")
             ) {
                 Icon(
@@ -164,7 +135,7 @@ fun EmojiPickerView(
                 )
             }
 
-            // Section Switcher: Emojis | Math | Greek | Stickers
+            // Section Switcher: Emojis vs Stickers (Math & Greek buttons removed per Request #2)
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -172,38 +143,45 @@ fun EmojiPickerView(
                     .padding(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val sections = listOf(
-                    MediaPickerSection.EMOJIS to "😊 Emojis",
-                    MediaPickerSection.MATH to "∫ Math",
-                    MediaPickerSection.GREEK to "Ω Greek",
-                    MediaPickerSection.STICKERS to "✨ Stickers"
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (currentSection == MediaPickerSection.EMOJIS) colors.enterKeyBackground else Color.Transparent)
+                        .clickable { currentSection = MediaPickerSection.EMOJIS }
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("tab_section_emojis"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "😊 Emojis",
+                        color = if (currentSection == MediaPickerSection.EMOJIS) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = if (currentSection == MediaPickerSection.EMOJIS) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
 
-                sections.forEach { (section, label) ->
-                    val isSelected = currentSection == section
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (isSelected) colors.enterKeyBackground else Color.Transparent)
-                            .clickable { currentSection = section }
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                            .testTag("tab_section_${section.name.lowercase()}"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (isSelected) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (currentSection == MediaPickerSection.STICKERS) colors.enterKeyBackground else Color.Transparent)
+                        .clickable { currentSection = MediaPickerSection.STICKERS }
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("tab_section_stickers"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "✨ Stickers",
+                        color = if (currentSection == MediaPickerSection.STICKERS) colors.enterKeyTextColor else colors.letterKeySecondaryTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = if (currentSection == MediaPickerSection.STICKERS) FontWeight.Bold else FontWeight.Medium
+                    )
                 }
             }
 
             // Backspace Key
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(colors.functionKeyBackground)
                     .clickable(onClick = onBackspace)
@@ -213,7 +191,7 @@ fun EmojiPickerView(
                 Text(
                     text = "⌫",
                     color = colors.functionKeyTextColor,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -222,11 +200,11 @@ fun EmojiPickerView(
         // Section Content
         when (currentSection) {
             MediaPickerSection.EMOJIS -> {
-                // Category Tab Row (Tab 0 is Recents 🕒)
+                // Category Tab Row (Tab 0 is Recents 🕒, followed by Smileys, Gestures, Animals, Food, ..., Math ∫, Greek Ω)
                 ScrollableTabRow(
                     selectedTabIndex = selectedCategoryIndex,
                     containerColor = colors.toolbarBackground,
-                    contentColor = colors.enterKeyBackground,
+                    contentColor = colors.letterKeyTextColor,
                     edgePadding = 4.dp,
                     divider = {}
                 ) {
@@ -234,34 +212,44 @@ fun EmojiPickerView(
                     Tab(
                         selected = selectedCategoryIndex == 0,
                         onClick = { selectedCategoryIndex = 0 },
+                        selectedContentColor = colors.enterKeyBackground,
+                        unselectedContentColor = colors.letterKeyTextColor,
                         modifier = Modifier.padding(horizontal = 2.dp)
                     ) {
                         Box(
-                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 5.dp),
+                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "🕒", fontSize = 15.sp)
+                            Text(text = "🕒", fontSize = 16.sp)
                         }
                     }
 
-                    // Standard & Expanded Emoji Categories (including Math & Greek)
+                    // Standard & Expanded Emoji Categories (including Math ∫ & Greek Ω)
                     EmojiData.categories.forEachIndexed { index, category ->
+                        val isSelected = selectedCategoryIndex == index + 1
                         Tab(
-                            selected = selectedCategoryIndex == index + 1,
+                            selected = isSelected,
                             onClick = { selectedCategoryIndex = index + 1 },
+                            selectedContentColor = colors.enterKeyBackground,
+                            unselectedContentColor = colors.letterKeyTextColor,
                             modifier = Modifier.padding(horizontal = 2.dp)
                         ) {
                             Box(
-                                modifier = Modifier.padding(vertical = 5.dp, horizontal = 5.dp),
+                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = category.icon, fontSize = 15.sp)
+                                Text(
+                                    text = category.icon,
+                                    color = if (isSelected) colors.enterKeyBackground else colors.letterKeyTextColor,
+                                    fontSize = 16.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
                             }
                         }
                     }
                 }
 
-                // Emoji Grid
+                // Emoji & Symbols Grid
                 if (displayedEmojis.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -270,203 +258,48 @@ fun EmojiPickerView(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isRecentsSelected) "No recent emojis yet" else "No matching emojis found",
+                            text = if (isRecentsSelected) "No recent emojis yet" else "No matching items found",
                             color = colors.letterKeySecondaryTextColor,
                             fontSize = 13.sp
                         )
                     }
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(8),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 4.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        items(displayedEmojis) { emoji ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        keyboardPrefs.addRecentEmoji(emoji)
-                                        onEmojiSelected(emoji)
-                                    }
-                                    .testTag("emoji_$emoji"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = emoji,
-                                    fontSize = 22.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+                    val isSymbolOrLetterCategory = currentCategory?.title in listOf("Math", "Greek")
 
-            MediaPickerSection.MATH -> {
-                // Mathematical Symbols Section
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    // Subcategory Filter Chips
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(colors.toolbarBackground)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.material3.LocalContentColor provides colors.letterKeyTextColor
                     ) {
-                        itemsIndexed(mathSubcategories) { index, (name, _) ->
-                            val isSelected = selectedMathSubIndex == index
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) colors.enterKeyBackground else colors.letterKeyBackground)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) colors.enterKeyBackground else colors.functionKeyBackground.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(12.dp)
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(8),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            items(displayedEmojis) { emoji ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .padding(2.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSymbolOrLetterCategory) colors.letterKeyBackground else Color.Transparent)
+                                        .clickable {
+                                            keyboardPrefs.addRecentEmoji(emoji)
+                                            onEmojiSelected(emoji)
+                                        }
+                                        .testTag("emoji_$emoji"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Explicitly apply theme text color so Greek letters and Math symbols match the keyboard theme!
+                                    Text(
+                                        text = emoji,
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = if (emoji.length > 2) 13.sp else if (isSymbolOrLetterCategory) 18.sp else 22.sp,
+                                        fontWeight = if (isSymbolOrLetterCategory) FontWeight.SemiBold else FontWeight.Medium
                                     )
-                                    .clickable { selectedMathSubIndex = index }
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = name,
-                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
-
-                    // Math Symbols Grid
-                    val currentMathSymbols = mathSubcategories[selectedMathSubIndex].second
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(7),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 6.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(currentMathSymbols) { symbol ->
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(colors.letterKeyBackground)
-                                    .border(
-                                        width = 1.dp,
-                                        color = colors.functionKeyBackground.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable {
-                                        keyboardPrefs.addRecentEmoji(symbol)
-                                        onEmojiSelected(symbol)
-                                    }
-                                    .testTag("math_symbol_$symbol"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = symbol,
-                                    color = colors.letterKeyTextColor,
-                                    fontSize = if (symbol.length > 2) 14.sp else 21.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            MediaPickerSection.GREEK -> {
-                // Greek Letters Section
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    // Subcategory Filter Chips
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(colors.toolbarBackground)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        itemsIndexed(greekSubcategories) { index, (name, _) ->
-                            val isSelected = selectedGreekSubIndex == index
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) colors.enterKeyBackground else colors.letterKeyBackground)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) colors.enterKeyBackground else colors.functionKeyBackground.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                    .clickable { selectedGreekSubIndex = index }
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = name,
-                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
-
-                    // Greek Letters Grid
-                    val currentGreekSymbols = greekSubcategories[selectedGreekSubIndex].second
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(7),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 6.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(currentGreekSymbols) { letter ->
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(colors.letterKeyBackground)
-                                    .border(
-                                        width = 1.dp,
-                                        color = colors.functionKeyBackground.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable {
-                                        keyboardPrefs.addRecentEmoji(letter)
-                                        onEmojiSelected(letter)
-                                    }
-                                    .testTag("greek_letter_$letter"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = letter,
-                                    color = colors.letterKeyTextColor,
-                                    fontSize = 21.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                }
                             }
                         }
                     }
@@ -641,7 +474,6 @@ fun EmojiPickerView(
                                     .testTag("sticker_keyboard_item_${sticker.id}"),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // AsyncImage with Coil ImageDecoderDecoder decodes and plays animated .webp
                                 AsyncImage(
                                     model = File(sticker.filePath),
                                     contentDescription = sticker.name,
@@ -699,11 +531,10 @@ fun EmojiPickerView(
             }
 
             Text(
-                text = when (currentSection) {
-                    MediaPickerSection.EMOJIS -> if (isRecentsSelected) "Recent Emojis" else "${currentCategory?.title}"
-                    MediaPickerSection.MATH -> "Math: ${mathSubcategories[selectedMathSubIndex].first}"
-                    MediaPickerSection.GREEK -> "Greek: ${greekSubcategories[selectedGreekSubIndex].first}"
-                    MediaPickerSection.STICKERS -> "${stickers.size} Stickers Available • Hold to Delete"
+                text = if (currentSection == MediaPickerSection.EMOJIS) {
+                    if (isRecentsSelected) "Recent Emojis" else "${currentCategory?.title}"
+                } else {
+                    "${stickers.size} Stickers Available • Hold to Delete"
                 },
                 color = colors.letterKeySecondaryTextColor,
                 fontSize = 11.sp

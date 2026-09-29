@@ -22,6 +22,8 @@ enum class ShiftState {
 sealed class KeyAction {
     data class InsertText(val text: String) : KeyAction()
     data class InsertSticker(val filePath: String, val name: String = "Sticker") : KeyAction()
+    data class InsertSinhalaPillam(val baseWithPillam: String, val modifier: String) : KeyAction()
+    object SwitchLanguage : KeyAction()
     object Backspace : KeyAction()
     object DeleteForward : KeyAction()
     object Enter : KeyAction()

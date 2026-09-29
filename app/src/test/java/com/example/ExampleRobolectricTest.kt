@@ -68,4 +68,39 @@ class ExampleRobolectricTest {
     val isAnim = WebpAnimationHelper.isAnimated(testFile)
     assertTrue("Sticker $first should be detected as animated WebP", isAnim)
   }
+
+  @Test
+  fun `number key group alternates map maps 1 to tilde as primary alternate`() {
+    val alternates1 = com.example.ui.keyboard.components.NumberKeyAlternates.map["1"]
+    assertTrue("Should have alternates for 1", alternates1 != null)
+    assertEquals("Primary alternate for 1 should be ~", "~", alternates1!!.first())
+
+    val alternates2 = com.example.ui.keyboard.components.NumberKeyAlternates.map["2"]
+    assertEquals("Primary alternate for 2 should be @", "@", alternates2!!.first())
+
+    val alternates3 = com.example.ui.keyboard.components.NumberKeyAlternates.map["3"]
+    assertEquals("Primary alternate for 3 should be #", "#", alternates3!!.first())
+  }
+
+  @Test
+  fun `sinhala keyboard layout generates 6 rows with pillam and consonants`() {
+    val rows = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getSinhalaRows()
+    assertEquals("Sinhala layout should have 6 rows", 6, rows.size)
+
+    val row1 = rows[0]
+    assertTrue("Row 1 should contain වු", row1.any { it.primaryText == "වු" })
+    assertTrue("Row 1 should contain ර", row1.any { it.primaryText == "ර" })
+
+    val row6 = rows[5]
+    assertTrue("Row 6 should contain space key with සිංහල", row6.any { it.primaryText == "සිංහල" })
+  }
+
+  @Test
+  fun `language pack registry contains Sinhala downloadable package`() {
+    val sinhalaPack = com.example.ui.keyboard.model.LanguagePackRegistry.getPack("si")
+    assertTrue("Sinhala pack should exist in registry", sinhalaPack != null)
+    assertEquals("Sinhala", sinhalaPack!!.name)
+    assertEquals("සිංහල", sinhalaPack.nativeName)
+    assertEquals("🇱🇰", sinhalaPack.flag)
+  }
 }

@@ -314,6 +314,20 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keycode))
                 }
             }
+            is KeyAction.InsertSinhalaPillam -> {
+                val before = ic.getTextBeforeCursor(1, 0)
+                if (!before.isNullOrEmpty() && isSinhalaConsonant(before.first())) {
+                    ic.commitText(action.modifier, 1)
+                } else {
+                    ic.commitText(action.baseWithPillam, 1)
+                }
+            }
+            is KeyAction.SwitchLanguage -> {
+                val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(this)
+                val nextLang = prefs.cycleLanguage()
+                val langName = if (nextLang == "si") "සිංහල" else "English"
+                android.widget.Toast.makeText(this, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
+            }
             is KeyAction.InsertSticker -> {
                 try {
                     val file = java.io.File(action.filePath)
@@ -368,6 +382,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             }
             else -> {}
         }
+    }
+
+    private fun isSinhalaConsonant(c: Char): Boolean {
+        return c in '\u0D9A'..'\u0DC6'
     }
 
     override fun onDestroy() {

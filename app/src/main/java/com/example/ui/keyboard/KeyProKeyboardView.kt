@@ -91,6 +91,9 @@ fun KeyProKeyboardView(
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val autoSuggestWordsEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+    val currentLanguage by keyboardPrefs.currentLanguage.collectAsState()
+    val installedLanguages by keyboardPrefs.installedLanguages.collectAsState()
+    val numberRowEnabled by keyboardPrefs.numberRowEnabled.collectAsState()
 
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
     val localStickers by stickerRepo.allStickers.collectAsState(initial = emptyList())
@@ -245,6 +248,15 @@ fun KeyProKeyboardView(
             is KeyAction.SwitchToClipboard -> layoutMode = KeyboardLayoutMode.CLIPBOARD
             is KeyAction.ToggleCtrl -> isCtrlActive = !isCtrlActive
             is KeyAction.ToggleAlt -> isAltActive = !isAltActive
+            is KeyAction.InsertSinhalaPillam -> {
+                currentWordBuffer = ""
+                onAction(action)
+            }
+            is KeyAction.SwitchLanguage -> {
+                val nextLang = keyboardPrefs.cycleLanguage()
+                val langName = if (nextLang == "si") "සිංහල" else "English"
+                android.widget.Toast.makeText(context, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
+            }
             is KeyAction.InsertText -> {
                 onAction(action)
                 if (shiftState == ShiftState.ONCE) {
@@ -532,33 +544,52 @@ fun KeyProKeyboardView(
             }
             else -> {
                 // Layout is either TEXT, SYMBOLS_1, SYMBOLS_2, NUMPAD, or EXTENDED_PC
+                val isSinhala = currentLanguage == "si" && layoutMode == KeyboardLayoutMode.TEXT
+                val hasMultipleLanguages = installedLanguages.size > 1
                 val currentRows = when (layoutMode) {
-                    KeyboardLayoutMode.TEXT -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled)
-                    KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows()
-                    KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows()
+                    KeyboardLayoutMode.TEXT -> {
+                        if (isSinhala) {
+                            KeyboardLayoutGenerator.getSinhalaRows(showLanguageSwitchKey = hasMultipleLanguages)
+                        } else {
+                            KeyboardLayoutGenerator.getQwertyRows(
+                                shiftState = shiftState,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                languageDisplayName = "English",
+                                includeNumberRow = numberRowEnabled,
+                                showLanguageSwitchKey = hasMultipleLanguages
+                            )
+                        }
+                    }
+                    KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
+                    KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
                     KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows()
-                    KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getExtendedPcRows()
-                    else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled)
+                    KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getExtendedPcRows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
+                    else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
                 }
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 3.dp)
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
                 ) {
                     currentRows.forEach { rowKeys ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 1.5.dp)
+                                .padding(vertical = if (isSinhala) 1.dp else 1.5.dp)
                         ) {
                             rowKeys.forEach { key ->
                                 KeyCap(
                                     key = key,
                                     colors = colors,
-                                    heightDp = 46,
-                                    characterFontSize = keyFontSize,
-                                    onKeyClick = { handleKeyAction(it.action) }
+                                    heightDp = if (isSinhala) 38 else 46,
+                                    characterFontSize = if (isSinhala) 20f else keyFontSize,
+                                    onKeyClick = { handleKeyAction(it.action) },
+                                    onKeyLongClick = { clickedKey ->
+                                        if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
+                                            handleKeyAction(KeyAction.SwitchLanguage)
+                                        }
+                                    }
                                 )
                             }
                         }

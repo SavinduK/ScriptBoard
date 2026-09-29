@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
@@ -320,6 +321,73 @@ fun InKeyboardSettingsView(
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Language Switcher / Package Info Card
+            val currentLang by keyboardPrefs.currentLanguage.collectAsState()
+            val installedLangs by keyboardPrefs.installedLanguages.collectAsState()
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp)),
+                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Active Language",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (currentLang == "si") "🇱🇰 Sinhala (සිංහල Wijesekara)" else "🇺🇸 English (QWERTY)",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    if (installedLangs.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.enterKeyBackground)
+                                .clickable {
+                                    val next = keyboardPrefs.cycleLanguage()
+                                    val name = if (next == "si") "සිංහල" else "English"
+                                    android.widget.Toast.makeText(context, "Switched to $name", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("btn_switch_language_inline")
+                        ) {
+                            Text(
+                                text = "Switch",
+                                color = colors.enterKeyTextColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
