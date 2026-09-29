@@ -1,0 +1,32 @@
+{
+  "id": "ta",
+  "name": "Tamil",
+  "nativeName": "தமிழ்",
+  "flag": "🇱🇰",
+  "version": "1.1.0",
+  "layoutType": "anjal",
+  "description": "Tamil Anjal script layout for multilingual typing",
+  "consonants": [
+    "க", "ங", "ச", "ஞ", "ட", "ண", "த", "ந", "ப", "ம", "ய", "ர", "ல", "வ", "ழ", "ள", "ற", "ன", "ஜ", "ஷ", "ஸ", "ஹ"
+  ],
+  "vowelModifiers": [
+    { "name": "pulli", "symbol": "்" },
+    { "name": "kaal", "symbol": "ா" },
+    { "name": "sulli", "symbol": "ி" },
+    { "name": "nedil-sulli", "symbol": "ீ" },
+    { "name": "udaippu", "symbol": "ு" },
+    { "name": "nedil-udaippu", "symbol": "ூ" },
+    { "name": "otrai-kombu", "symbol": "ெ" },
+    { "name": "irattai-kombu", "symbol": "ே" },
+    { "name": "inai-kombu", "symbol": "ை" },
+    { "name": "otrai-kombu-kaal", "symbol": "ொ" },
+    { "name": "irattai-kombu-kaal", "symbol": "ோ" },
+    { "name": "otrai-kombu-lalagaram", "symbol": "ௌ" }
+  ],
+  "sampleWords": [
+    "வணக்கம்", "நன்றி", "ஆம்", "இல்லை", "எப்படி",
+    "காலை", "வணக்கம்", "நல்லது", "நான்", "நீங்கள்",
+    "நாம்", "அவர்கள்", "வாருங்கள்", "போங்கள்", "செய்",
+    "தெரியும்", "அழகு", "இலங்கை", "வீடு", "பள்ளி"
+  ]
+}

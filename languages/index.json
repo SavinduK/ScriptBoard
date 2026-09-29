@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "repository": "https://github.com/savindukahandagamage2/KeyPro",
+  "branch": "main",
+  "rawBaseUrl": "https://raw.githubusercontent.com/savindukahandagamage2/KeyPro/main/languages/",
+  "packages": [
+    {
+      "id": "si",
+      "name": "Sinhala",
+      "nativeName": "සිංහල",
+      "flag": "🇱🇰",
+      "version": "1.2.0",
+      "description": "Official 5-row Wijesekara touch layout with dynamic vowel modifiers (පිල්ලම්)",
+      "file": "si.json",
+      "sizeBytes": 45200,
+      "sizeDisplay": "45 KB",
+      "wordCount": 50
+    },
+    {
+      "id": "ta",
+      "name": "Tamil",
+      "nativeName": "தமிழ்",
+      "flag": "🇱🇰",
+      "version": "1.1.0",
+      "description": "Tamil Anjal & 99 script layout for multilingual typing",
+      "file": "ta.json",
+      "sizeBytes": 38100,
+      "sizeDisplay": "38 KB",
+      "wordCount": 40
+    },
+    {
+      "id": "es",
+      "name": "Spanish",
+      "nativeName": "Español",
+      "flag": "🇪🇸",
+      "version": "1.0.0",
+      "description": "Spanish QWERTY with ñ, inverted punctuation and accented vowels",
+      "file": "es.json",
+      "sizeBytes": 32400,
+      "sizeDisplay": "32 KB",
+      "wordCount": 45
+    },
+    {
+      "id": "hi",
+      "name": "Hindi",
+      "nativeName": "हिन्दी",
+      "flag": "🇮🇳",
+      "version": "1.0.0",
+      "description": "Hindi Devanagari script layout with matras and conjuncts",
+      "file": "hi.json",
+      "sizeBytes": 41500,
+      "sizeDisplay": "41 KB",
+      "wordCount": 42
+    }
+  ]
+}

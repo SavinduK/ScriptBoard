@@ -1,0 +1,46 @@
+{
+  "id": "si",
+  "name": "Sinhala",
+  "nativeName": "සිංහල",
+  "flag": "🇱🇰",
+  "version": "1.2.0",
+  "layoutType": "wijesekara",
+  "description": "Official 5-row Wijesekara touch layout with dynamic vowel modifiers (පිල්ලම්)",
+  "consonants": [
+    "ක", "ඛ", "ග", "ඝ", "ඞ", "ඟ",
+    "ච", "ඡ", "ජ", "ඣ", "ඤ", "ඥ", "ඦ",
+    "ට", "ඨ", "ඩ", "ඪ", "ණ", "ඬ",
+    "ත", "ථ", "ද", "ධ", "න", "ඳ",
+    "ප", "ඵ", "බ", "භ", "ම", "ඹ",
+    "ය", "ර", "ල", "ව", "ශ", "ෂ", "ස", "හ", "ළ", "ෆ"
+  ],
+  "vowelModifiers": [
+    { "name": "al-lakuna", "symbol": "්", "glyph": "්" },
+    { "name": "aela-pilla", "symbol": "ා", "glyph": "ා" },
+    { "name": "aeda-pilla", "symbol": "ැ", "glyph": "ැ" },
+    { "name": "diga-aeda-pilla", "symbol": "ෑ", "glyph": "ෑ" },
+    { "name": "ispilla", "symbol": "ි", "glyph": "ි" },
+    { "name": "diga-ispilla", "symbol": "ී", "glyph": "ී" },
+    { "name": "papilla", "symbol": "ු", "glyph": "ු" },
+    { "name": "diga-papilla", "symbol": "ූ", "glyph": "ූ" },
+    { "name": "gaetapilla", "symbol": "ෘ", "glyph": "ෘ" },
+    { "name": "kombuva", "symbol": "ෙ", "glyph": "ෙ" },
+    { "name": "diga-kombuva", "symbol": "ේ", "glyph": "ේ" },
+    { "name": "kombu-deka", "symbol": "ෛ", "glyph": "ෛ" },
+    { "name": "kombuva-ha-aela-pilla", "symbol": "ො", "glyph": "ො" },
+    { "name": "kombuva-ha-diga-aela-pilla", "symbol": "ෝ", "glyph": "ෝ" },
+    { "name": "kombuva-ha-gayanukitta", "symbol": "ෞ", "glyph": "ෞ" },
+    { "name": "anusvaraya", "symbol": "ං", "glyph": "ං" },
+    { "name": "visargaya", "symbol": "ඃ", "glyph": "ඃ" },
+    { "name": "yansaya", "symbol": "්‍ය", "glyph": "්‍ය" },
+    { "name": "rakaaransaya", "symbol": "්‍ර", "glyph": "්‍ර" }
+  ],
+  "sampleWords": [
+    "ආයුබෝවන්", "ස්තූතියි", "ඔව්", "නැහැ", "කොහොමද",
+    "සුභ", "උදෑසනක්", "දවසක්", "හොඳයි", "මම",
+    "ඔබ", "අපි", "ඔවුන්", "එන්න", "යන්න",
+    "කරන්න", "දන්නවා", "ලස්සන", "ශ්‍රී", "ලංකා",
+    "ගෙදර", "පාසල", "රස්සාව", "පොත", "කෑම",
+    "වතුර", "මිතුරා", "පවුල", "ආදරය", "සතුට"
+  ]
+}

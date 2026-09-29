@@ -174,4 +174,40 @@ class ExampleRobolectricTest {
     assertTrue("Numpad rows should have null secondaryText when holdForSymbols is disabled",
       numpadDisabled.flatten().all { it.secondaryText == null })
   }
+
+  @Test
+  fun `github repository languages folder contains json pack files`() {
+    val languagesDir = if (File("languages").exists()) File("languages") else File("../languages")
+    assertTrue("languages directory should exist in repo root", languagesDir.exists() && languagesDir.isDirectory)
+
+    val indexFile = File(languagesDir, "index.json")
+    assertTrue("index.json should exist in languages dir", indexFile.exists())
+    assertTrue("index.json should contain packages", indexFile.readText().contains("packages"))
+
+    val siFile = File(languagesDir, "si.json")
+    assertTrue("si.json should exist in languages dir", siFile.exists())
+    val siContent = siFile.readText()
+    assertTrue("si.json should contain wijesekara layout definition", siContent.contains("wijesekara"))
+    assertTrue("si.json should contain Sinhala consonants", siContent.contains("ක"))
+
+    val taFile = File(languagesDir, "ta.json")
+    assertTrue("ta.json should exist", taFile.exists())
+
+    // Also verify asset access
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val assetStream = context.assets.open("languages/si.json")
+    val assetBytes = assetStream.readBytes()
+    assetStream.close()
+    assertTrue("Bundled asset languages/si.json should not be empty", assetBytes.isNotEmpty())
+  }
+
+  @Test
+  fun `keyboard preferences computes valid github raw base url`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context)
+
+    prefs.setGithubRepoConfig("myuser", "myrepo", "main")
+    val url = prefs.getGithubRawBaseUrl()
+    assertEquals("https://raw.githubusercontent.com/myuser/myrepo/main/languages/", url)
+  }
 }

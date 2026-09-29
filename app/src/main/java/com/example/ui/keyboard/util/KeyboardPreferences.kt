@@ -69,6 +69,34 @@ class KeyboardPreferences(context: Context) {
     private val _customAccentColor = MutableStateFlow(prefs.getInt(KEY_CUSTOM_ACCENT, 0xFF00B4D8.toInt()))
     val customAccentColor: StateFlow<Int> = _customAccentColor.asStateFlow()
 
+    // GitHub Remote Language Pack Repository Configuration
+    private val _githubRepoOwner = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_OWNER, "savindukahandagamage2") ?: "savindukahandagamage2")
+    val githubRepoOwner: StateFlow<String> = _githubRepoOwner.asStateFlow()
+
+    private val _githubRepoName = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_NAME, "KeyPro") ?: "KeyPro")
+    val githubRepoName: StateFlow<String> = _githubRepoName.asStateFlow()
+
+    private val _githubRepoBranch = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_BRANCH, "main") ?: "main")
+    val githubRepoBranch: StateFlow<String> = _githubRepoBranch.asStateFlow()
+
+    fun setGithubRepoConfig(owner: String, repo: String, branch: String = "main") {
+        val cleanOwner = owner.trim()
+        val cleanRepo = repo.trim()
+        val cleanBranch = branch.trim().ifEmpty { "main" }
+        _githubRepoOwner.value = cleanOwner
+        _githubRepoName.value = cleanRepo
+        _githubRepoBranch.value = cleanBranch
+        prefs.edit()
+            .putString(KEY_GITHUB_REPO_OWNER, cleanOwner)
+            .putString(KEY_GITHUB_REPO_NAME, cleanRepo)
+            .putString(KEY_GITHUB_REPO_BRANCH, cleanBranch)
+            .apply()
+    }
+
+    fun getGithubRawBaseUrl(): String {
+        return "https://raw.githubusercontent.com/${_githubRepoOwner.value}/${_githubRepoName.value}/${_githubRepoBranch.value}/languages/"
+    }
+
     fun setSoundEnabled(enabled: Boolean) {
         _soundEnabled.value = enabled
         prefs.edit().putBoolean(KEY_SOUND_ENABLED, enabled).apply()
@@ -211,6 +239,9 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_INSTALLED_LANGUAGES = "installed_languages"
         private const val KEY_CURRENT_LANGUAGE = "current_language"
         private const val KEY_NUMBER_ROW_ENABLED = "number_row_enabled"
+        private const val KEY_GITHUB_REPO_OWNER = "github_repo_owner"
+        private const val KEY_GITHUB_REPO_NAME = "github_repo_name"
+        private const val KEY_GITHUB_REPO_BRANCH = "github_repo_branch"
 
         @Volatile
         private var instance: KeyboardPreferences? = null
