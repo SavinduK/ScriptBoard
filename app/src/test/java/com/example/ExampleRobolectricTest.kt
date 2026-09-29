@@ -103,4 +103,75 @@ class ExampleRobolectricTest {
     assertEquals("සිංහල", sinhalaPack.nativeName)
     assertEquals("🇱🇰", sinhalaPack.flag)
   }
+
+  @Test
+  fun `toggleable keys map contains pairs for 1 to tilde, at to dollar, and paren to angle bracket`() {
+    val toggleable1 = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("1")
+    assertEquals("~", toggleable1)
+
+    val toggleableTilde = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("~")
+    assertEquals("1", toggleableTilde)
+
+    val toggleableAt = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("@")
+    assertEquals("$", toggleableAt)
+
+    val toggleableDollar = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("$")
+    assertEquals("@", toggleableDollar)
+
+    val toggleableParen = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("(")
+    assertEquals("<", toggleableParen)
+
+    val toggleableAngle = com.example.ui.keyboard.model.ToggleableKeys.getToggleable("<")
+    assertEquals("(", toggleableAngle)
+  }
+
+  @Test
+  fun `sinhala keyboard changes vowel modifier keys according to selected letter`() {
+    val kaRows = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getSinhalaRows(selectedLetter = "ක")
+    val kaRow1 = kaRows[0]
+    assertTrue("Row 1 should contain කු when ක is selected", kaRow1.any { it.primaryText == "කු" })
+    assertTrue("Row 1 should contain කැ when ක is selected", kaRow1.any { it.primaryText == "කැ" })
+
+    val kaRow2 = kaRows[1]
+    assertTrue("Row 2 should contain කා when ක is selected", kaRow2.any { it.primaryText == "කා" })
+    assertTrue("Row 2 should contain කෙ when ක is selected", kaRow2.any { it.primaryText == "කෙ" })
+
+    val kaRow4 = kaRows[3]
+    assertTrue("Row 4 should contain ක් when ක is selected", kaRow4.any { it.primaryText == "ක්" })
+
+    // Test with another letter (e.g. ම)
+    val maRows = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getSinhalaRows(selectedLetter = "ම")
+    val maRow1 = maRows[0]
+    assertTrue("Row 1 should contain මු when ම is selected", maRow1.any { it.primaryText == "මු" })
+    val maRow2 = maRows[1]
+    assertTrue("Row 2 should contain මා when ම is selected", maRow2.any { it.primaryText == "මා" })
+  }
+
+  @Test
+  fun `holdForSymbols toggle disables secondary text and toggleables in dedicated number row and symbols`() {
+    // When enabled (true)
+    val numRowEnabled = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getDedicatedNumberRow(holdForSymbols = true)
+    assertEquals("Dedicated number row should have 10 keys", 10, numRowEnabled.size)
+    assertEquals("~", numRowEnabled[0].secondaryText)
+    assertEquals("@", numRowEnabled[1].secondaryText)
+
+    val sym1Enabled = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getSymbols1Rows(holdForSymbols = true)
+    val sym1Row1Enabled = sym1Enabled[0]
+    assertEquals("~", sym1Row1Enabled[0].secondaryText)
+
+    // When disabled (false)
+    val numRowDisabled = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getDedicatedNumberRow(holdForSymbols = false)
+    assertEquals("Dedicated number row should have 10 keys", 10, numRowDisabled.size)
+    assertTrue("All keys in dedicated number row should have null secondaryText when holdForSymbols is disabled",
+      numRowDisabled.all { it.secondaryText == null })
+
+    val sym1Disabled = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getSymbols1Rows(holdForSymbols = false)
+    val sym1Row1Disabled = sym1Disabled[0]
+    assertTrue("Numbers row in symbols should have null secondaryText when holdForSymbols is disabled",
+      sym1Row1Disabled.all { it.secondaryText == null })
+
+    val numpadDisabled = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getNumpadRows(holdForSymbols = false)
+    assertTrue("Numpad rows should have null secondaryText when holdForSymbols is disabled",
+      numpadDisabled.flatten().all { it.secondaryText == null })
+  }
 }

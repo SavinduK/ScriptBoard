@@ -115,6 +115,7 @@ fun KeyProKeyboardView(
     var isAltActive by remember { mutableStateOf(false) }
     var currentWordBuffer by remember { mutableStateOf("") }
     var suggestedWords by remember { mutableStateOf(listOf("I", "The", "Thanks")) }
+    var selectedSinhalaLetter by remember { mutableStateOf("ව") }
 
     // Update 3 word suggestions dynamically as user types (toggleable in settings)
     LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled) {
@@ -253,15 +254,27 @@ fun KeyProKeyboardView(
                 onAction(action)
             }
             is KeyAction.SwitchLanguage -> {
+                selectedSinhalaLetter = "ව"
                 val nextLang = keyboardPrefs.cycleLanguage()
                 val langName = if (nextLang == "si") "සිංහල" else "English"
                 android.widget.Toast.makeText(context, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
             }
             is KeyAction.InsertText -> {
+                if (action.text.isNotEmpty() && KeyboardLayoutGenerator.isSinhalaConsonant(action.text)) {
+                    selectedSinhalaLetter = action.text
+                }
                 onAction(action)
                 if (shiftState == ShiftState.ONCE) {
                     shiftState = ShiftState.OFF
                 }
+            }
+            is KeyAction.Space -> {
+                selectedSinhalaLetter = "ව"
+                onAction(action)
+            }
+            is KeyAction.Enter -> {
+                selectedSinhalaLetter = "ව"
+                onAction(action)
             }
             else -> onAction(action)
         }
@@ -549,7 +562,10 @@ fun KeyProKeyboardView(
                 val currentRows = when (layoutMode) {
                     KeyboardLayoutMode.TEXT -> {
                         if (isSinhala) {
-                            KeyboardLayoutGenerator.getSinhalaRows(showLanguageSwitchKey = hasMultipleLanguages)
+                            KeyboardLayoutGenerator.getSinhalaRows(
+                                selectedLetter = selectedSinhalaLetter,
+                                showLanguageSwitchKey = hasMultipleLanguages
+                            )
                         } else {
                             KeyboardLayoutGenerator.getQwertyRows(
                                 shiftState = shiftState,
@@ -560,9 +576,17 @@ fun KeyProKeyboardView(
                             )
                         }
                     }
-                    KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
-                    KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
-                    KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows()
+                    KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows(
+                        languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English",
+                        holdForSymbols = holdForSymbolsEnabled
+                    )
+                    KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows(
+                        languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English",
+                        holdForSymbols = holdForSymbolsEnabled
+                    )
+                    KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows(
+                        holdForSymbols = holdForSymbolsEnabled
+                    )
                     KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getExtendedPcRows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
                 }
@@ -584,10 +608,13 @@ fun KeyProKeyboardView(
                                     colors = colors,
                                     heightDp = if (isSinhala) 38 else 46,
                                     characterFontSize = if (isSinhala) 20f else keyFontSize,
+                                    holdForSymbols = holdForSymbolsEnabled,
                                     onKeyClick = { handleKeyAction(it.action) },
                                     onKeyLongClick = { clickedKey ->
                                         if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
                                             handleKeyAction(KeyAction.SwitchLanguage)
+                                        } else if (isSinhala && clickedKey.action is KeyAction.InsertText && KeyboardLayoutGenerator.isSinhalaConsonant(clickedKey.action.text)) {
+                                            selectedSinhalaLetter = clickedKey.action.text
                                         }
                                     }
                                 )

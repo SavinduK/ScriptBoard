@@ -1,6 +1,74 @@
 package com.example.ui.keyboard.model
 
+object ToggleableKeys {
+    val pairs: Map<String, String> = mapOf(
+        // Numbers <-> Symbols (Symbols 1 Row 1 <-> Symbols 2 Row 1)
+        "1" to "~",
+        "2" to "@",
+        "3" to "#",
+        "4" to "$",
+        "5" to "%",
+        "6" to "^",
+        "7" to "&",
+        "8" to "*",
+        "9" to "(",
+        "0" to ")",
+
+        // Symbols 1 Row 2 & 3 <-> Symbols 2 Row 2 & 3
+        "@" to "$",
+        "#" to "€",
+        "£" to "¥",
+        "_" to "¢",
+        "&" to "©",
+        "-" to "®",
+        "+" to "™",
+        "(" to "<",
+        ")" to ">",
+        "/" to "÷",
+
+        "*" to "×",
+        "\"" to "«",
+        "'" to "»",
+        ":" to "…",
+        ";" to "§",
+        "!" to "¡",
+        "?" to "¿",
+
+        // Reverse toggleables (Symbols 2 <-> Symbols 1)
+        "~" to "1",
+        "$" to "@",
+        "€" to "#",
+        "¥" to "£",
+        "¢" to "_",
+        "©" to "&",
+        "®" to "-",
+        "™" to "+",
+        "<" to "(",
+        ">" to ")",
+        "÷" to "/",
+
+        "×" to "*",
+        "«" to "\"",
+        "»" to "'",
+        "…" to ":",
+        "§" to ";",
+        "¡" to "!",
+        "¿" to "?"
+    )
+
+    fun getToggleable(key: String): String? = pairs[key]
+}
+
 object KeyboardLayoutGenerator {
+
+    fun isSinhalaConsonant(c: Char): Boolean {
+        return c in '\u0D9A'..'\u0DC6'
+    }
+
+    fun isSinhalaConsonant(text: String): Boolean {
+        if (text.isEmpty()) return false
+        return isSinhalaConsonant(text.first()) || text == "ක්‍ෂ"
+    }
 
     fun getLaptopKeyRows(isCtrlActive: Boolean, isAltActive: Boolean): List<List<KeyItem>> {
         val row1 = listOf(
@@ -26,13 +94,13 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2)
     }
 
-    fun getDedicatedNumberRow(): List<KeyItem> {
+    fun getDedicatedNumberRow(holdForSymbols: Boolean = true): List<KeyItem> {
         val digits = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
         val alternates = listOf("~", "@", "#", "$", "%", "^", "&", "*", "(", ")")
         return digits.mapIndexed { idx, digit ->
             KeyItem(
                 primaryText = digit,
-                secondaryText = alternates[idx],
+                secondaryText = if (holdForSymbols) alternates[idx] else null,
                 action = KeyAction.InsertText(digit),
                 weight = 1f,
                 testTag = "key_dedicated_num_$digit"
@@ -120,79 +188,85 @@ object KeyboardLayoutGenerator {
         row4Base.add(KeyItem(".", secondaryText = if (holdForSymbols) "/" else null, action = KeyAction.InsertText("."), weight = 0.95f, isFunctional = true, testTag = "key_period"))
         row4Base.add(KeyItem("↵", action = KeyAction.Enter, weight = 1.45f, isAccent = true, testTag = "key_enter"))
 
-        val topRows = if (includeNumberRow) listOf(getDedicatedNumberRow()) else emptyList()
+        val topRows = if (includeNumberRow) listOf(getDedicatedNumberRow(holdForSymbols)) else emptyList()
         return topRows + listOf(row1, row2, row3, row4Base)
     }
 
     // Matching Sinhala layout as given in screenshot (5 rows + 1 bottom row)
-    fun getSinhalaRows(showLanguageSwitchKey: Boolean = false): List<List<KeyItem>> {
+    // Dynamically updates vowel modifier keys (පිල්ලම්) based on the selected consonant
+    fun getSinhalaRows(
+        selectedLetter: String = "ව",
+        showLanguageSwitchKey: Boolean = false
+    ): List<List<KeyItem>> {
+        val sel = selectedLetter.ifEmpty { "ව" }
+
         // Row 1 (from screenshot)
         val row1 = listOf(
-            KeyItem("වු", action = KeyAction.InsertSinhalaPillam("වු", "ු"), testTag = "key_si_vu"),
-            KeyItem("වඃ", action = KeyAction.InsertSinhalaPillam("වඃ", "ඃ"), testTag = "key_si_visarga"),
-            KeyItem("වැ", action = KeyAction.InsertSinhalaPillam("වැ", "ැ"), testTag = "key_si_vae"),
-            KeyItem("වො", action = KeyAction.InsertSinhalaPillam("වො", "ො"), testTag = "key_si_vo"),
-            KeyItem("ර", action = KeyAction.InsertText("ර"), testTag = "key_si_ra"),
-            KeyItem("හ", action = KeyAction.InsertText("හ"), testTag = "key_si_ha"),
-            KeyItem("ම", action = KeyAction.InsertText("ම"), testTag = "key_si_ma"),
-            KeyItem("ස", action = KeyAction.InsertText("ස"), testTag = "key_si_sa"),
-            KeyItem("ද", action = KeyAction.InsertText("ද"), testTag = "key_si_da"),
-            KeyItem("ච", action = KeyAction.InsertText("ච"), testTag = "key_si_cha")
+            KeyItem("${sel}ු", action = KeyAction.InsertSinhalaPillam("${sel}ු", "ු"), testTag = "key_si_vu"),
+            KeyItem("${sel}ඃ", action = KeyAction.InsertSinhalaPillam("${sel}ඃ", "ඃ"), testTag = "key_si_visarga"),
+            KeyItem("${sel}ැ", action = KeyAction.InsertSinhalaPillam("${sel}ැ", "ැ"), testTag = "key_si_vae"),
+            KeyItem("${sel}ො", action = KeyAction.InsertSinhalaPillam("${sel}ො", "ො"), testTag = "key_si_vo"),
+            KeyItem("ර", action = KeyAction.InsertText("ර"), isActiveModifier = sel == "ර", testTag = "key_si_ra"),
+            KeyItem("හ", action = KeyAction.InsertText("හ"), isActiveModifier = sel == "හ", testTag = "key_si_ha"),
+            KeyItem("ම", action = KeyAction.InsertText("ම"), isActiveModifier = sel == "ම", testTag = "key_si_ma"),
+            KeyItem("ස", action = KeyAction.InsertText("ස"), isActiveModifier = sel == "ස", testTag = "key_si_sa"),
+            KeyItem("ද", action = KeyAction.InsertText("ද"), isActiveModifier = sel == "ද", testTag = "key_si_da"),
+            KeyItem("ච", action = KeyAction.InsertText("ච"), isActiveModifier = sel == "ච", testTag = "key_si_cha")
         )
 
         // Row 2 (from screenshot)
         val row2 = listOf(
-            KeyItem("වූ", action = KeyAction.InsertSinhalaPillam("වූ", "ූ"), testTag = "key_si_vuu"),
-            KeyItem("වා", action = KeyAction.InsertSinhalaPillam("වා", "ා"), testTag = "key_si_vaa"),
-            KeyItem("වෑ", action = KeyAction.InsertSinhalaPillam("වෑ", "ෑ"), testTag = "key_si_vaae"),
-            KeyItem("වෙ", action = KeyAction.InsertSinhalaPillam("වෙ", "ෙ"), testTag = "key_si_ve"),
-            KeyItem("ෆ", action = KeyAction.InsertText("ෆ"), testTag = "key_si_fa"),
-            KeyItem("ශ", action = KeyAction.InsertText("ශ"), testTag = "key_si_sha"),
-            KeyItem("ඹ", action = KeyAction.InsertText("ඹ"), testTag = "key_si_mba"),
-            KeyItem("ෂ", action = KeyAction.InsertText("ෂ"), testTag = "key_si_ssha"),
-            KeyItem("ධ", action = KeyAction.InsertText("ධ"), testTag = "key_si_dha"),
-            KeyItem("ක්‍ෂ", action = KeyAction.InsertText("ක්‍ෂ"), testTag = "key_si_ksha")
+            KeyItem("${sel}ූ", action = KeyAction.InsertSinhalaPillam("${sel}ූ", "ූ"), testTag = "key_si_vuu"),
+            KeyItem("${sel}ා", action = KeyAction.InsertSinhalaPillam("${sel}ා", "ා"), testTag = "key_si_vaa"),
+            KeyItem("${sel}ෑ", action = KeyAction.InsertSinhalaPillam("${sel}ෑ", "ෑ"), testTag = "key_si_vaae"),
+            KeyItem("${sel}ෙ", action = KeyAction.InsertSinhalaPillam("${sel}ෙ", "ෙ"), testTag = "key_si_ve"),
+            KeyItem("ෆ", action = KeyAction.InsertText("ෆ"), isActiveModifier = sel == "ෆ", testTag = "key_si_fa"),
+            KeyItem("ශ", action = KeyAction.InsertText("ශ"), isActiveModifier = sel == "ශ", testTag = "key_si_sha"),
+            KeyItem("ඹ", action = KeyAction.InsertText("ඹ"), isActiveModifier = sel == "ඹ", testTag = "key_si_mba"),
+            KeyItem("ෂ", action = KeyAction.InsertText("ෂ"), isActiveModifier = sel == "ෂ", testTag = "key_si_ssha"),
+            KeyItem("ධ", action = KeyAction.InsertText("ධ"), isActiveModifier = sel == "ධ", testTag = "key_si_dha"),
+            KeyItem("ක්‍ෂ", action = KeyAction.InsertText("ක්‍ෂ"), isActiveModifier = sel == "ක්‍ෂ", testTag = "key_si_ksha")
         )
 
         // Row 3 (from screenshot)
         val row3 = listOf(
-            KeyItem("වි", action = KeyAction.InsertSinhalaPillam("වි", "ි"), testTag = "key_si_vi"),
-            KeyItem("වී", action = KeyAction.InsertSinhalaPillam("වී", "ී"), testTag = "key_si_vii"),
-            KeyItem("වෘ", action = KeyAction.InsertSinhalaPillam("වෘ", "ෘ"), testTag = "key_si_vru"),
-            KeyItem("වෟ", action = KeyAction.InsertSinhalaPillam("වෟ", "ෟ"), testTag = "key_si_vlu"),
-            KeyItem("ය", action = KeyAction.InsertText("ය"), testTag = "key_si_ya"),
-            KeyItem("ව", action = KeyAction.InsertText("ව"), testTag = "key_si_va"),
-            KeyItem("න", action = KeyAction.InsertText("න"), testTag = "key_si_na"),
-            KeyItem("ක", action = KeyAction.InsertText("ක"), testTag = "key_si_ka"),
-            KeyItem("ත", action = KeyAction.InsertText("ත"), testTag = "key_si_ta"),
-            KeyItem("ං", action = KeyAction.InsertSinhalaPillam("වං", "ං"), testTag = "key_si_anusvara")
+            KeyItem("${sel}ි", action = KeyAction.InsertSinhalaPillam("${sel}ි", "ි"), testTag = "key_si_vi"),
+            KeyItem("${sel}ී", action = KeyAction.InsertSinhalaPillam("${sel}ී", "ී"), testTag = "key_si_vii"),
+            KeyItem("${sel}ෘ", action = KeyAction.InsertSinhalaPillam("${sel}ෘ", "ෘ"), testTag = "key_si_vru"),
+            KeyItem("${sel}ෟ", action = KeyAction.InsertSinhalaPillam("${sel}ෟ", "ෟ"), testTag = "key_si_vlu"),
+            KeyItem("ය", action = KeyAction.InsertText("ය"), isActiveModifier = sel == "ය", testTag = "key_si_ya"),
+            KeyItem("ව", action = KeyAction.InsertText("ව"), isActiveModifier = sel == "ව", testTag = "key_si_va"),
+            KeyItem("න", action = KeyAction.InsertText("න"), isActiveModifier = sel == "න", testTag = "key_si_na"),
+            KeyItem("ක", action = KeyAction.InsertText("ක"), isActiveModifier = sel == "ක", testTag = "key_si_ka"),
+            KeyItem("ත", action = KeyAction.InsertText("ත"), isActiveModifier = sel == "ත", testTag = "key_si_ta"),
+            KeyItem("${sel}ං", action = KeyAction.InsertSinhalaPillam("${sel}ං", "ං"), testTag = "key_si_anusvara")
         )
 
         // Row 4 (from screenshot)
         val row4 = listOf(
-            KeyItem("වං", action = KeyAction.InsertSinhalaPillam("වං", "ං"), testTag = "key_si_vam"),
-            KeyItem("ව්", action = KeyAction.InsertSinhalaPillam("ව්", "්"), testTag = "key_si_hal"),
-            KeyItem("වෛ", action = KeyAction.InsertSinhalaPillam("වෛ", "ෛ"), testTag = "key_si_vai"),
-            KeyItem("ව්‍ය", action = KeyAction.InsertSinhalaPillam("ව්‍ය", "්‍ය"), testTag = "key_si_yansaya"),
-            KeyItem("ට", action = KeyAction.InsertText("ට"), testTag = "key_si_tta"),
-            KeyItem("ළු", action = KeyAction.InsertText("ළු"), testTag = "key_si_lu"),
-            KeyItem("ණ", action = KeyAction.InsertText("ණ"), testTag = "key_si_nna"),
-            KeyItem("බ", action = KeyAction.InsertText("බ"), testTag = "key_si_ba"),
-            KeyItem("ථ", action = KeyAction.InsertText("ථ"), testTag = "key_si_tha"),
-            KeyItem("ග", action = KeyAction.InsertText("ග"), testTag = "key_si_ga")
+            KeyItem("${sel}ං", action = KeyAction.InsertSinhalaPillam("${sel}ං", "ං"), testTag = "key_si_vam"),
+            KeyItem("${sel}්", action = KeyAction.InsertSinhalaPillam("${sel}්", "්"), testTag = "key_si_hal"),
+            KeyItem("${sel}ෛ", action = KeyAction.InsertSinhalaPillam("${sel}ෛ", "ෛ"), testTag = "key_si_vai"),
+            KeyItem("${sel}්‍ය", action = KeyAction.InsertSinhalaPillam("${sel}්‍ය", "්‍ය"), testTag = "key_si_yansaya"),
+            KeyItem("ට", action = KeyAction.InsertText("ට"), isActiveModifier = sel == "ට", testTag = "key_si_tta"),
+            KeyItem("ළු", action = KeyAction.InsertText("ළු"), isActiveModifier = sel == "ළු" || sel == "ළ", testTag = "key_si_lu"),
+            KeyItem("ණ", action = KeyAction.InsertText("ණ"), isActiveModifier = sel == "ණ", testTag = "key_si_nna"),
+            KeyItem("බ", action = KeyAction.InsertText("බ"), isActiveModifier = sel == "බ", testTag = "key_si_ba"),
+            KeyItem("ථ", action = KeyAction.InsertText("ථ"), isActiveModifier = sel == "ථ", testTag = "key_si_tha"),
+            KeyItem("ග", action = KeyAction.InsertText("ග"), isActiveModifier = sel == "ග", testTag = "key_si_ga")
         )
 
         // Row 5 (from screenshot)
         val row5 = listOf(
-            KeyItem("වෞ", action = KeyAction.InsertSinhalaPillam("වෞ", "ෞ"), testTag = "key_si_vau"),
-            KeyItem("ජ", action = KeyAction.InsertText("ජ"), testTag = "key_si_ja"),
-            KeyItem("ඩ", action = KeyAction.InsertText("ඩ"), testTag = "key_si_dda"),
-            KeyItem("ඪ", action = KeyAction.InsertText("ඪ"), testTag = "key_si_ddha"),
-            KeyItem("ඛ", action = KeyAction.InsertText("ඛ"), testTag = "key_si_kha"),
-            KeyItem("භ", action = KeyAction.InsertText("භ"), testTag = "key_si_bha"),
-            KeyItem("ප", action = KeyAction.InsertText("ප"), testTag = "key_si_pa"),
-            KeyItem("ල", action = KeyAction.InsertText("ල"), testTag = "key_si_la"),
-            KeyItem("ළ", action = KeyAction.InsertText("ළ"), testTag = "key_si_lla"),
+            KeyItem("${sel}ෞ", action = KeyAction.InsertSinhalaPillam("${sel}ෞ", "ෞ"), testTag = "key_si_vau"),
+            KeyItem("ජ", action = KeyAction.InsertText("ජ"), isActiveModifier = sel == "ජ", testTag = "key_si_ja"),
+            KeyItem("ඩ", action = KeyAction.InsertText("ඩ"), isActiveModifier = sel == "ඩ", testTag = "key_si_dda"),
+            KeyItem("ඪ", action = KeyAction.InsertText("ඪ"), isActiveModifier = sel == "ඪ", testTag = "key_si_ddha"),
+            KeyItem("ඛ", action = KeyAction.InsertText("ඛ"), isActiveModifier = sel == "ඛ", testTag = "key_si_kha"),
+            KeyItem("භ", action = KeyAction.InsertText("භ"), isActiveModifier = sel == "භ", testTag = "key_si_bha"),
+            KeyItem("ප", action = KeyAction.InsertText("ප"), isActiveModifier = sel == "ප", testTag = "key_si_pa"),
+            KeyItem("ල", action = KeyAction.InsertText("ල"), isActiveModifier = sel == "ල", testTag = "key_si_la"),
+            KeyItem("ළ", action = KeyAction.InsertText("ළ"), isActiveModifier = sel == "ළ", testTag = "key_si_lla"),
             KeyItem("⌫", action = KeyAction.Backspace, weight = 1.0f, isFunctional = true, testTag = "key_backspace")
         )
 
@@ -211,14 +285,18 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2, row3, row4, row5, row6)
     }
 
-    // Number key group (?123 row 1) with long-press alternate characters: 1 -> ~, 2 -> @, 3 -> #, etc.
-    fun getSymbols1Rows(languageDisplayName: String = "English"): List<List<KeyItem>> {
+    // Number key group and symbols with long-press toggleable keys:
+    // 1 <-> ~, @ <-> $, ( <-> <, etc.
+    fun getSymbols1Rows(
+        languageDisplayName: String = "English",
+        holdForSymbols: Boolean = true
+    ): List<List<KeyItem>> {
         val row1Chars = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
-        val row1Alternates = listOf("~", "@", "#", "$", "%", "^", "&", "*", "(", ")")
-        val row1 = row1Chars.mapIndexed { idx, num ->
+        val row1 = row1Chars.map { num ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(num) else null
             KeyItem(
                 primaryText = num,
-                secondaryText = row1Alternates[idx],
+                secondaryText = toggle,
                 action = KeyAction.InsertText(num),
                 weight = 1f,
                 testTag = "key_num_$num"
@@ -226,13 +304,27 @@ object KeyboardLayoutGenerator {
         }
 
         val row2Chars = listOf("@", "#", "£", "_", "&", "-", "+", "(", ")", "/")
-        val row2 = row2Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "key_sym_$it")
+        val row2 = row2Chars.map { sym ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(sym) else null
+            KeyItem(
+                primaryText = sym,
+                secondaryText = toggle,
+                action = KeyAction.InsertText(sym),
+                weight = 1f,
+                testTag = "key_sym_$sym"
+            )
         }
 
         val row3Chars = listOf("*", "\"", "'", ":", ";", "!", "?")
-        val row3Middle = row3Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "key_sym_$it")
+        val row3Middle = row3Chars.map { sym ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(sym) else null
+            KeyItem(
+                primaryText = sym,
+                secondaryText = toggle,
+                action = KeyAction.InsertText(sym),
+                weight = 1f,
+                testTag = "key_sym_$sym"
+            )
         }
         val altSymbolsKey = KeyItem("=\\<", action = KeyAction.SwitchToMoreSymbols, weight = 1.4f, isFunctional = true, testTag = "key_more_symbols")
         val backspaceKey = KeyItem("⌫", action = KeyAction.Backspace, weight = 1.4f, isFunctional = true, testTag = "key_backspace")
@@ -250,20 +342,44 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2, row3, row4)
     }
 
-    fun getSymbols2Rows(languageDisplayName: String = "English"): List<List<KeyItem>> {
+    fun getSymbols2Rows(
+        languageDisplayName: String = "English",
+        holdForSymbols: Boolean = true
+    ): List<List<KeyItem>> {
         val row1Chars = listOf("~", "`", "|", "\\", "{", "}", "[", "]", "%", "^", "°")
-        val row1 = row1Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "key_sym2_$it")
+        val row1 = row1Chars.map { sym ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(sym) else null
+            KeyItem(
+                primaryText = sym,
+                secondaryText = toggle,
+                action = KeyAction.InsertText(sym),
+                weight = 1f,
+                testTag = "key_sym2_$sym"
+            )
         }
 
         val row2Chars = listOf("$", "€", "¥", "¢", "©", "®", "™", "§", "<", ">")
-        val row2 = row2Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "key_sym2_$it")
+        val row2 = row2Chars.map { sym ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(sym) else null
+            KeyItem(
+                primaryText = sym,
+                secondaryText = toggle,
+                action = KeyAction.InsertText(sym),
+                weight = 1f,
+                testTag = "key_sym2_$sym"
+            )
         }
 
-        val row3Chars = listOf("_", "…", "¿", "¡", "«", "»", "×", "÷")
-        val row3Middle = row3Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "key_sym2_$it")
+        val row3Chars = listOf("×", "«", "»", "…", "÷", "¡", "¿")
+        val row3Middle = row3Chars.map { sym ->
+            val toggle = if (holdForSymbols) ToggleableKeys.getToggleable(sym) else null
+            KeyItem(
+                primaryText = sym,
+                secondaryText = toggle,
+                action = KeyAction.InsertText(sym),
+                weight = 1f,
+                testTag = "key_sym2_$sym"
+            )
         }
         val symbols1Key = KeyItem("?123", action = KeyAction.SwitchToSymbols, weight = 1.4f, isFunctional = true, testTag = "key_switch_sym1")
         val backspaceKey = KeyItem("⌫", action = KeyAction.Backspace, weight = 1.4f, isFunctional = true, testTag = "key_backspace")
@@ -281,31 +397,31 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2, row3, row4)
     }
 
-    fun getNumpadRows(): List<List<KeyItem>> {
+    fun getNumpadRows(holdForSymbols: Boolean = true): List<List<KeyItem>> {
         val row1 = listOf(
-            KeyItem("7", secondaryText = "&", action = KeyAction.InsertText("7"), weight = 1f, testTag = "np_7"),
-            KeyItem("8", secondaryText = "*", action = KeyAction.InsertText("8"), weight = 1f, testTag = "np_8"),
-            KeyItem("9", secondaryText = "(", action = KeyAction.InsertText("9"), weight = 1f, testTag = "np_9"),
+            KeyItem("7", secondaryText = if (holdForSymbols) "&" else null, action = KeyAction.InsertText("7"), weight = 1f, testTag = "np_7"),
+            KeyItem("8", secondaryText = if (holdForSymbols) "*" else null, action = KeyAction.InsertText("8"), weight = 1f, testTag = "np_8"),
+            KeyItem("9", secondaryText = if (holdForSymbols) "(" else null, action = KeyAction.InsertText("9"), weight = 1f, testTag = "np_9"),
             KeyItem("/", action = KeyAction.InsertText("/"), weight = 1f, isFunctional = true, testTag = "np_div"),
             KeyItem("⌫", action = KeyAction.Backspace, weight = 1f, isFunctional = true, testTag = "np_backspace")
         )
         val row2 = listOf(
-            KeyItem("4", secondaryText = "$", action = KeyAction.InsertText("4"), weight = 1f, testTag = "np_4"),
-            KeyItem("5", secondaryText = "%", action = KeyAction.InsertText("5"), weight = 1f, testTag = "np_5"),
-            KeyItem("6", secondaryText = "^", action = KeyAction.InsertText("6"), weight = 1f, testTag = "np_6"),
+            KeyItem("4", secondaryText = if (holdForSymbols) "$" else null, action = KeyAction.InsertText("4"), weight = 1f, testTag = "np_4"),
+            KeyItem("5", secondaryText = if (holdForSymbols) "%" else null, action = KeyAction.InsertText("5"), weight = 1f, testTag = "np_5"),
+            KeyItem("6", secondaryText = if (holdForSymbols) "^" else null, action = KeyAction.InsertText("6"), weight = 1f, testTag = "np_6"),
             KeyItem("*", action = KeyAction.InsertText("*"), weight = 1f, isFunctional = true, testTag = "np_mul"),
             KeyItem("DEL", action = KeyAction.DeleteForward, weight = 1f, isFunctional = true, testTag = "np_del")
         )
         val row3 = listOf(
-            KeyItem("1", secondaryText = "~", action = KeyAction.InsertText("1"), weight = 1f, testTag = "np_1"),
-            KeyItem("2", secondaryText = "@", action = KeyAction.InsertText("2"), weight = 1f, testTag = "np_2"),
-            KeyItem("3", secondaryText = "#", action = KeyAction.InsertText("3"), weight = 1f, testTag = "np_3"),
+            KeyItem("1", secondaryText = if (holdForSymbols) "~" else null, action = KeyAction.InsertText("1"), weight = 1f, testTag = "np_1"),
+            KeyItem("2", secondaryText = if (holdForSymbols) "@" else null, action = KeyAction.InsertText("2"), weight = 1f, testTag = "np_2"),
+            KeyItem("3", secondaryText = if (holdForSymbols) "#" else null, action = KeyAction.InsertText("3"), weight = 1f, testTag = "np_3"),
             KeyItem("-", action = KeyAction.InsertText("-"), weight = 1f, isFunctional = true, testTag = "np_minus"),
             KeyItem("(", action = KeyAction.InsertText("("), weight = 1f, isFunctional = true, testTag = "np_op")
         )
         val row4 = listOf(
             KeyItem("ABC", action = KeyAction.SwitchToLetters, weight = 1.2f, isFunctional = true, testTag = "np_abc"),
-            KeyItem("0", secondaryText = ")", action = KeyAction.InsertText("0"), weight = 1f, testTag = "np_0"),
+            KeyItem("0", secondaryText = if (holdForSymbols) ")" else null, action = KeyAction.InsertText("0"), weight = 1f, testTag = "np_0"),
             KeyItem(".", action = KeyAction.InsertText("."), weight = 1f, testTag = "np_dot"),
             KeyItem("+", action = KeyAction.InsertText("+"), weight = 1f, isFunctional = true, testTag = "np_plus"),
             KeyItem("↵", action = KeyAction.Enter, weight = 1.2f, isAccent = true, testTag = "np_enter")

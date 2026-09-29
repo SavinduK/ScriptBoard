@@ -408,7 +408,7 @@ fun InKeyboardSettingsView(
                     SettingToggleRow(
                         icon = Icons.Default.TextFields,
                         title = "Hold Key for Symbols",
-                        subtitle = "Hold letters for @, #, $, 0-9 & symbols",
+                        subtitle = "Hold keys for numbers, symbols & toggleable alternates",
                         checked = holdForSymbolsEnabled,
                         onCheckedChange = { keyboardPrefs.setHoldForSymbolsEnabled(it) },
                         colors = colors,

@@ -421,7 +421,7 @@ fun SettingsPageView(
                     SettingsPageToggle(
                         icon = Icons.Default.TextFields,
                         title = "Hold Key for Symbols",
-                        subtitle = "Long press letter keys for @, #, $, 0-9 & symbols",
+                        subtitle = "Long press keys for numbers, symbols & toggleable alternates",
                         checked = isHoldForSymbolsEnabled,
                         onCheckedChange = onToggleHoldForSymbols,
                         colors = colors,

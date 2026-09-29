@@ -44,6 +44,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyItem
 import com.example.ui.keyboard.model.KeyboardColors
+import com.example.ui.keyboard.model.ToggleableKeys
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -63,6 +64,61 @@ object NumberKeyAlternates {
     )
 }
 
+object KeyAlternatesProvider {
+    val map: Map<String, List<String>> = mapOf(
+        // Number keys (1 -> ~, etc.)
+        "1" to listOf("~", "¹", "½", "⅓", "¼", "₁"),
+        "2" to listOf("@", "²", "⅔", "₂"),
+        "3" to listOf("#", "³", "¾", "⅜", "₃"),
+        "4" to listOf("$", "⁴", "₹", "€", "£", "¥", "¢", "₄"),
+        "5" to listOf("%", "⁵", "‰", "₅"),
+        "6" to listOf("^", "⁶", "₆"),
+        "7" to listOf("&", "⁷", "₇"),
+        "8" to listOf("*", "⁸", "°", "₈"),
+        "9" to listOf("(", "⁹", "[", "{", "₉"),
+        "0" to listOf(")", "⁰", "]", "}", "ø", "₀"),
+
+        // Symbol keys (@ -> $, ( -> <, ) -> >, etc.)
+        "@" to listOf("$", "€", "£", "¥", "¢"),
+        "#" to listOf("€", "№"),
+        "£" to listOf("¥", "€", "$"),
+        "_" to listOf("¢", "–", "—"),
+        "&" to listOf("©", "§"),
+        "-" to listOf("®", "—", "–", "_"),
+        "+" to listOf("™", "±", "†"),
+        "(" to listOf("<", "[", "{", "«"),
+        ")" to listOf(">", "]", "}", "»"),
+        "/" to listOf("÷", "\\", "⁄"),
+        "*" to listOf("×", "•", "°", "★"),
+        "\"" to listOf("«", "“", "”", "„"),
+        "'" to listOf("»", "‘", "’", "`"),
+        ":" to listOf("…", "‥"),
+        ";" to listOf("§", "‡"),
+        "!" to listOf("¡", "‼"),
+        "?" to listOf("¿", "‽"),
+
+        // Symbols 2 (reverse toggleables: ~ -> 1, $ -> @, < -> (, etc.)
+        "~" to listOf("1", "≈", "≃"),
+        "$" to listOf("@", "€", "£", "¥", "₹", "¢"),
+        "<" to listOf("(", "≤", "«", "‹"),
+        ">" to listOf(")", "≥", "»", "›"),
+        "×" to listOf("*", "•"),
+        "÷" to listOf("/", "\\"),
+        "«" to listOf("\"", "“"),
+        "»" to listOf("'", "‘"),
+        "…" to listOf(":", "‥"),
+        "§" to listOf(";", "‡"),
+        "¡" to listOf("!", "‼"),
+        "¿" to listOf("?", "‽"),
+        "€" to listOf("#", "$", "£"),
+        "¥" to listOf("£", "$", "€"),
+        "¢" to listOf("_", "$"),
+        "©" to listOf("&"),
+        "®" to listOf("-"),
+        "™" to listOf("+")
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RowScope.KeyCap(
@@ -70,6 +126,7 @@ fun RowScope.KeyCap(
     colors: KeyboardColors,
     heightDp: Int = 46,
     characterFontSize: Float = 24f,
+    holdForSymbols: Boolean = true,
     onKeyClick: (KeyItem) -> Unit,
     onKeyLongClick: ((KeyItem) -> Unit)? = null
 ) {
@@ -100,6 +157,7 @@ fun RowScope.KeyCap(
 
     var showAlternatesPopup by remember { mutableStateOf(false) }
 
+    val hasLongClickAction = holdForSymbols || onKeyLongClick != null
     val clickModifier = if (isDeleteKey) {
         Modifier.pointerInput(key) {
             awaitEachGesture {
@@ -122,24 +180,30 @@ fun RowScope.KeyCap(
     } else {
         Modifier.combinedClickable(
             onClick = { onKeyClick(key) },
-            onLongClick = {
-                val numberAlternates = NumberKeyAlternates.map[key.primaryText]
-                if (numberAlternates != null) {
-                    // Long press on number key group inserts primary alternate (e.g. 1 -> ~)
-                    val primaryAlt = numberAlternates.first()
-                    onKeyClick(key.copy(action = KeyAction.InsertText(primaryAlt)))
-                    // Also present floating popup showing all alternates
-                    showAlternatesPopup = true
-                    coroutineScope.launch {
-                        delay(2500)
-                        showAlternatesPopup = false
+            onLongClick = if (hasLongClickAction) {
+                {
+                    var handledBySymbols = false
+                    if (holdForSymbols) {
+                        val alternates = KeyAlternatesProvider.map[key.primaryText] ?: NumberKeyAlternates.map[key.primaryText]
+                        val toggleable = alternates?.firstOrNull() ?: ToggleableKeys.getToggleable(key.primaryText) ?: key.secondaryText
+                        if (toggleable != null) {
+                            // For long hold of number keys and symbols: replace with their corresponding toggleable key (1/~, @/$, (/<)
+                            onKeyClick(key.copy(action = KeyAction.InsertText(toggleable)))
+                            if (alternates != null && alternates.size > 1) {
+                                showAlternatesPopup = true
+                                coroutineScope.launch {
+                                    delay(2500)
+                                    showAlternatesPopup = false
+                                }
+                            }
+                            handledBySymbols = true
+                        }
                     }
-                } else if (key.secondaryText != null) {
-                    onKeyClick(key.copy(action = KeyAction.InsertText(key.secondaryText)))
-                } else if (onKeyLongClick != null) {
-                    onKeyLongClick(key)
+                    if (!handledBySymbols) {
+                        onKeyLongClick?.invoke(key)
+                    }
                 }
-            }
+            } else null
         )
     }
 
@@ -169,15 +233,17 @@ fun RowScope.KeyCap(
 
         // Primary text
         val isFunctionKey = key.action is KeyAction.FunctionKey || key.primaryText.matches(Regex("F\\d+"))
+        val isSinhalaChar = key.primaryText.any { it in '\u0D80'..'\u0DFF' }
 
         Text(
             text = key.primaryText,
             color = textColor,
             fontSize = when {
                 isFunctionKey -> 11.5.sp // Matches F12 label size for all function keys
+                key.primaryText == "English" || key.primaryText == "සිංහල" -> 13.sp
+                isSinhalaChar -> if (key.primaryText.length > 2) 15.sp else 17.5.sp
                 key.primaryText.length == 1 && key.primaryText[0].isLetter() -> characterFontSize.sp
                 key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.85f).sp
-                key.primaryText == "English" || key.primaryText == "සිංහල" -> 13.sp
                 key.primaryText == "12\n34" -> 10.sp
                 isSmallFont -> 11.5.sp
                 key.primaryText.length == 1 -> (characterFontSize * 0.8f).sp
@@ -189,9 +255,9 @@ fun RowScope.KeyCap(
             lineHeight = if (key.primaryText == "12\n34") 11.sp else 18.sp
         )
 
-        // Alternate characters popup bubble when long-pressing number keys
+        // Alternate characters popup bubble when long-pressing number/symbol keys
         if (showAlternatesPopup) {
-            val alternates = NumberKeyAlternates.map[key.primaryText]
+            val alternates = KeyAlternatesProvider.map[key.primaryText] ?: NumberKeyAlternates.map[key.primaryText]
             if (alternates != null) {
                 Popup(
                     alignment = Alignment.TopCenter,
