@@ -174,7 +174,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "${currentThemeType.displayName} ,
+                                        text = "${currentThemeType.displayName}" ,
                                         color = colors.letterKeySecondaryTextColor,
                                         fontSize = 11.sp
                                     )
