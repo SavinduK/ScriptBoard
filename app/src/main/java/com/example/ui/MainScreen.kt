@@ -174,7 +174,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "${currentThemeType.displayName} • Gboard Standard",
+                                        text = "${currentThemeType.displayName} ,
                                         color = colors.letterKeySecondaryTextColor,
                                         fontSize = 11.sp
                                     )
@@ -275,7 +275,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             HubNavigationCard(
                                 icon = Icons.Default.Keyboard,
                                 title = "Test Keyboard",
-                                description = "Test standard Gboard typing layout, hold-to-delete backspace, PC keys (Ctrl, Alt, Tab, Esc), emojis, and the quick paste button.",
+                                description = "Test standard typing layout, hold-to-delete backspace, PC keys (Ctrl, Alt, Tab, Esc), emojis, and the quick paste button.",
                                 colors = colors,
                                 testTag = "card_test_keyboard",
                                 onClick = { currentSection = MainScreenSection.TEST_KEYBOARD }
@@ -284,7 +284,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD B: SETTINGS PAGE
                             HubNavigationCard(
                                 icon = Icons.Default.Settings,
-                                title = "Settings Page",
+                                title = "Settings",
                                 description = "Customize keyboard color themes, typing audio sounds, haptic feedback vibration, and laptop quick access bar.",
                                 colors = colors,
                                 testTag = "card_settings_page",
@@ -294,7 +294,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD C: SAVED CLIPBOARD HISTORY
                             HubNavigationCard(
                                 icon = Icons.Default.ContentPaste,
-                                title = "Saved Clipboard History",
+                                title = " Clipboard History",
                                 description = "Browse auto-saved clipboard clips, search frequently used texts, and manage your pinned quick snippets.",
                                 colors = colors,
                                 testTag = "card_saved_clipboard_history",
@@ -314,8 +314,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD E: LANGUAGE PACKAGES (Sinhala, etc.)
                             HubNavigationCard(
                                 icon = Icons.Default.Language,
-                                title = "Language Packages (Sinhala, etc.)",
-                                description = "Download optional language layouts including Sinhala (සිංහල Wijesekara), switch active languages, and manage multi-language typing.",
+                                title = "Language Packages",
+                                description = "Download optional language layouts , switch active languages, and manage multi-language typing.",
                                 colors = colors,
                                 testTag = "card_language_packages",
                                 onClick = { currentSection = MainScreenSection.LANGUAGES }

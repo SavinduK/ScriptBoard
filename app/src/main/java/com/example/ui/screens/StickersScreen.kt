@@ -281,7 +281,7 @@ fun StickersScreen(
                                     .testTag("btn_browse_saf_files"),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Browse (SAF)", color = colors.letterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Select Folder", color = colors.letterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
 
                             Button(

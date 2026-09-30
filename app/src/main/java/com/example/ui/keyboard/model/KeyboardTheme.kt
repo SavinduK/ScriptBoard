@@ -3,8 +3,8 @@ package com.example.ui.keyboard.model
 import androidx.compose.ui.graphics.Color
 
 enum class KeyboardThemeType(val displayName: String) {
-    GBOARD_DARK("Gboard Dark"),
-    GBOARD_LIGHT("Gboard Light"),
+    GBOARD_DARK("Classic Dark"),
+    GBOARD_LIGHT("Classic Light"),
     CYBER_NAVY("Cyber Navy"),
     CUSTOM("Custom RGB")
 }
