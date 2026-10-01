@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "repository": "https://github.com/savindukahandagamage2/KeyPro",
+  "branch": "main",
+  "rawBaseUrl": "https://raw.githubusercontent.com/savindukahandagamage2/KeyPro/main/emojis/",
+  "packages": [
+    {
+      "id": "runic",
+      "name": "Runic Symbols",
+      "nativeName": "ᚱᚢᚾᛖᛋ",
+      "icon": "ᚱ",
+      "version": "1.0.0",
+      "description": "Elder Futhark and Anglo-Saxon magical runic alphabet symbols with glyph meanings",
+      "file": "runic.json",
+      "sizeBytes": 18200,
+      "sizeDisplay": "18 KB",
+      "itemCount": 33
+    },
+    {
+      "id": "hieroglyphs",
+      "name": "Egyptian Hieroglyphs",
+      "nativeName": "𓀀 𓌃𓂧𓅱𓀁",
+      "icon": "𓀀",
+      "version": "1.0.0",
+      "description": "Ancient Egyptian Hieroglyphs Unicode block (Gardiner's sign list animals, gods, vessels)",
+      "file": "hieroglyphs.json",
+      "sizeBytes": 28400,
+      "sizeDisplay": "28 KB",
+      "itemCount": 60
+    },
+    {
+      "id": "kaomoji",
+      "name": "Japanese Kaomoji",
+      "nativeName": "顔文字",
+      "icon": "(^‿^)",
+      "version": "1.0.0",
+      "description": "Expressive Japanese text emoticons for cute reactions, table flips and hugs",
+      "file": "kaomoji.json",
+      "sizeBytes": 16500,
+      "sizeDisplay": "16 KB",
+      "itemCount": 42
+    },
+    {
+      "id": "alchemy",
+      "name": "Alchemical & Astrological",
+      "nativeName": "🜁 ☉ ☽",
+      "icon": "🜁",
+      "version": "1.0.0",
+      "description": "Medieval alchemy elements, astronomical planets and zodiac symbols",
+      "file": "alchemy.json",
+      "sizeBytes": 14200,
+      "sizeDisplay": "14 KB",
+      "itemCount": 36
+    }
+  ]
+}

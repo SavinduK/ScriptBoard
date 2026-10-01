@@ -43,7 +43,8 @@ class StickerRepository(private val stickerDao: StickerDao) {
         }
 
         val entities = mutableListOf<StickerEntity>()
-        for ((index, fileName) in sampleList.withIndex()) {
+        val webpList = sampleList.filter { it.endsWith(".webp") }
+        for ((index, fileName) in webpList.withIndex()) {
             try {
                 val destFile = File(stickersDir, fileName)
                 if (!destFile.exists() || destFile.length() == 0L) {
@@ -53,6 +54,20 @@ class StickerRepository(private val stickerDao: StickerDao) {
                         }
                     }
                 }
+
+                // Copy companion .gif file if present for WhatsApp animated sticker support
+                val gifName = "${fileName.removeSuffix(".webp")}.gif"
+                val destGif = File(stickersDir, gifName)
+                if ((!destGif.exists() || destGif.length() == 0L) && sampleList.contains(gifName)) {
+                    try {
+                        assetManager.open("sample_stickers/$gifName").use { input ->
+                            FileOutputStream(destGif).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 if (destFile.exists() && destFile.length() > 0) {
                     val isAnim = WebpAnimationHelper.isAnimated(destFile)
                     val readableName = fileName.removeSuffix(".webp").replace('_', ' ')

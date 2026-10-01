@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.screens.ClipboardHistoryPageView
+import com.example.ui.screens.EmojiPacksScreen
 import com.example.ui.screens.LanguagesScreen
 import com.example.ui.screens.SettingsPageView
 import com.example.ui.screens.StickersScreen
@@ -78,7 +79,8 @@ enum class MainScreenSection {
     SETTINGS_PAGE,
     CLIPBOARD_HISTORY,
     STICKERS,
-    LANGUAGES
+    LANGUAGES,
+    EMOJI_PACKS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,7 +103,19 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     val colors = viewModel.currentColors
 
-    var currentSection by remember { mutableStateOf(MainScreenSection.HUB) }
+    val initialSection = remember {
+        val openTab = (context as? android.app.Activity)?.intent?.getStringExtra("open_tab")
+        when (openTab) {
+            "stickers" -> MainScreenSection.STICKERS
+            "languages" -> MainScreenSection.LANGUAGES
+            "emoji_packs" -> MainScreenSection.EMOJI_PACKS
+            "clipboard" -> MainScreenSection.CLIPBOARD_HISTORY
+            "settings" -> MainScreenSection.SETTINGS_PAGE
+            "test" -> MainScreenSection.TEST_KEYBOARD
+            else -> MainScreenSection.HUB
+        }
+    }
+    var currentSection by remember { mutableStateOf(initialSection) }
     var showSetupDropdown by remember { mutableStateOf(false) }
 
     BackHandler(enabled = currentSection != MainScreenSection.HUB) {
@@ -321,6 +335,16 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                 onClick = { currentSection = MainScreenSection.LANGUAGES }
                             )
 
+                            // CARD F: EMOJI & SYMBOL PACKAGES (Runic, Hieroglyphs, etc.)
+                            HubNavigationCard(
+                                icon = Icons.Default.AutoAwesome,
+                                title = "Emoji & Symbol Packages (Runic, Hieroglyphs, etc.)",
+                                description = "Download ancient rune sets, Egyptian hieroglyphs, Kaomoji, and alchemical symbols to expand your keyboard emoji drawer.",
+                                colors = colors,
+                                testTag = "card_emoji_packages",
+                                onClick = { currentSection = MainScreenSection.EMOJI_PACKS }
+                            )
+
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
@@ -402,6 +426,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
                 MainScreenSection.LANGUAGES -> {
                     LanguagesScreen(
+                        colors = colors,
+                        onBack = { currentSection = MainScreenSection.HUB }
+                    )
+                }
+
+                MainScreenSection.EMOJI_PACKS -> {
+                    EmojiPacksScreen(
                         colors = colors,
                         onBack = { currentSection = MainScreenSection.HUB }
                     )

@@ -49,6 +49,10 @@ class KeyboardPreferences(context: Context) {
     private val _installedLanguages = MutableStateFlow(loadInstalledLanguages())
     val installedLanguages: StateFlow<Set<String>> = _installedLanguages.asStateFlow()
 
+    // Downloadable Emoji / Symbol Packs Support (e.g. Runic symbols, Egyptian Hieroglyphs)
+    private val _installedEmojiPacks = MutableStateFlow(loadInstalledEmojiPacks())
+    val installedEmojiPacks: StateFlow<Set<String>> = _installedEmojiPacks.asStateFlow()
+
     private val _currentLanguage = MutableStateFlow(prefs.getString(KEY_CURRENT_LANGUAGE, "en") ?: "en")
     val currentLanguage: StateFlow<String> = _currentLanguage.asStateFlow()
 
@@ -172,6 +176,33 @@ class KeyboardPreferences(context: Context) {
         return langId == "en" || _installedLanguages.value.contains(langId)
     }
 
+    private fun loadInstalledEmojiPacks(): Set<String> {
+        val saved = prefs.getString(KEY_INSTALLED_EMOJI_PACKS, null)
+        return if (!saved.isNullOrBlank()) {
+            saved.split(",").filter { it.isNotBlank() }.toSet()
+        } else {
+            emptySet()
+        }
+    }
+
+    fun installEmojiPack(packId: String) {
+        val current = _installedEmojiPacks.value.toMutableSet()
+        current.add(packId)
+        _installedEmojiPacks.value = current
+        prefs.edit().putString(KEY_INSTALLED_EMOJI_PACKS, current.joinToString(",")).apply()
+    }
+
+    fun uninstallEmojiPack(packId: String) {
+        val current = _installedEmojiPacks.value.toMutableSet()
+        current.remove(packId)
+        _installedEmojiPacks.value = current
+        prefs.edit().putString(KEY_INSTALLED_EMOJI_PACKS, current.joinToString(",")).apply()
+    }
+
+    fun isEmojiPackInstalled(packId: String): Boolean {
+        return _installedEmojiPacks.value.contains(packId)
+    }
+
     fun setCurrentLanguage(langId: String) {
         _currentLanguage.value = langId
         prefs.edit().putString(KEY_CURRENT_LANGUAGE, langId).apply()
@@ -237,6 +268,7 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_CUSTOM_TEXT = "custom_text"
         private const val KEY_CUSTOM_ACCENT = "custom_accent"
         private const val KEY_INSTALLED_LANGUAGES = "installed_languages"
+        private const val KEY_INSTALLED_EMOJI_PACKS = "installed_emoji_packs"
         private const val KEY_CURRENT_LANGUAGE = "current_language"
         private const val KEY_NUMBER_ROW_ENABLED = "number_row_enabled"
         private const val KEY_GITHUB_REPO_OWNER = "github_repo_owner"

@@ -332,14 +332,29 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 try {
                     val file = java.io.File(action.filePath)
                     if (file.exists()) {
+                        val editorInfo = currentInputEditorInfo
+                        // WhatsApp does not render pasted/committed WebP stickers as animated items unless sent as GIF.
+                        // StickerFormatHelper resolves to animated GIF if targeting WhatsApp or if WebP is unsupported.
+                        val formatted = com.example.ui.keyboard.util.StickerFormatHelper.resolveStickerForTarget(
+                            this,
+                            file,
+                            editorInfo
+                        )
+                        val targetFile = formatted.file
+                        val mimes = if (formatted.isGif) {
+                            arrayOf("image/gif", "image/*")
+                        } else {
+                            arrayOf("image/webp", "image/png", "image/*")
+                        }
+
                         val contentUri = androidx.core.content.FileProvider.getUriForFile(
                             this,
                             "${packageName}.fileprovider",
-                            file
+                            targetFile
                         )
                         val description = android.content.ClipDescription(
                             action.name,
-                            arrayOf("image/webp", "image/png", "image/*")
+                            mimes
                         )
                         val inputContentInfo = androidx.core.view.inputmethod.InputContentInfoCompat(
                             contentUri,
@@ -347,7 +362,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                             null
                         )
 
-                        val editorInfo = currentInputEditorInfo
                         var flags = 0
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N_MR1) {
                             flags = flags or androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
@@ -368,12 +382,24 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                         val clip = android.content.ClipData.newUri(contentResolver, action.name, contentUri)
                         cm?.setPrimaryClip(clip)
 
+                        // Explicitly grant read URI permission to target app
+                        editorInfo?.packageName?.let { targetPkg ->
+                            try {
+                                grantUriPermission(
+                                    targetPkg,
+                                    contentUri,
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            } catch (_: Exception) {}
+                        }
+
                         if (!committed) {
-                            android.widget.Toast.makeText(
-                                this,
-                                "Sticker copied to clipboard! Paste it into your message.",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                            val msg = if (formatted.isGif) {
+                                "Animated sticker (GIF) copied to clipboard! Paste it into your message."
+                            } else {
+                                "Sticker copied to clipboard! Paste it into your message."
+                            }
+                            android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 } catch (_: Exception) {

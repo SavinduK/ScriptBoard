@@ -1,0 +1,32 @@
+{
+  "id": "kaomoji",
+  "name": "Japanese Kaomoji",
+  "nativeName": "顔文字",
+  "icon": "(^‿^)",
+  "version": "1.0.0",
+  "category": "Expressive Emoticons",
+  "description": "Expressive Japanese text emoticons for cute reactions, table flips and hugs",
+  "items": [
+    { "symbol": "(づ｡◕‿‿◕｡)づ", "name": "Big Hug", "meaning": "Affection, Embrace" },
+    { "symbol": "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "name": "Sparkles / Joy", "meaning": "Celebration, Excitement" },
+    { "symbol": "( ͡° ͜ʖ ͡°)", "name": "Lenny Face", "meaning": "Mischief, Smirk" },
+    { "symbol": "¯\\_(ツ)_/¯", "name": "Shrug", "meaning": "Indifference, Clueless" },
+    { "symbol": "(╯°□°）╯︵ ┻━┻", "name": "Table Flip", "meaning": "Rage, Frustration" },
+    { "symbol": "┬─┬ノ( º _ ºノ)", "name": "Put Table Back", "meaning": "Calm, Order" },
+    { "symbol": "(ง'̀-'́)ง", "name": "Fight Me", "meaning": "Determination, Combat" },
+    { "symbol": "ʕ•ᴥ•ʔ", "name": "Bear", "meaning": "Cute, Cozy" },
+    { "symbol": "(｡♥‿♥｡)", "name": "Heart Eyes", "meaning": "Love, Adoration" },
+    { "symbol": "ಠ_ಠ", "name": "Look of Disapproval", "meaning": "Suspicion, Skepticism" },
+    { "symbol": "(☞ﾟヮﾟ)☞", "name": "Finger Guns", "meaning": "Approval, Cool" },
+    { "symbol": "(¬‿¬)", "name": "Smug", "meaning": "Cunning, Satisfaction" },
+    { "symbol": "(ಥ﹏ಥ)", "name": "Tears of Joy / Sad", "meaning": "Overwhelmed, Crying" },
+    { "symbol": "(•_•) ( •_•)>⌐■-■ (⌐■_■)", "name": "Deal With It", "meaning": "Sunglasses, Cool" },
+    { "symbol": "(^‿^)", "name": "Happy", "meaning": "Joy, Friendly" },
+    { "symbol": "(◕‿◕✿)", "name": "Flower Girl", "meaning": "Sweet, Cheerful" },
+    { "symbol": "(｡◕‿◕｡)", "name": "Wide Eyes", "meaning": "Innocence, Wonder" },
+    { "symbol": "(─‿‿─)", "name": "Zen Bliss", "meaning": "Peace, Relaxation" },
+    { "symbol": "(=^･ω･^=)", "name": "Cat Face", "meaning": "Feline, Playful" },
+    { "symbol": "(ノಠ益ಠ)ノ彡┻━┻", "name": "Super Rage", "meaning": "Explosive Anger" },
+    { "symbol": "(•‿•)", "name": "Gentle Smile", "meaning": "Kindness, Content" }
+  ]
+}
