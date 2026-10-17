@@ -210,4 +210,87 @@ class ExampleRobolectricTest {
     val url = prefs.getGithubRawBaseUrl()
     assertEquals("https://raw.githubusercontent.com/myuser/myrepo/main/languages/", url)
   }
+
+  @Test
+  fun `complete laptop keyboard generates 6 standard laptop rows with functions and navigation`() {
+    val rows = com.example.ui.keyboard.model.KeyboardLayoutGenerator.getCompleteLaptopRows()
+    assertEquals("Complete laptop keyboard should have 6 rows", 6, rows.size)
+
+    // Row 0: Function row (Esc, F1..F12, Del)
+    val row0 = rows[0]
+    assertTrue("Row 0 should have Esc", row0.any { it.primaryText == "Esc" })
+    assertTrue("Row 0 should have F1", row0.any { it.primaryText == "F1" })
+    assertTrue("Row 0 should have F12", row0.any { it.primaryText == "F12" })
+    assertTrue("Row 0 should have Del", row0.any { it.primaryText == "Del" })
+
+    // Row 1: Number row with backspace
+    val row1 = rows[1]
+    assertTrue("Row 1 should have `", row1.any { it.primaryText == "`" })
+    assertTrue("Row 1 should have 1", row1.any { it.primaryText == "1" })
+    assertTrue("Row 1 should have ⌫", row1.any { it.primaryText == "⌫" })
+
+    // Row 2: Tab and QWERTY top row
+    val row2 = rows[2]
+    assertTrue("Row 2 should have Tab", row2.any { it.primaryText.contains("Tab") })
+    assertTrue("Row 2 should have q", row2.any { it.primaryText.equals("q", ignoreCase = true) })
+
+    // Row 3: Caps Lock and Enter
+    val row3 = rows[3]
+    assertTrue("Row 3 should have Caps", row3.any { it.primaryText == "Caps" })
+    assertTrue("Row 3 should have Enter", row3.any { it.primaryText.contains("Enter") })
+
+    // Row 4: Shift and Arrow Up
+    val row4 = rows[4]
+    assertTrue("Row 4 should have Shift", row4.any { it.primaryText.contains("Shift") })
+    assertTrue("Row 4 should have ↑", row4.any { it.primaryText == "↑" })
+
+    // Row 5: Ctrl, Fn, Win, Alt, Space, Arrow Left/Down/Right
+    val row5 = rows[5]
+    assertTrue("Row 5 should have Ctrl", row5.any { it.primaryText == "Ctrl" })
+    assertTrue("Row 5 should have Fn", row5.any { it.primaryText == "Fn" })
+    assertTrue("Row 5 should have Alt", row5.any { it.primaryText == "Alt" })
+    assertTrue("Row 5 should have ←", row5.any { it.primaryText == "←" })
+    assertTrue("Row 5 should have ↓", row5.any { it.primaryText == "↓" })
+    assertTrue("Row 5 should have →", row5.any { it.primaryText == "→" })
+  }
+
+  @Test
+  fun `emoji pack downloader defines valid constant repository locations`() {
+    assertEquals("keypro-org", com.example.ui.keyboard.model.EmojiPackDownloader.DEFAULT_GITHUB_OWNER)
+    assertEquals("keyboard-assets", com.example.ui.keyboard.model.EmojiPackDownloader.DEFAULT_GITHUB_REPO)
+    assertEquals("main", com.example.ui.keyboard.model.EmojiPackDownloader.DEFAULT_GITHUB_BRANCH)
+    assertEquals("https://raw.githubusercontent.com", com.example.ui.keyboard.model.EmojiPackDownloader.GITHUB_RAW_BASE)
+  }
+
+  @Test
+  fun `zip output stream creates valid zip archive of sample files`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val testZipFile = File(context.cacheDir, "test_stickers.zip")
+    if (testZipFile.exists()) testZipFile.delete()
+
+    java.io.FileOutputStream(testZipFile).use { fos ->
+      java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(fos)).use { zos ->
+        val entry = java.util.zip.ZipEntry("sample.webp")
+        zos.putNextEntry(entry)
+        zos.write("RIFFtestWEBP".toByteArray())
+        zos.closeEntry()
+      }
+    }
+
+    assertTrue("ZIP file should exist", testZipFile.exists())
+    assertTrue("ZIP file should not be empty", testZipFile.length() > 0)
+
+    // Verify reading zip
+    var foundSample = false
+    java.util.zip.ZipInputStream(testZipFile.inputStream()).use { zis ->
+      var zipEntry = zis.nextEntry
+      while (zipEntry != null) {
+        if (zipEntry.name == "sample.webp") {
+          foundSample = true
+        }
+        zipEntry = zis.nextEntry
+      }
+    }
+    assertTrue("ZIP should contain sample.webp", foundSample)
+  }
 }

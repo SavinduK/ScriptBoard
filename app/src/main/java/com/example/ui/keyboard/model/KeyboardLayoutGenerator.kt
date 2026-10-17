@@ -429,40 +429,107 @@ object KeyboardLayoutGenerator {
         return listOf(row1, row2, row3, row4)
     }
 
-    fun getExtendedPcRows(languageDisplayName: String = "English"): List<List<KeyItem>> {
-        val row1FKeys = (1..12).map { num ->
-            KeyItem("F$num", action = KeyAction.FunctionKey(num), weight = 1f, isFunctional = true, testTag = "key_f$num")
+    fun getCompleteLaptopRows(
+        shiftState: ShiftState = ShiftState.OFF,
+        isCtrlActive: Boolean = false,
+        isAltActive: Boolean = false,
+        languageDisplayName: String = "English"
+    ): List<List<KeyItem>> {
+        val isShift = shiftState != ShiftState.OFF
+        val isCaps = shiftState == ShiftState.CAPS_LOCKED
+
+        // Row 0: Function keys (Esc, F1 - F12, Del)
+        val row0 = mutableListOf<KeyItem>()
+        row0.add(KeyItem("Esc", action = KeyAction.Escape, weight = 1.15f, isFunctional = true, testTag = "pc_esc"))
+        (1..12).forEach { num ->
+            row0.add(KeyItem("F$num", action = KeyAction.FunctionKey(num), weight = 1.0f, isFunctional = true, testTag = "pc_f$num"))
+        }
+        row0.add(KeyItem("Del", action = KeyAction.DeleteForward, weight = 1.15f, isFunctional = true, testTag = "pc_del"))
+
+        // Row 1: Number row (`/~, 1/!, 2/@, ..., =/+, Backspace)
+        val numPairs = listOf(
+            Pair("`", "~"), Pair("1", "!"), Pair("2", "@"), Pair("3", "#"), Pair("4", "$"),
+            Pair("5", "%"), Pair("6", "^"), Pair("7", "&"), Pair("8", "*"), Pair("9", "("),
+            Pair("0", ")"), Pair("-", "_"), Pair("=", "+")
+        )
+        val row1 = mutableListOf<KeyItem>()
+        numPairs.forEach { (normal, shifted) ->
+            val primary = if (isShift) shifted else normal
+            val secondary = if (isShift) normal else shifted
+            row1.add(KeyItem(primaryText = primary, secondaryText = secondary, action = KeyAction.InsertText(primary), weight = 1.0f, testTag = "pc_key_$normal"))
+        }
+        row1.add(KeyItem("⌫", action = KeyAction.Backspace, weight = 1.6f, isFunctional = true, testTag = "key_backspace"))
+
+        // Row 2: Tab, Q, W, E, R, T, Y, U, I, O, P, [{, ]}, \|
+        val row2Letters = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+        val row2 = mutableListOf<KeyItem>()
+        row2.add(KeyItem("↹ Tab", action = KeyAction.Tab, weight = 1.45f, isFunctional = true, testTag = "pc_tab"))
+        row2Letters.forEach { letter ->
+            val char = if (isShift || isCaps) letter.uppercase() else letter.lowercase()
+            row2.add(KeyItem(primaryText = char, action = KeyAction.InsertText(char), weight = 1.0f, testTag = "pc_key_$letter"))
+        }
+        val symPairsRow2 = listOf(Pair("[", "{"), Pair("]", "}"), Pair("\\", "|"))
+        symPairsRow2.forEach { (normal, shifted) ->
+            val primary = if (isShift) shifted else normal
+            val secondary = if (isShift) normal else shifted
+            row2.add(KeyItem(primaryText = primary, secondaryText = secondary, action = KeyAction.InsertText(primary), weight = if (normal == "\\") 1.25f else 1.0f, testTag = "pc_key_${if (normal == "\\") "backslash" else normal}"))
         }
 
-        val row2 = listOf(
-            KeyItem("ESC", action = KeyAction.Escape, weight = 1f, isFunctional = true, testTag = "pc_esc"),
-            KeyItem("DEL", action = KeyAction.DeleteForward, weight = 1.1f, isFunctional = true, testTag = "pc_del"),
-            KeyItem("INS", action = KeyAction.InsertText(""), weight = 0.9f, isFunctional = true, testTag = "pc_ins"),
-            KeyItem("HOME", action = KeyAction.Home, weight = 1.15f, isFunctional = true, testTag = "pc_home"),
-            KeyItem("END", action = KeyAction.End, weight = 1.15f, isFunctional = true, testTag = "pc_end"),
-            KeyItem("PGUP", action = KeyAction.PageUp, weight = 1.15f, isFunctional = true, testTag = "pc_pgup"),
-            KeyItem("PGDN", action = KeyAction.PageDown, weight = 1.15f, isFunctional = true, testTag = "pc_pgdn"),
-            KeyItem("PRTSC", action = KeyAction.Copy, weight = 1.1f, isFunctional = true, testTag = "pc_prtsc")
-        )
-
-        val row3Chars = listOf("`", "~", "|", "\\", "^", "{", "}", "[", "]")
-        val row3Middle = row3Chars.map {
-            KeyItem(it, action = KeyAction.InsertText(it), weight = 1f, testTag = "pc_sym_$it")
+        // Row 3: Caps Lock, A, S, D, F, G, H, J, K, L, ;:, '", Enter
+        val row3Letters = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+        val row3 = mutableListOf<KeyItem>()
+        row3.add(KeyItem("Caps", action = KeyAction.ToggleShift, weight = 1.7f, isFunctional = true, isActiveModifier = isCaps, testTag = "pc_caps"))
+        row3Letters.forEach { letter ->
+            val char = if (isShift || isCaps) letter.uppercase() else letter.lowercase()
+            row3.add(KeyItem(primaryText = char, action = KeyAction.InsertText(char), weight = 1.0f, testTag = "pc_key_$letter"))
         }
-        val backspaceKey = KeyItem("⌫", action = KeyAction.Backspace, weight = 1.4f, isFunctional = true, testTag = "key_backspace")
-        val tabKey = KeyItem("↹", action = KeyAction.Tab, weight = 1.1f, isFunctional = true, testTag = "pc_tab")
-        val row3 = listOf(tabKey) + row3Middle + listOf(backspaceKey)
+        val symPairsRow3 = listOf(Pair(";", ":"), Pair("'", "\""))
+        symPairsRow3.forEach { (normal, shifted) ->
+            val primary = if (isShift) shifted else normal
+            val secondary = if (isShift) normal else shifted
+            row3.add(KeyItem(primaryText = primary, secondaryText = secondary, action = KeyAction.InsertText(primary), weight = 1.0f, testTag = "pc_key_${if (normal == "'") "quote" else "semicolon"}"))
+        }
+        row3.add(KeyItem("↵ Enter", action = KeyAction.Enter, weight = 2.05f, isAccent = true, testTag = "key_enter"))
 
-        val row4 = listOf(
-            KeyItem("ABC", action = KeyAction.SwitchToLetters, weight = 1.35f, isFunctional = true, testTag = "key_switch_abc"),
-            KeyItem("Ctrl+A", action = KeyAction.SelectAll, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_a"),
-            KeyItem("Ctrl+C", action = KeyAction.Copy, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_c"),
-            KeyItem("Ctrl+V", action = KeyAction.Paste, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_v"),
-            KeyItem("Ctrl+Z", action = KeyAction.Undo, weight = 1.05f, isFunctional = true, testTag = "pc_ctrl_z"),
-            KeyItem(languageDisplayName, action = KeyAction.Space, weight = 2.4f, testTag = "key_space"),
-            KeyItem("↵", action = KeyAction.Enter, weight = 1.35f, isAccent = true, testTag = "key_enter")
-        )
+        // Row 4: Shift, Z, X, C, V, B, N, M, ,<, .>, /?, ↑, Shift
+        val row4Letters = listOf("z", "x", "c", "v", "b", "n", "m")
+        val row4 = mutableListOf<KeyItem>()
+        row4.add(KeyItem("⇧ Shift", action = KeyAction.ToggleShift, weight = 2.1f, isFunctional = true, isActiveModifier = isShift, testTag = "pc_shift_left"))
+        row4Letters.forEach { letter ->
+            val char = if (isShift || isCaps) letter.uppercase() else letter.lowercase()
+            row4.add(KeyItem(primaryText = char, action = KeyAction.InsertText(char), weight = 1.0f, testTag = "pc_key_$letter"))
+        }
+        val symPairsRow4 = listOf(Pair(",", "<"), Pair(".", ">"), Pair("/", "?"))
+        symPairsRow4.forEach { (normal, shifted) ->
+            val primary = if (isShift) shifted else normal
+            val secondary = if (isShift) normal else shifted
+            row4.add(KeyItem(primaryText = primary, secondaryText = secondary, action = KeyAction.InsertText(primary), weight = 1.0f, testTag = "pc_key_${if (normal == ",") "comma" else if (normal == ".") "period" else "slash"}"))
+        }
+        row4.add(KeyItem("↑", action = KeyAction.CursorUp, weight = 1.15f, isFunctional = true, testTag = "pc_arrow_up"))
+        row4.add(KeyItem("⇧ Shift", action = KeyAction.ToggleShift, weight = 1.7f, isFunctional = true, isActiveModifier = isShift, testTag = "pc_shift_right"))
 
-        return listOf(row1FKeys, row2, row3, row4)
+        // Row 5: Ctrl, Fn, Win, Alt, Space, Alt, Ctrl, ←, ↓, →
+        val row5 = mutableListOf<KeyItem>()
+        row5.add(KeyItem("Ctrl", action = KeyAction.ToggleCtrl, weight = 1.35f, isFunctional = true, isActiveModifier = isCtrlActive, testTag = "pc_ctrl_left"))
+        row5.add(KeyItem("Fn", action = KeyAction.FunctionKey(1), weight = 1.1f, isFunctional = true, testTag = "pc_fn"))
+        row5.add(KeyItem("❖", action = KeyAction.Escape, weight = 1.1f, isFunctional = true, testTag = "pc_win"))
+        row5.add(KeyItem("Alt", action = KeyAction.ToggleAlt, weight = 1.25f, isFunctional = true, isActiveModifier = isAltActive, testTag = "pc_alt_left"))
+        row5.add(KeyItem(primaryText = languageDisplayName, action = KeyAction.Space, weight = 4.6f, testTag = "key_space"))
+        row5.add(KeyItem("Alt", action = KeyAction.ToggleAlt, weight = 1.25f, isFunctional = true, isActiveModifier = isAltActive, testTag = "pc_alt_right"))
+        row5.add(KeyItem("Ctrl", action = KeyAction.ToggleCtrl, weight = 1.25f, isFunctional = true, isActiveModifier = isCtrlActive, testTag = "pc_ctrl_right"))
+        row5.add(KeyItem("←", action = KeyAction.CursorLeft, weight = 1.15f, isFunctional = true, testTag = "pc_arrow_left"))
+        row5.add(KeyItem("↓", action = KeyAction.CursorDown, weight = 1.15f, isFunctional = true, testTag = "pc_arrow_down"))
+        row5.add(KeyItem("→", action = KeyAction.CursorRight, weight = 1.15f, isFunctional = true, testTag = "pc_arrow_right"))
+
+        return listOf(row0, row1, row2, row3, row4, row5)
+    }
+
+    fun getExtendedPcRows(
+        shiftState: ShiftState = ShiftState.OFF,
+        isCtrlActive: Boolean = false,
+        isAltActive: Boolean = false,
+        languageDisplayName: String = "English"
+    ): List<List<KeyItem>> {
+        return getCompleteLaptopRows(shiftState, isCtrlActive, isAltActive, languageDisplayName)
     }
 }

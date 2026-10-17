@@ -110,6 +110,7 @@ fun EmojiPickerView(
     var stickerPendingDelete by remember { mutableStateOf<StickerEntity?>(null) }
     var showQuickPacksDialog by remember { mutableStateOf(false) }
     var downloadingPackId by remember { mutableStateOf<String?>(null) }
+    var keyboardStickerTab by remember { mutableStateOf(0) } // 0 = Normal, 1 = Animated
 
     val totalStandardCategories = EmojiData.categories.size
     val isRecentsSelected = selectedCategoryIndex == 0
@@ -523,91 +524,85 @@ fun EmojiPickerView(
             }
 
             MediaPickerSection.STICKERS -> {
-                // Stickers Section (Renders Animated .webp Stickers)
+                val normalStickers = remember(stickers) { stickers.filter { !it.isAnimated } }
+                val animatedStickers = remember(stickers) { stickers.filter { it.isAnimated } }
+                val displayedKeyboardStickers = if (keyboardStickerTab == 0) normalStickers else animatedStickers
+
+                // Horizontal selector bar for Normal vs Animated stickers
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = colors.enterKeyBackground,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "STICKERS",
-                            color = colors.letterKeyTextColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Animated .webp supported",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 10.sp
-                        )
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (keyboardStickerTab == 0) colors.enterKeyBackground else colors.letterKeyBackground)
+                                .clickable { keyboardStickerTab = 0 }
+                                .padding(vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Normal (${normalStickers.size})",
+                                color = if (keyboardStickerTab == 0) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                fontSize = 11.sp,
+                                fontWeight = if (keyboardStickerTab == 0) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (keyboardStickerTab == 1) colors.enterKeyBackground else colors.letterKeyBackground)
+                                .clickable { keyboardStickerTab = 1 }
+                                .padding(vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Animated (${animatedStickers.size})",
+                                color = if (keyboardStickerTab == 1) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                fontSize = 11.sp,
+                                fontWeight = if (keyboardStickerTab == 1) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Quick Button to open Sticker Studio in app
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.enterKeyBackground.copy(alpha = 0.2f))
-                                .clickable {
-                                    try {
-                                        val intent = Intent(context, MainActivity::class.java).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                            putExtra("open_tab", "stickers")
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                }
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "+ Import",
-                                color = colors.enterKeyBackground,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Load Demo Animated Stickers
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.functionKeyBackground)
-                                .clickable {
-                                    scope.launch {
-                                        try {
-                                            val db = AppDatabase.getDatabase(context)
-                                            val repo = StickerRepository(db.stickerDao())
-                                            repo.seedSampleStickers(context)
-                                            Toast.makeText(context, "Loaded animated stickers!", Toast.LENGTH_SHORT).show()
-                                        } catch (_: Exception) {}
+                    // Open Sticker Studio in App button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.functionKeyBackground)
+                            .clickable {
+                                try {
+                                    val intent = Intent(context, MainActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        putExtra("open_tab", "stickers")
                                     }
-                                }
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Load Demo",
-                                color = colors.functionKeyTextColor,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "+ Studio",
+                            color = colors.functionKeyTextColor,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
-                if (stickers.isEmpty()) {
+                if (displayedKeyboardStickers.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -620,44 +615,26 @@ fun EmojiPickerView(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SentimentSatisfiedAlt,
+                                imageVector = if (keyboardStickerTab == 0) Icons.Default.SentimentSatisfiedAlt else Icons.Default.AutoAwesome,
                                 contentDescription = null,
                                 tint = colors.letterKeySecondaryTextColor.copy(alpha = 0.6f),
                                 modifier = Modifier.size(34.dp)
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "No Animated Stickers Yet",
+                                text = if (keyboardStickerTab == 0) "No Normal Stickers" else "No Animated Stickers",
                                 color = colors.letterKeyTextColor,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Import animated .webp stickers from WhatsApp or files, or load the built-in demo stickers.",
+                                text = "Use '+ Studio' above to open Sticker Studio and import stickers from your folders.",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 11.sp,
                                 textAlign = TextAlign.Center,
                                 lineHeight = 14.sp
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        val db = AppDatabase.getDatabase(context)
-                                        val repo = StickerRepository(db.stickerDao())
-                                        repo.seedSampleStickers(context)
-                                        Toast.makeText(context, "Loaded animated demo stickers!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Load Animated Demo Stickers", fontSize = 11.sp, color = colors.enterKeyTextColor)
-                            }
                         }
                     }
                 } else {
@@ -671,7 +648,7 @@ fun EmojiPickerView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(stickers, key = { it.id }) { sticker ->
+                        items(displayedKeyboardStickers, key = { it.id }) { sticker ->
                             Box(
                                 modifier = Modifier
                                     .aspectRatio(1f)

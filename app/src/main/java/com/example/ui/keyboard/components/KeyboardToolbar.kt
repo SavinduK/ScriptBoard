@@ -53,7 +53,7 @@ fun KeyboardToolbar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Laptop key switch button
+        // 1. Laptop top shortcut bar switch button
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -64,14 +64,14 @@ fun KeyboardToolbar(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Laptop,
+                imageVector = Icons.Default.Keyboard,
                 contentDescription = "Toggle Laptop Keys Bar",
                 tint = if (isLaptopBarVisible) colors.laptopKeyActiveTextColor else colors.toolbarIconActiveTint,
                 modifier = Modifier.size(20.dp)
             )
         }
 
-        // 2. Extended laptop keyboard buttons
+        // 2. Complete Laptop Keyboard button (left of copy button)
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -82,8 +82,8 @@ fun KeyboardToolbar(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Keyboard,
-                contentDescription = "Extended Laptop Keyboard Layout",
+                imageVector = Icons.Default.Laptop,
+                contentDescription = "Complete Laptop Keyboard Layout",
                 tint = if (isExtendedPcActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
                 modifier = Modifier.size(20.dp)
             )

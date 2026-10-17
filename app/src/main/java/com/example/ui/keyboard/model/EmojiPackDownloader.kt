@@ -14,6 +14,13 @@ import java.util.concurrent.TimeUnit
 
 class EmojiPackDownloader(private val context: Context) {
 
+    companion object {
+        const val DEFAULT_GITHUB_OWNER = "keypro-org"
+        const val DEFAULT_GITHUB_REPO = "keyboard-assets"
+        const val DEFAULT_GITHUB_BRANCH = "main"
+        const val GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -31,11 +38,11 @@ class EmojiPackDownloader(private val context: Context) {
         pack: EmojiPack,
         onProgress: (progress: Float, statusText: String) -> Unit
     ): Result<DownloadResult> = withContext(Dispatchers.IO) {
-        val owner = prefs.githubRepoOwner.value.trim()
-        val repo = prefs.githubRepoName.value.trim()
-        val branch = prefs.githubRepoBranch.value.trim().ifEmpty { "main" }
+        val owner = prefs.githubRepoOwner.value.trim().ifEmpty { DEFAULT_GITHUB_OWNER }
+        val repo = prefs.githubRepoName.value.trim().ifEmpty { DEFAULT_GITHUB_REPO }
+        val branch = prefs.githubRepoBranch.value.trim().ifEmpty { DEFAULT_GITHUB_BRANCH }
         val filename = "${pack.id}.json"
-        val githubRawUrl = "https://raw.githubusercontent.com/$owner/$repo/$branch/emojis/$filename"
+        val githubRawUrl = "$GITHUB_RAW_BASE/$owner/$repo/$branch/emojis/$filename"
 
         val emojisDir = File(context.filesDir, "emojis")
         if (!emojisDir.exists()) {

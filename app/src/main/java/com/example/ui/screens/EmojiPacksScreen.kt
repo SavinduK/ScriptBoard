@@ -86,14 +86,10 @@ fun EmojiPacksScreen(
     val downloader = remember { EmojiPackDownloader(context) }
 
     val installedPackIds by keyboardPrefs.installedEmojiPacks.collectAsState()
-    val githubOwner by keyboardPrefs.githubRepoOwner.collectAsState()
-    val githubRepo by keyboardPrefs.githubRepoName.collectAsState()
-    val githubBranch by keyboardPrefs.githubRepoBranch.collectAsState()
 
     var downloadingPackId by remember { mutableStateOf<String?>(null) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadStatusText by remember { mutableStateOf("") }
-    var showRepoConfigDialog by remember { mutableStateOf(false) }
     var previewPack by remember { mutableStateOf<EmojiPack?>(null) }
     var previewItems by remember { mutableStateOf<List<EmojiPackItem>>(emptyList()) }
 
@@ -101,7 +97,7 @@ fun EmojiPacksScreen(
         scope.launch {
             downloadingPackId = pack.id
             downloadProgress = 0f
-            downloadStatusText = "Connecting to GitHub..."
+            downloadStatusText = "Downloading..."
 
             val result = downloader.downloadEmojiPack(pack) { progress, status ->
                 downloadProgress = progress
@@ -110,13 +106,7 @@ fun EmojiPacksScreen(
 
             downloadingPackId = null
             if (result.isSuccess) {
-                val data = result.getOrNull()
-                val sourceLabel = if (data?.downloadedFromRemote == true) {
-                    "GitHub ($githubOwner/$githubRepo)"
-                } else {
-                    "Repository Package Bundle"
-                }
-                Toast.makeText(context, "${pack.name} added to emoji drawer from $sourceLabel!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "${pack.name} added to emoji drawer!", Toast.LENGTH_SHORT).show()
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Unknown error"
                 Toast.makeText(context, "Download failed: $err", Toast.LENGTH_LONG).show()
@@ -169,17 +159,6 @@ fun EmojiPacksScreen(
                     fontSize = 11.sp
                 )
             }
-
-            IconButton(
-                onClick = { showRepoConfigDialog = true },
-                modifier = Modifier.testTag("btn_emoji_repo_settings")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Configure GitHub Repo",
-                    tint = colors.enterKeyBackground
-                )
-            }
         }
 
         LazyColumn(
@@ -189,67 +168,6 @@ fun EmojiPacksScreen(
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header Info Card: GitHub Repository connection info
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = colors.functionKeyBackground.copy(alpha = 0.5f)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                tint = colors.enterKeyBackground,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "GitHub Repository Remote Storage",
-                                color = colors.letterKeyTextColor,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Emoji and symbol packages are stored in your GitHub repository under emojis/ and downloaded on demand to save app storage space. If offline, local bundled package backups are used.",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.letterKeyBackground)
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Repository: $githubOwner/$githubRepo ($githubBranch)",
-                                    color = colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = "Endpoint: https://raw.githubusercontent.com/.../emojis/{id}.json",
-                                    color = colors.letterKeySecondaryTextColor,
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-                }
-            }
 
             // Section: Installed Emoji Packs
             if (installedPacks.isNotEmpty()) {
@@ -416,77 +334,6 @@ fun EmojiPacksScreen(
             containerColor = colors.toolbarBackground
         )
     }
-
-    // GitHub Repo Configuration Dialog
-    if (showRepoConfigDialog) {
-        var tempOwner by remember { mutableStateOf(githubOwner) }
-        var tempRepo by remember { mutableStateOf(githubRepo) }
-        var tempBranch by remember { mutableStateOf(githubBranch) }
-
-        AlertDialog(
-            onDismissRequest = { showRepoConfigDialog = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = null,
-                    tint = colors.enterKeyBackground
-                )
-            },
-            title = {
-                Text(
-                    text = "Configure GitHub Remote Repo",
-                    fontWeight = FontWeight.Bold,
-                    color = colors.letterKeyTextColor,
-                    fontSize = 16.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Specify your GitHub repository where emojis/ and languages/ are hosted.",
-                        color = colors.letterKeySecondaryTextColor,
-                        fontSize = 12.sp
-                    )
-                    OutlinedTextField(
-                        value = tempOwner,
-                        onValueChange = { tempOwner = it },
-                        label = { Text("Owner / Username") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = tempRepo,
-                        onValueChange = { tempRepo = it },
-                        label = { Text("Repository Name") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = tempBranch,
-                        onValueChange = { tempBranch = it },
-                        label = { Text("Branch (default: main)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        keyboardPrefs.setGithubRepoConfig(tempOwner, tempRepo, tempBranch)
-                        showRepoConfigDialog = false
-                        Toast.makeText(context, "GitHub repository configuration saved!", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground)
-                ) {
-                    Text("Save", color = colors.enterKeyTextColor)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRepoConfigDialog = false }) {
-                    Text("Cancel", color = colors.letterKeySecondaryTextColor)
-                }
-            },
-            containerColor = colors.toolbarBackground
-        )
-    }
 }
 
 @Composable
@@ -600,7 +447,7 @@ private fun EmojiPackCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = downloadStatusText.ifEmpty { "Downloading from GitHub..." },
+                            text = downloadStatusText.ifEmpty { "Downloading package..." },
                             color = colors.enterKeyBackground,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace

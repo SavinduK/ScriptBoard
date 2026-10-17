@@ -32,10 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,8 +49,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -97,9 +105,7 @@ fun StickersScreen(
     // Long hold delete confirmation
     var stickerToDelete by remember { mutableStateOf<StickerEntity?>(null) }
 
-    // WhatsApp Import state
-    var showWhatsAppFolderDialog by remember { mutableStateOf(false) }
-    var detectedWhatsAppFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var selectedStickerTab by remember { mutableStateOf(0) } // 0 = Normal, 1 = Animated
 
     // Generic file picker (SAF / ACTION_OPEN_DOCUMENT) for browsing sticker folders
     val openDocumentLauncher = rememberLauncherForActivityResult(
@@ -116,29 +122,48 @@ fun StickersScreen(
         }
     }
 
-    // Function to check WhatsApp folders
-    fun checkAndOpenWhatsAppImport() {
-        val potentialDirs = listOf(
-            File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Stickers"),
-            File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Stickers"),
-            File(Environment.getExternalStorageDirectory(), "Android/data/com.whatsapp/files/stickers")
-        )
-
-        var foundFiles: List<File> = emptyList()
-        for (dir in potentialDirs) {
-            if (dir.exists() && dir.canRead()) {
-                val files = dir.listFiles { file ->
-                    file.isFile && (file.extension.equals("webp", ignoreCase = true) || file.extension.equals("png", ignoreCase = true))
-                }?.toList() ?: emptyList()
-                if (files.isNotEmpty()) {
-                    foundFiles = files
-                    break
+    // ZIP Backup launcher using SAF CreateDocument
+    val createZipLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                isProcessing = true
+                processingMessage = "Creating stickers ZIP backup..."
+                try {
+                    var backedUpCount = 0
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(outputStream)).use { zipOut ->
+                            val addedNames = mutableSetOf<String>()
+                            stickers.forEachIndexed { index, sticker ->
+                                val file = File(sticker.filePath)
+                                if (file.exists() && file.isFile) {
+                                    val ext = file.extension.ifEmpty { "webp" }
+                                    var entryName = "${sticker.name.replace(" ", "_")}_$index.$ext"
+                                    if (addedNames.contains(entryName)) {
+                                        entryName = "sticker_${sticker.id}_$index.$ext"
+                                    }
+                                    addedNames.add(entryName)
+                                    zipOut.putNextEntry(java.util.zip.ZipEntry(entryName))
+                                    file.inputStream().use { it.copyTo(zipOut) }
+                                    zipOut.closeEntry()
+                                    backedUpCount++
+                                }
+                            }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        isProcessing = false
+                        Toast.makeText(context, "Successfully backed up $backedUpCount stickers as ZIP!", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        isProcessing = false
+                        Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
-
-        detectedWhatsAppFiles = foundFiles
-        showWhatsAppFolderDialog = true
     }
 
     Column(
@@ -196,6 +221,10 @@ fun StickersScreen(
                 )
             }
         }
+
+        val normalStickers = remember(stickers) { stickers.filter { !it.isAnimated } }
+        val animatedStickers = remember(stickers) { stickers.filter { it.isAnimated } }
+        val displayedStickers = if (selectedStickerTab == 0) normalStickers else animatedStickers
 
         // Main Content (Import Action Card + Stickers Grid)
         LazyVerticalGrid(
@@ -261,81 +290,128 @@ fun StickersScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
-                                onClick = { checkAndOpenWhatsAppImport() },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("btn_import_whatsapp"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground)
-                            ) {
-                                Text("WhatsApp Folder", color = colors.enterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-
-                            OutlinedButton(
                                 onClick = { openDocumentLauncher.launch(arrayOf("image/webp", "image/png", "image/gif", "image/*", "*/*")) },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("btn_browse_saf_files"),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground)
                             ) {
-                                Text("Select Folder", color = colors.letterKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.enterKeyTextColor
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open Folder", color = colors.enterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
 
-                            Button(
+                            OutlinedButton(
                                 onClick = {
-                                    scope.launch {
-                                        isProcessing = true
-                                        processingMessage = "Loading demo animated stickers..."
-                                        val count = stickerRepo.seedSampleStickers(context)
-                                        isProcessing = false
-                                        Toast.makeText(context, "Loaded $count demo animated stickers!", Toast.LENGTH_SHORT).show()
+                                    if (stickers.isEmpty()) {
+                                        Toast.makeText(context, "No stickers to backup yet!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        createZipLauncher.launch("stickers_backup_${System.currentTimeMillis()}.zip")
                                     }
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("btn_load_demo_stickers"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.functionKeyBackground)
+                                    .testTag("btn_backup_stickers_zip"),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Demo WebP", color = colors.functionKeyTextColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(
+                                    imageVector = Icons.Default.Archive,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.letterKeyTextColor
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Backup as ZIP", color = colors.letterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
                 }
             }
 
-            // Section Title: "SAVED STICKERS" (most used on top)
+            // Horizontal Tab Bar: Normal Stickers vs Animated Stickers
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 10.dp, bottom = 4.dp)
                 ) {
-                    Text(
-                        text = "SAVED STICKERS",
-                        color = colors.letterKeySecondaryTextColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
+                    TabRow(
+                        selectedTabIndex = selectedStickerTab,
+                        containerColor = colors.toolbarBackground,
+                        contentColor = colors.enterKeyBackground,
+                        indicator = { tabPositions ->
+                            if (selectedStickerTab < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    Modifier.tabIndicatorOffset(tabPositions[selectedStickerTab]),
+                                    color = colors.enterKeyBackground,
+                                    height = 3.dp
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                    ) {
+                        Tab(
+                            selected = selectedStickerTab == 0,
+                            onClick = { selectedStickerTab = 0 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (selectedStickerTab == 0) colors.enterKeyBackground else colors.letterKeySecondaryTextColor
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Normal Stickers (${normalStickers.size})",
+                                        color = if (selectedStickerTab == 0) colors.enterKeyBackground else colors.letterKeySecondaryTextColor,
+                                        fontWeight = if (selectedStickerTab == 0) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+                            },
+                            modifier = Modifier.testTag("tab_normal_stickers")
+                        )
 
-                    if (stickers.isNotEmpty()) {
-                        Text(
-                            text = "Most used on top • Hold to delete",
-                            color = colors.letterKeySecondaryTextColor.copy(alpha = 0.7f),
-                            fontSize = 11.sp
+                        Tab(
+                            selected = selectedStickerTab == 1,
+                            onClick = { selectedStickerTab = 1 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (selectedStickerTab == 1) colors.enterKeyBackground else colors.letterKeySecondaryTextColor
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Animated Stickers (${animatedStickers.size})",
+                                        color = if (selectedStickerTab == 1) colors.enterKeyBackground else colors.letterKeySecondaryTextColor,
+                                        fontWeight = if (selectedStickerTab == 1) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+                            },
+                            modifier = Modifier.testTag("tab_animated_stickers")
                         )
                     }
                 }
             }
 
-            // Empty State if no stickers
-            if (stickers.isEmpty()) {
+            // Empty State if no stickers in selected tab
+            if (displayedStickers.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Card(
                         modifier = Modifier
@@ -359,7 +435,7 @@ fun StickersScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Layers,
+                                    imageVector = if (selectedStickerTab == 0) Icons.Default.Image else Icons.Default.AutoAwesome,
                                     contentDescription = null,
                                     tint = colors.enterKeyBackground,
                                     modifier = Modifier.size(28.dp)
@@ -367,14 +443,17 @@ fun StickersScreen(
                             }
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = "No Stickers Yet",
+                                text = if (selectedStickerTab == 0) "No Normal Stickers Yet" else "No Animated Stickers Yet",
                                 color = colors.letterKeyTextColor,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Tap 'WhatsApp Folder' or 'Browse Files' above to import .webp stickers into your KeyPro Keyboard.",
+                                text = if (selectedStickerTab == 0)
+                                    "Tap 'Open Folder' above to import static .webp, .png, or .jpg images from your device."
+                                else
+                                    "Tap 'Open Folder' above to import animated .webp or .gif stickers from your device.",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
@@ -385,7 +464,7 @@ fun StickersScreen(
                 }
             } else {
                 // Sticker grid items (NO delete button on card; delete ONLY via long-hold)
-                items(stickers, key = { it.id }) { sticker ->
+                items(displayedStickers, key = { it.id }) { sticker ->
                     StickerGridCard(
                         sticker = sticker,
                         colors = colors,
@@ -424,81 +503,7 @@ fun StickersScreen(
         }
     }
 
-    // WhatsApp Import Dialog
-    if (showWhatsAppFolderDialog) {
-        AlertDialog(
-            onDismissRequest = { showWhatsAppFolderDialog = false },
-            title = {
-                Text(
-                    text = "Import WhatsApp Stickers",
-                    fontWeight = FontWeight.Bold,
-                    color = colors.letterKeyTextColor
-                )
-            },
-            text = {
-                Column {
-                    if (detectedWhatsAppFiles.isNotEmpty()) {
-                        Text(
-                            text = "Found ${detectedWhatsAppFiles.size} stickers in WhatsApp folder! Tap below to import all into KeyPro.",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 13.sp
-                        )
-                    } else {
-                        Text(
-                            text = "No direct WhatsApp stickers folder was found or accessible (Android Scoped Storage protects messaging app directories).",
-                            color = colors.letterKeyTextColor,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "You can easily select sticker files (.webp, .png) or exported sticker folders from any app using the Android file picker.",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (detectedWhatsAppFiles.isNotEmpty()) {
-                    Button(
-                        onClick = {
-                            showWhatsAppFolderDialog = false
-                            scope.launch {
-                                isProcessing = true
-                                processingMessage = "Importing WhatsApp stickers..."
-                                val count = stickerRepo.importStickersFromFiles(context, detectedWhatsAppFiles, "whatsapp")
-                                isProcessing = false
-                                Toast.makeText(context, "Imported $count stickers!", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground),
-                        modifier = Modifier.testTag("btn_confirm_import_wa")
-                    ) {
-                        Text("Import All (${detectedWhatsAppFiles.size})", color = colors.enterKeyTextColor)
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            showWhatsAppFolderDialog = false
-                            openDocumentLauncher.launch(arrayOf("image/webp", "image/*"))
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground),
-                        modifier = Modifier.testTag("btn_browse_saf_stickers")
-                    ) {
-                        Text("Browse Files (SAF)", color = colors.enterKeyTextColor)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWhatsAppFolderDialog = false }) {
-                    Text("Cancel", color = colors.letterKeySecondaryTextColor)
-                }
-            },
-            containerColor = colors.toolbarBackground
-        )
-    }
+
 
     // Long Hold Delete Confirmation Dialog (Requirement: "To delete stickers only use the long hold menu(remove the on sticker delete button)")
     stickerToDelete?.let { sticker ->

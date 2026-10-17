@@ -587,8 +587,28 @@ fun KeyProKeyboardView(
                     KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows(
                         holdForSymbols = holdForSymbolsEnabled
                     )
-                    KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getExtendedPcRows(languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English")
+                    KeyboardLayoutMode.EXTENDED_PC -> KeyboardLayoutGenerator.getCompleteLaptopRows(
+                        shiftState = shiftState,
+                        isCtrlActive = isCtrlActive,
+                        isAltActive = isAltActive,
+                        languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English"
+                    )
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
+                }
+
+                val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
+                val isLaptopLayout = layoutMode == KeyboardLayoutMode.EXTENDED_PC
+
+                val calculatedHeightDp = when {
+                    isLaptopLayout -> if (isTablet) 42 else 34
+                    isSinhala -> 38
+                    else -> 46
+                }
+                val calculatedFontSize = when {
+                    isLaptopLayout -> if (isTablet) 14f else 11.5f
+                    isSinhala -> 20f
+                    else -> keyFontSize
                 }
 
                 Column(
@@ -600,14 +620,14 @@ fun KeyProKeyboardView(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = if (isSinhala) 1.dp else 1.5.dp)
+                                .padding(vertical = if (isLaptopLayout) 1.dp else if (isSinhala) 1.dp else 1.5.dp)
                         ) {
                             rowKeys.forEach { key ->
                                 KeyCap(
                                     key = key,
                                     colors = colors,
-                                    heightDp = if (isSinhala) 38 else 46,
-                                    characterFontSize = if (isSinhala) 20f else keyFontSize,
+                                    heightDp = calculatedHeightDp,
+                                    characterFontSize = calculatedFontSize,
                                     holdForSymbols = holdForSymbolsEnabled,
                                     onKeyClick = { handleKeyAction(it.action) },
                                     onKeyLongClick = { clickedKey ->
