@@ -69,5 +69,7 @@ data class KeyItem(
     val isFunctional: Boolean = false,
     val isAccent: Boolean = false,
     val isActiveModifier: Boolean = false,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     val testTag: String
 )
+

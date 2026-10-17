@@ -244,10 +244,11 @@ class ExampleRobolectricTest {
     assertTrue("Row 4 should have Shift", row4.any { it.primaryText.contains("Shift") })
     assertTrue("Row 4 should have ↑", row4.any { it.primaryText == "↑" })
 
-    // Row 5: Ctrl, Fn, Win, Alt, Space, Arrow Left/Down/Right
+    // Row 5: Ctrl, Fn, Windows key (toggle back), Alt, Space, Arrow Left/Down/Right
     val row5 = rows[5]
     assertTrue("Row 5 should have Ctrl", row5.any { it.primaryText == "Ctrl" })
     assertTrue("Row 5 should have Fn", row5.any { it.primaryText == "Fn" })
+    assertTrue("Row 5 should have Windows key", row5.any { it.testTag == "pc_win" && it.action is com.example.ui.keyboard.model.KeyAction.SwitchToLetters })
     assertTrue("Row 5 should have Alt", row5.any { it.primaryText == "Alt" })
     assertTrue("Row 5 should have ←", row5.any { it.primaryText == "←" })
     assertTrue("Row 5 should have ↓", row5.any { it.primaryText == "↓" })

@@ -287,7 +287,7 @@ fun KeyProKeyboardView(
     ) {
         // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
         AnimatedVisibility(
-            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING),
+            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING && layoutMode != KeyboardLayoutMode.EXTENDED_PC),
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
@@ -300,53 +300,56 @@ fun KeyProKeyboardView(
         }
 
         // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Emoji/Stickers, Voice Typing, Settings
-        KeyboardToolbar(
-            colors = colors,
-            isLaptopBarVisible = isLaptopBarVisible,
-            isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
-            isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
-            isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
-            onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
-            onToggleExtendedPcKeys = {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.EXTENDED_PC
+        // In laptop keyboard mode, do not show the top icon bar
+        if (layoutMode != KeyboardLayoutMode.EXTENDED_PC) {
+            KeyboardToolbar(
+                colors = colors,
+                isLaptopBarVisible = isLaptopBarVisible,
+                isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
+                isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
+                isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
+                onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
+                onToggleExtendedPcKeys = {
+                    layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
+                        KeyboardLayoutMode.TEXT
+                    } else {
+                        KeyboardLayoutMode.EXTENDED_PC
+                    }
+                },
+                onPasteCopiedContent = {
+                    handleKeyAction(KeyAction.Paste)
+                },
+                onOpenClipboard = {
+                    layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
+                        KeyboardLayoutMode.TEXT
+                    } else {
+                        KeyboardLayoutMode.CLIPBOARD
+                    }
+                },
+                onOpenEmoji = {
+                    layoutMode = if (layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS) {
+                        KeyboardLayoutMode.TEXT
+                    } else {
+                        KeyboardLayoutMode.EMOJI
+                    }
+                },
+                onTriggerVoiceType = {
+                    layoutMode = if (layoutMode == KeyboardLayoutMode.VOICE_TYPING) {
+                        KeyboardLayoutMode.TEXT
+                    } else {
+                        KeyboardLayoutMode.VOICE_TYPING
+                    }
+                },
+                onOpenSettings = {
+                    // Open settings directly from the keyboard itself without opening the app
+                    layoutMode = if (layoutMode == KeyboardLayoutMode.SETTINGS) {
+                        KeyboardLayoutMode.TEXT
+                    } else {
+                        KeyboardLayoutMode.SETTINGS
+                    }
                 }
-            },
-            onPasteCopiedContent = {
-                handleKeyAction(KeyAction.Paste)
-            },
-            onOpenClipboard = {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.CLIPBOARD) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.CLIPBOARD
-                }
-            },
-            onOpenEmoji = {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.EMOJI
-                }
-            },
-            onTriggerVoiceType = {
-                layoutMode = if (layoutMode == KeyboardLayoutMode.VOICE_TYPING) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.VOICE_TYPING
-                }
-            },
-            onOpenSettings = {
-                // Open settings directly from the keyboard itself without opening the app
-                layoutMode = if (layoutMode == KeyboardLayoutMode.SETTINGS) {
-                    KeyboardLayoutMode.TEXT
-                } else {
-                    KeyboardLayoutMode.SETTINGS
-                }
-            }
-        )
+            )
+        }
 
         // Shortcut suggestion bar (when shortcut matches query)
         AnimatedVisibility(
@@ -413,7 +416,7 @@ fun KeyProKeyboardView(
         // Auto Suggest Words Feature - Show 3 Suggested Words on Top (toggleable in settings)
         // Displays 3 suggestions with user typing history frequency prioritization
         // Tapping replaces the word. User typing space/enter leaves typed word unchanged.
-        if (autoSuggestWordsEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2, KeyboardLayoutMode.NUMPAD, KeyboardLayoutMode.EXTENDED_PC)) {
+        if (autoSuggestWordsEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2, KeyboardLayoutMode.NUMPAD)) {
             val suggestionsToDisplay = remember(suggestedWords) {
                 val list = suggestedWords.toMutableList()
                 while (list.size < 3) {

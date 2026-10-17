@@ -1,5 +1,8 @@
 package com.example.ui.keyboard.model
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Laptop
+
 object ToggleableKeys {
     val pairs: Map<String, String> = mapOf(
         // Numbers <-> Symbols (Symbols 1 Row 1 <-> Symbols 2 Row 1)
@@ -508,11 +511,11 @@ object KeyboardLayoutGenerator {
         row4.add(KeyItem("↑", action = KeyAction.CursorUp, weight = 1.15f, isFunctional = true, testTag = "pc_arrow_up"))
         row4.add(KeyItem("⇧ Shift", action = KeyAction.ToggleShift, weight = 1.7f, isFunctional = true, isActiveModifier = isShift, testTag = "pc_shift_right"))
 
-        // Row 5: Ctrl, Fn, Win, Alt, Space, Alt, Ctrl, ←, ↓, →
+        // Row 5: Ctrl, Fn, Windows key (toggles back to normal keyboard), Alt, Space, Alt, Ctrl, ←, ↓, →
         val row5 = mutableListOf<KeyItem>()
         row5.add(KeyItem("Ctrl", action = KeyAction.ToggleCtrl, weight = 1.35f, isFunctional = true, isActiveModifier = isCtrlActive, testTag = "pc_ctrl_left"))
         row5.add(KeyItem("Fn", action = KeyAction.FunctionKey(1), weight = 1.1f, isFunctional = true, testTag = "pc_fn"))
-        row5.add(KeyItem("❖", action = KeyAction.Escape, weight = 1.1f, isFunctional = true, testTag = "pc_win"))
+        row5.add(KeyItem("❖", secondaryText = "Win", action = KeyAction.SwitchToLetters, weight = 1.1f, isFunctional = true, testTag = "pc_win"))
         row5.add(KeyItem("Alt", action = KeyAction.ToggleAlt, weight = 1.25f, isFunctional = true, isActiveModifier = isAltActive, testTag = "pc_alt_left"))
         row5.add(KeyItem(primaryText = languageDisplayName, action = KeyAction.Space, weight = 4.6f, testTag = "key_space"))
         row5.add(KeyItem("Alt", action = KeyAction.ToggleAlt, weight = 1.25f, isFunctional = true, isActiveModifier = isAltActive, testTag = "pc_alt_right"))

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -231,29 +234,45 @@ fun RowScope.KeyCap(
             )
         }
 
-        // Primary text
-        val isFunctionKey = key.action is KeyAction.FunctionKey || key.primaryText.matches(Regex("F\\d+"))
-        val isSinhalaChar = key.primaryText.any { it in '\u0D80'..'\u0DFF' }
+        if (key.primaryText == "❖" || key.testTag == "pc_win") {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_windows_logo),
+                contentDescription = "Windows key",
+                tint = textColor,
+                modifier = Modifier.size(if (heightDp <= 36) 15.dp else 18.dp)
+            )
+        } else if (key.icon != null) {
+            Icon(
+                imageVector = key.icon,
+                contentDescription = key.primaryText,
+                tint = textColor,
+                modifier = Modifier.size(if (heightDp <= 36) 16.dp else 19.dp)
+            )
+        } else {
+            // Primary text
+            val isFunctionKey = key.action is KeyAction.FunctionKey || key.primaryText.matches(Regex("F\\d+"))
+            val isSinhalaChar = key.primaryText.any { it in '\u0D80'..'\u0DFF' }
 
-        Text(
-            text = key.primaryText,
-            color = textColor,
-            fontSize = when {
-                isFunctionKey -> 11.5.sp // Matches F12 label size for all function keys
-                key.primaryText == "English" || key.primaryText == "සිංහල" -> 13.sp
-                isSinhalaChar -> if (key.primaryText.length > 2) 15.sp else 17.5.sp
-                key.primaryText.length == 1 && key.primaryText[0].isLetter() -> characterFontSize.sp
-                key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.85f).sp
-                key.primaryText == "12\n34" -> 10.sp
-                isSmallFont -> 11.5.sp
-                key.primaryText.length == 1 -> (characterFontSize * 0.8f).sp
-                else -> 17.sp
-            },
-            fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,
-            fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default,
-            textAlign = TextAlign.Center,
-            lineHeight = if (key.primaryText == "12\n34") 11.sp else 18.sp
-        )
+            Text(
+                text = key.primaryText,
+                color = textColor,
+                fontSize = when {
+                    isFunctionKey -> 11.5.sp // Matches F12 label size for all function keys
+                    key.primaryText == "English" || key.primaryText == "සිංහල" -> 13.sp
+                    isSinhalaChar -> if (key.primaryText.length > 2) 15.sp else 17.5.sp
+                    key.primaryText.length == 1 && key.primaryText[0].isLetter() -> characterFontSize.sp
+                    key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.85f).sp
+                    key.primaryText == "12\n34" -> 10.sp
+                    isSmallFont -> 11.5.sp
+                    key.primaryText.length == 1 -> (characterFontSize * 0.8f).sp
+                    else -> 17.sp
+                },
+                fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default,
+                textAlign = TextAlign.Center,
+                lineHeight = if (key.primaryText == "12\n34") 11.sp else 18.sp
+            )
+        }
 
         // Alternate characters popup bubble when long-pressing number/symbol keys
         if (showAlternatesPopup) {
