@@ -63,10 +63,7 @@ object LanguagePackRegistry {
 
     val ALL_PACKAGES: List<LanguagePack> = listOf(
         BUILT_IN_ENGLISH,
-        SINHALA,
-        TAMIL,
-        SPANISH,
-        HINDI
+        SINHALA
     )
 
     fun getPack(id: String): LanguagePack? {

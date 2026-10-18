@@ -29,18 +29,22 @@ class LanguagePackDownloader(private val context: Context) {
         KeyboardPreferences.getInstance(context)
     }
 
+    companion object {
+        const val REPO_OWNER = KeyboardPreferences.DEFAULT_REPO_OWNER
+        const val REPO_NAME = KeyboardPreferences.DEFAULT_REPO_NAME
+        const val REPO_BRANCH = KeyboardPreferences.DEFAULT_REPO_BRANCH
+    }
+
     /**
-     * Downloads a language package from the GitHub repository.
-     * Target URL pattern:
-     * https://raw.githubusercontent.com/{owner}/{repo}/{branch}/languages/{id}.json
+     * Downloads a language package from the constant repository.
      */
     suspend fun downloadLanguagePack(
         pack: LanguagePack,
         onProgress: (progress: Float, statusText: String) -> Unit
     ): Result<DownloadResult> = withContext(Dispatchers.IO) {
-        val owner = prefs.githubRepoOwner.value.trim()
-        val repo = prefs.githubRepoName.value.trim()
-        val branch = prefs.githubRepoBranch.value.trim().ifEmpty { "main" }
+        val owner = REPO_OWNER
+        val repo = REPO_NAME
+        val branch = REPO_BRANCH
         val filename = "${pack.id}.json"
         val githubRawUrl = "https://raw.githubusercontent.com/$owner/$repo/$branch/languages/$filename"
 
@@ -51,7 +55,7 @@ class LanguagePackDownloader(private val context: Context) {
         val targetFile = File(languagesDir, filename)
 
         try {
-            onProgress(0.1f, "Connecting to GitHub repository...")
+            onProgress(0.1f, "Preparing to download ${pack.name}...")
 
             val request = Request.Builder()
                 .url(githubRawUrl)
@@ -65,7 +69,7 @@ class LanguagePackDownloader(private val context: Context) {
             try {
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful && response.body != null) {
-                        onProgress(0.4f, "Downloading from GitHub ($filename)...")
+                        onProgress(0.4f, "Downloading ${pack.name} language pack...")
                         val body = response.body!!
                         val contentLength = body.contentLength()
                         val inputStream: InputStream = body.byteStream()
@@ -80,7 +84,7 @@ class LanguagePackDownloader(private val context: Context) {
                             totalRead += bytesRead
                             if (contentLength > 0) {
                                 val p = 0.4f + 0.4f * (totalRead.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
-                                onProgress(p, "Downloading from GitHub... ${(p * 100).toInt()}%")
+                                onProgress(p, "Downloading ${pack.name}... ${(p * 100).toInt()}%")
                             }
                         }
                         outputStream.flush()
@@ -98,7 +102,7 @@ class LanguagePackDownloader(private val context: Context) {
 
             // Fallback to local bundled asset if remote not reachable
             if (!downloadedFromRemote) {
-                onProgress(0.5f, "Extracting repository package files...")
+                onProgress(0.5f, "Extracting ${pack.name} package files...")
                 val assetPath = "languages/$filename"
                 try {
                     context.assets.open(assetPath).use { assetInput ->
@@ -109,13 +113,13 @@ class LanguagePackDownloader(private val context: Context) {
                     responseContent = targetFile.readText()
                 } catch (assetEx: Exception) {
                     return@withContext Result.failure(
-                        Exception("Could not download from $githubRawUrl and no local asset found ($assetPath): ${assetEx.message}")
+                        Exception("Could not download ${pack.name} language pack and no local asset found ($assetPath): ${assetEx.message}")
                     )
                 }
             }
 
             // Parse language file to extract predictive words and layout details
-            onProgress(0.85f, "Installing language assets & dictionary...")
+            onProgress(0.85f, "Installing ${pack.name} dictionary & layout...")
             var wordsExtracted = 0
             try {
                 if (responseContent.isNotBlank()) {
@@ -147,9 +151,9 @@ class LanguagePackDownloader(private val context: Context) {
             onProgress(1.0f, "Completed")
 
             val source = if (downloadedFromRemote) {
-                "GitHub (${owner}/${repo})"
+                "Online Package Repository"
             } else {
-                "Repository Bundle (${targetFile.length() / 1024} KB)"
+                "Bundled Package (${targetFile.length() / 1024} KB)"
             }
 
             Result.success(

@@ -73,14 +73,14 @@ class KeyboardPreferences(context: Context) {
     private val _customAccentColor = MutableStateFlow(prefs.getInt(KEY_CUSTOM_ACCENT, 0xFF00B4D8.toInt()))
     val customAccentColor: StateFlow<Int> = _customAccentColor.asStateFlow()
 
-    // GitHub Remote Language Pack Repository Configuration
-    private val _githubRepoOwner = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_OWNER, "savindukahandagamage2") ?: "savindukahandagamage2")
+    // Constant GitHub Language Pack Repository Configuration (SavinduK/ScriptBoard)
+    private val _githubRepoOwner = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_OWNER, DEFAULT_REPO_OWNER) ?: DEFAULT_REPO_OWNER)
     val githubRepoOwner: StateFlow<String> = _githubRepoOwner.asStateFlow()
 
-    private val _githubRepoName = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_NAME, "KeyPro") ?: "KeyPro")
+    private val _githubRepoName = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_NAME, DEFAULT_REPO_NAME) ?: DEFAULT_REPO_NAME)
     val githubRepoName: StateFlow<String> = _githubRepoName.asStateFlow()
 
-    private val _githubRepoBranch = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_BRANCH, "main") ?: "main")
+    private val _githubRepoBranch = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_BRANCH, DEFAULT_REPO_BRANCH) ?: DEFAULT_REPO_BRANCH)
     val githubRepoBranch: StateFlow<String> = _githubRepoBranch.asStateFlow()
 
     fun setGithubRepoConfig(owner: String, repo: String, branch: String = "main") {
@@ -274,6 +274,10 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_GITHUB_REPO_OWNER = "github_repo_owner"
         private const val KEY_GITHUB_REPO_NAME = "github_repo_name"
         private const val KEY_GITHUB_REPO_BRANCH = "github_repo_branch"
+
+        const val DEFAULT_REPO_OWNER = "SavinduK"
+        const val DEFAULT_REPO_NAME = "ScriptBoard"
+        const val DEFAULT_REPO_BRANCH = "main"
 
         @Volatile
         private var instance: KeyboardPreferences? = null

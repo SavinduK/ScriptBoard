@@ -12,6 +12,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.FileOutputStream
+import kotlinx.coroutines.runBlocking
+import com.example.data.AppDatabase
+import com.example.data.WordSuggestionManager
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -293,5 +296,61 @@ class ExampleRobolectricTest {
       }
     }
     assertTrue("ZIP should contain sample.webp", foundSample)
+  }
+
+  @Test
+  fun `only sinhala is registered as a downloadable language pack`() {
+    val allPacks = com.example.ui.keyboard.model.LanguagePackRegistry.ALL_PACKAGES
+    val downloadablePacks = allPacks.filter { !it.isBuiltIn }
+    assertEquals("Should only have exactly 1 downloadable language pack", 1, downloadablePacks.size)
+    assertEquals("Downloadable pack must be Sinhala", "si", downloadablePacks.first().id)
+    assertEquals("Sinhala", downloadablePacks.first().name)
+  }
+
+  @Test
+  fun `word suggestion manager returns sinhala words when keyboard language is sinhala`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val manager = WordSuggestionManager(db.wordFrequencyDao())
+
+    // Empty prefix with language = "si"
+    val defaultSinhalaSuggestions = manager.getSuggestions("", language = "si")
+    assertEquals(3, defaultSinhalaSuggestions.size)
+    assertTrue("All suggestions must be Sinhala words", defaultSinhalaSuggestions.all { WordSuggestionManager.isSinhalaWord(it) })
+    assertTrue("Should contain common greeting", defaultSinhalaSuggestions.contains("ආයුබෝවන්"))
+
+    // Typed prefix in Sinhala
+    val prefixSuggestions = manager.getSuggestions("කො", language = "si")
+    assertEquals(3, prefixSuggestions.size)
+    assertTrue("All suggestions must be Sinhala words", prefixSuggestions.all { WordSuggestionManager.isSinhalaWord(it) })
+    assertTrue("Should suggest කොහොමද", prefixSuggestions.contains("කොහොමද"))
+  }
+
+  @Test
+  fun `word suggestion manager returns english words when keyboard language is english`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val manager = WordSuggestionManager(db.wordFrequencyDao())
+
+    // Empty prefix with language = "en"
+    val defaultEnglishSuggestions = manager.getSuggestions("", language = "en")
+    assertEquals(3, defaultEnglishSuggestions.size)
+    assertTrue("All suggestions must be English words", defaultEnglishSuggestions.all { WordSuggestionManager.isEnglishWord(it) })
+
+    // Typed prefix in English
+    val prefixSuggestions = manager.getSuggestions("th", language = "en")
+    assertEquals(3, prefixSuggestions.size)
+    assertTrue("All suggestions must be English words", prefixSuggestions.all { WordSuggestionManager.isEnglishWord(it) })
+    assertTrue("Should suggest word starting with Th/th", prefixSuggestions.any { it.startsWith("th", ignoreCase = true) })
+  }
+
+  @Test
+  fun `word suggestion manager correctly identifies Sinhala and English characters`() {
+    assertTrue(WordSuggestionManager.isSinhalaWord("ආයුබෝවන්"))
+    assertTrue(WordSuggestionManager.isSinhalaWord("ස්තූතියි"))
+    assertTrue(WordSuggestionManager.isSinhalaWord("කොහොමද"))
+    assertTrue(WordSuggestionManager.isEnglishWord("hello"))
+    assertTrue(WordSuggestionManager.isEnglishWord("thanks"))
+    assertTrue(WordSuggestionManager.isEnglishWord("keyboard"))
   }
 }

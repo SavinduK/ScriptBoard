@@ -125,8 +125,11 @@ object KeyAlternatesProvider {
 fun RowScope.KeyCap(
     key: KeyItem,
     colors: KeyboardColors,
-    heightDp: Int = 46,
+    heightDp: Int = 54,
     characterFontSize: Float = 24f,
+    horizontalPaddingDp: Float = 3.5f,
+    verticalPaddingDp: Float = 4.0f,
+    cornerRadiusDp: Int = 10,
     holdForSymbols: Boolean = true,
     onKeyClick: (KeyItem) -> Unit,
     onKeyLongClick: ((KeyItem) -> Unit)? = null
@@ -212,9 +215,9 @@ fun RowScope.KeyCap(
         modifier = Modifier
             .weight(key.weight)
             .height(heightDp.dp)
-            .padding(horizontal = 2.5.dp, vertical = 3.dp)
-            .shadow(1.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(alpha = 0.3f))
-            .clip(RoundedCornerShape(8.dp))
+            .padding(horizontal = horizontalPaddingDp.dp, vertical = verticalPaddingDp.dp)
+            .shadow(1.5.dp, RoundedCornerShape(cornerRadiusDp.dp), ambientColor = Color.Black.copy(alpha = 0.35f))
+            .clip(RoundedCornerShape(cornerRadiusDp.dp))
             .background(animatedBg)
             .then(clickModifier)
             .testTag(key.testTag),
@@ -225,19 +228,20 @@ fun RowScope.KeyCap(
             Text(
                 text = key.secondaryText,
                 color = colors.letterKeySecondaryTextColor,
-                fontSize = 9.sp,
+                fontSize = if (heightDp >= 58) 12.sp else 9.5.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 4.dp, top = 2.dp)
+                    .padding(end = (horizontalPaddingDp + 1).dp, top = 2.dp)
             )
         }
 
         if (key.icon != null) {
+            val iconSize = (heightDp * 0.42f).dp.coerceIn(18.dp, 28.dp)
             Icon(
                 imageVector = key.icon,
                 contentDescription = key.primaryText,
                 tint = textColor,
-                modifier = Modifier.size(if (heightDp <= 36) 16.dp else 19.dp)
+                modifier = Modifier.size(iconSize)
             )
         } else {
             // Primary text
@@ -248,20 +252,20 @@ fun RowScope.KeyCap(
                 text = key.primaryText,
                 color = textColor,
                 fontSize = when {
-                    isFunctionKey -> 11.5.sp // Matches F12 label size for all function keys
-                    key.primaryText == "English" || key.primaryText == "සිංහල" -> 13.sp
-                    isSinhalaChar -> if (key.primaryText.length > 2) 15.sp else 17.5.sp
+                    isFunctionKey -> (characterFontSize * 0.5f).coerceAtLeast(11.5f).sp
+                    key.primaryText == "English" || key.primaryText == "සිංහල" -> (characterFontSize * 0.55f).coerceAtLeast(13f).sp
+                    isSinhalaChar -> if (key.primaryText.length > 2) (characterFontSize * 0.72f).sp else (characterFontSize * 0.85f).sp
                     key.primaryText.length == 1 && key.primaryText[0].isLetter() -> characterFontSize.sp
-                    key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.85f).sp
-                    key.primaryText == "12\n34" -> 10.sp
-                    isSmallFont -> 11.5.sp
-                    key.primaryText.length == 1 -> (characterFontSize * 0.8f).sp
-                    else -> 17.sp
+                    key.primaryText.length == 1 && key.primaryText[0].isDigit() -> (characterFontSize * 0.88f).sp
+                    key.primaryText == "12\n34" -> (characterFontSize * 0.45f).coerceAtLeast(10f).sp
+                    isSmallFont -> (characterFontSize * 0.5f).coerceAtLeast(11.5f).sp
+                    key.primaryText.length == 1 -> (characterFontSize * 0.85f).sp
+                    else -> (characterFontSize * 0.7f).coerceAtLeast(16f).sp
                 },
                 fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default,
                 textAlign = TextAlign.Center,
-                lineHeight = if (key.primaryText == "12\n34") 11.sp else 18.sp
+                lineHeight = if (key.primaryText == "12\n34") 12.sp else 19.sp
             )
         }
 

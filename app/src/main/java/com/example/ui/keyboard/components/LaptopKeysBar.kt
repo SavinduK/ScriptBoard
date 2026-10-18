@@ -17,6 +17,11 @@ fun LaptopKeysBar(
     colors: KeyboardColors,
     isCtrlActive: Boolean,
     isAltActive: Boolean,
+    heightDp: Int = 44,
+    horizontalPaddingDp: Float = 3.5f,
+    verticalPaddingDp: Float = 3.5f,
+    cornerRadiusDp: Int = 10,
+    fontSize: Float = 13.5f,
     onKeyClick: (KeyItem) -> Unit,
     onKeyLongClick: ((KeyItem) -> Unit)? = null
 ) {
@@ -26,19 +31,23 @@ fun LaptopKeysBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.laptopRowBackground)
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
     ) {
         laptopRows.forEach { rowKeys ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 1.dp)
+                    .padding(vertical = (verticalPaddingDp * 0.35f).dp)
             ) {
                 rowKeys.forEach { key ->
                     KeyCap(
                         key = key,
                         colors = colors,
-                        heightDp = 38,
+                        heightDp = heightDp,
+                        characterFontSize = fontSize,
+                        horizontalPaddingDp = horizontalPaddingDp,
+                        verticalPaddingDp = verticalPaddingDp,
+                        cornerRadiusDp = cornerRadiusDp,
                         onKeyClick = onKeyClick,
                         onKeyLongClick = onKeyLongClick
                     )

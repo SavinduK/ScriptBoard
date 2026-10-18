@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AppDatabase
@@ -114,13 +116,17 @@ fun KeyProKeyboardView(
     var isCtrlActive by remember { mutableStateOf(false) }
     var isAltActive by remember { mutableStateOf(false) }
     var currentWordBuffer by remember { mutableStateOf("") }
-    var suggestedWords by remember { mutableStateOf(listOf("I", "The", "Thanks")) }
+    var suggestedWords by remember(currentLanguage) {
+        mutableStateOf(
+            if (currentLanguage == "si") listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද") else listOf("I", "The", "Thanks")
+        )
+    }
     var selectedSinhalaLetter by remember { mutableStateOf("ව") }
 
-    // Update 3 word suggestions dynamically as user types (toggleable in settings)
-    LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled) {
+    // Update 3 word suggestions dynamically as user types in the selected keyboard language
+    LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled, currentLanguage) {
         if (autoSuggestWordsEnabled) {
-            val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer)
+            val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer, currentLanguage)
             suggestedWords = suggestions
         } else {
             suggestedWords = emptyList()
@@ -255,6 +261,7 @@ fun KeyProKeyboardView(
             }
             is KeyAction.SwitchLanguage -> {
                 selectedSinhalaLetter = "ව"
+                currentWordBuffer = ""
                 val nextLang = keyboardPrefs.cycleLanguage()
                 val langName = if (nextLang == "si") "සිංහල" else "English"
                 android.widget.Toast.makeText(context, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
@@ -280,24 +287,63 @@ fun KeyProKeyboardView(
         }
     }
 
-    Column(
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val isTablet = screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
+    val isVeryWide = screenWidthDp >= 900
+    val isLaptopLayout = layoutMode == KeyboardLayoutMode.EXTENDED_PC
+    val isSinhala = currentLanguage == "si" && layoutMode == KeyboardLayoutMode.TEXT
+
+    // Increased key sizes and responsive scaling for large displays
+    val calculatedHeightDp = when {
+        isLaptopLayout -> if (isTablet) 52 else 42
+        isSinhala -> if (isTablet) 54 else 45
+        else -> if (isTablet) 66 else 54
+    }
+
+    // Increased spacing between keys
+    val keyHorizontalPadding = if (isTablet) 4.5f else 3.5f
+    val keyVerticalPadding = if (isTablet) 4.5f else 3.8f
+    val keyCornerRadius = if (isTablet) 12 else 10
+    val rowVerticalPadding = if (isTablet) 2.5.dp else 1.8.dp
+
+    // Scaled font sizes
+    val calculatedFontSize = when {
+        isLaptopLayout -> if (isTablet) 16f else 13f
+        isSinhala -> if (isTablet) 24f else 19f
+        else -> if (isTablet) (keyFontSize * 1.25f).coerceAtLeast(28f) else keyFontSize
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.background)
+            .background(colors.background),
+        contentAlignment = Alignment.Center
     ) {
-        // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
-        AnimatedVisibility(
-            visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING && layoutMode != KeyboardLayoutMode.EXTENDED_PC),
-            enter = expandVertically(),
-            exit = shrinkVertically()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = if (isVeryWide) 940.dp else androidx.compose.ui.unit.Dp.Unspecified)
+                .background(colors.background)
         ) {
-            LaptopKeysBar(
-                colors = colors,
-                isCtrlActive = isCtrlActive,
-                isAltActive = isAltActive,
-                onKeyClick = { handleKeyAction(it.action) }
-            )
-        }
+            // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
+            AnimatedVisibility(
+                visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING && layoutMode != KeyboardLayoutMode.EXTENDED_PC),
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                LaptopKeysBar(
+                    colors = colors,
+                    isCtrlActive = isCtrlActive,
+                    isAltActive = isAltActive,
+                    heightDp = if (isTablet) 50 else 42,
+                    horizontalPaddingDp = keyHorizontalPadding,
+                    verticalPaddingDp = keyVerticalPadding,
+                    cornerRadiusDp = keyCornerRadius,
+                    fontSize = if (isTablet) 15f else 13f,
+                    onKeyClick = { handleKeyAction(it.action) }
+                )
+            }
 
         // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Emoji/Stickers, Voice Typing, Settings
         // In laptop keyboard mode, do not show the top icon bar
@@ -428,9 +474,9 @@ fun KeyProKeyboardView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
+                    .height(if (isTablet) 46.dp else 40.dp)
                     .background(colors.toolbarBackground.copy(alpha = 0.95f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .padding(horizontal = if (isTablet) 8.dp else 4.dp, vertical = 2.dp)
                     .testTag("row_auto_suggest_words"),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -439,7 +485,7 @@ fun KeyProKeyboardView(
                         Box(
                             modifier = Modifier
                                 .width(1.dp)
-                                .height(16.dp)
+                                .height(if (isTablet) 20.dp else 16.dp)
                                 .background(colors.functionKeyBackground.copy(alpha = 0.6f))
                         )
                     }
@@ -467,7 +513,7 @@ fun KeyProKeyboardView(
                             Text(
                                 text = word,
                                 color = if (index == 1) colors.enterKeyBackground else colors.letterKeyTextColor,
-                                fontSize = if (index == 1) 14.sp else 13.sp,
+                                fontSize = if (index == 1) (if (isTablet) 16.sp else 14.sp) else (if (isTablet) 15.sp else 13.sp),
                                 fontWeight = if (index == 1) FontWeight.Bold else FontWeight.Medium,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
@@ -599,31 +645,16 @@ fun KeyProKeyboardView(
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
                 }
 
-                val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-                val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
-                val isLaptopLayout = layoutMode == KeyboardLayoutMode.EXTENDED_PC
-
-                val calculatedHeightDp = when {
-                    isLaptopLayout -> if (isTablet) 42 else 34
-                    isSinhala -> 38
-                    else -> 46
-                }
-                val calculatedFontSize = when {
-                    isLaptopLayout -> if (isTablet) 14f else 11.5f
-                    isSinhala -> 20f
-                    else -> keyFontSize
-                }
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                        .padding(horizontal = if (isTablet) 6.dp else 2.dp, vertical = 2.dp)
                 ) {
                     currentRows.forEach { rowKeys ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = if (isLaptopLayout) 1.dp else if (isSinhala) 1.dp else 1.5.dp)
+                                .padding(vertical = rowVerticalPadding)
                         ) {
                             rowKeys.forEach { key ->
                                 KeyCap(
@@ -631,6 +662,9 @@ fun KeyProKeyboardView(
                                     colors = colors,
                                     heightDp = calculatedHeightDp,
                                     characterFontSize = calculatedFontSize,
+                                    horizontalPaddingDp = keyHorizontalPadding,
+                                    verticalPaddingDp = keyVerticalPadding,
+                                    cornerRadiusDp = keyCornerRadius,
                                     holdForSymbols = holdForSymbolsEnabled,
                                     onKeyClick = { handleKeyAction(it.action) },
                                     onKeyLongClick = { clickedKey ->
@@ -649,6 +683,7 @@ fun KeyProKeyboardView(
         }
 
         // Bottom spacer
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(if (isTablet) 32.dp else 24.dp))
+        }
     }
 }

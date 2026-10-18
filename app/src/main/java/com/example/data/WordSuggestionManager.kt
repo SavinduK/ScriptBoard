@@ -6,11 +6,14 @@ import java.util.Locale
 
 class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
 
-    // Common starter words when nothing is typed yet
-    private val defaultStarterWords = listOf("I", "The", "Thanks", "Hello", "Yes", "Please")
+    // Common starter words when nothing is typed yet (English)
+    private val defaultEnglishStarterWords = listOf("I", "The", "Thanks", "Hello", "Yes", "Please", "How", "Good", "You")
+
+    // Common starter words when nothing is typed yet (Sinhala)
+    private val defaultSinhalaStarterWords = listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද", "සුභ", "ඔව්", "හොඳයි", "මම", "ඔබ", "අපි")
 
     // Common core English dictionary words for word completions
-    private val commonVocabulary = listOf(
+    private val commonEnglishVocabulary = listOf(
         "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not",
         "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from",
         "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would",
@@ -32,24 +35,55 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
         "android", "keyboard", "mobile", "device", "quick", "fast", "speed", "test"
     )
 
+    // Common core Sinhala dictionary words for word completions
+    private val commonSinhalaVocabulary = listOf(
+        "ආයුබෝවන්", "ස්තූතියි", "ඔව්", "නැහැ", "කොහොමද", "සුභ", "උදෑසනක්", "දවසක්", "හොඳයි", "මම",
+        "ඔබ", "අපි", "ඔවුන්", "එන්න", "යන්න", "කරන්න", "දන්නවා", "ලස්සන", "ශ්‍රී", "ලංකා",
+        "ගෙදර", "පාසල", "රස්සාව", "පොත", "කෑම", "වතුර", "මිතුරා", "පවුල", "ආදරය", "සතුට",
+        "වැඩ", "වෙලාව", "දැන්", "පස්සේ", "හරි", "කමක්", "නෑ", "ඉක්මනින්", "කියන්න", "අහන්න",
+        "බලන්න", "ලියන්න", "කියවන්න", "යමු", "එමු", "දෙන්න", "ගන්න", "මොකක්ද", "ඇයි", "කොහෙද",
+        "කවදාද", "කවුද", "කොහොම", "හොඳ", "නරක", "ලොකු", "පොඩි", "අලුත්", "පරණ", "මිල",
+        "මුදල්", "දුරකථනය", "පණිවිඩය", "ස්ථානය", "මාර්ගය", "රට", "නගරය", "ගම", "කාලගුණය", "වැස්ස",
+        "හිරු", "දවල්", "රෑ", "හවස", "ඊයේ", "අද", "හෙට", "සතිය", "මාසය", "අවුරුද්ද",
+        "මිතුරිය", "මල්ලී", "අයියා", "අක්කා", "නංගී", "අම්මා", "තාත්තා", "ගුරුවරයා", "වෛද්‍යවරයා",
+        "කඩේ", "බස්", "කෝච්චිය", "කාර්", "පාපැදිය", "ගමන", "නිවාඩුව", "පාඩම", "විභාගය", "ප්‍රශ්නය",
+        "පිළිතුර", "සත්‍යය", "මල්", "ගස්", "නැවුම්", "රස", "බොන්න", "නිදාගන්න", "නැගිටින්න"
+    )
+
+    companion object {
+        fun isSinhalaWord(word: String): Boolean {
+            return word.any { it in '\u0D80'..'\u0DFF' }
+        }
+
+        fun isEnglishWord(word: String): Boolean {
+            return !isSinhalaWord(word)
+        }
+    }
+
     /**
-     * Returns exactly 3 suggested words matching the current typed prefix.
+     * Returns exactly 3 suggested words matching the current typed prefix in the SELECTED language.
+     * When language == "si", only suggests Sinhala words.
+     * When language == "en", only suggests English words.
      * Prioritizes user typing history based on frequency (same word used more -> suggest more).
-     * If prefix is blank, returns top 3 words from user history or starter defaults.
      */
-    suspend fun getSuggestions(prefix: String): List<String> = withContext(Dispatchers.IO) {
+    suspend fun getSuggestions(prefix: String, language: String = "en"): List<String> = withContext(Dispatchers.IO) {
         val cleanPrefix = prefix.trim()
+        val isSinhala = language == "si"
 
         if (cleanPrefix.isEmpty()) {
-            // Suggest top 3 most used words from user typing history
+            val starterWords = if (isSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
+            // Suggest top 3 most used words from user typing history matching language
             val topHistory = try {
-                wordFrequencyDao.getTopWords(limit = 3).map { it.word }
+                wordFrequencyDao.getTopWords(limit = 20)
+                    .map { it.word }
+                    .filter { if (isSinhala) isSinhalaWord(it) else isEnglishWord(it) }
+                    .take(3)
             } catch (_: Exception) {
                 emptyList()
             }
 
             val suggestions = topHistory.toMutableList()
-            for (defaultWord in defaultStarterWords) {
+            for (defaultWord in starterWords) {
                 if (suggestions.size >= 3) break
                 if (!suggestions.any { it.equals(defaultWord, ignoreCase = true) }) {
                     suggestions.add(defaultWord)
@@ -58,30 +92,31 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
             return@withContext suggestions.take(3)
         }
 
-        val prefixLower = cleanPrefix.lowercase(Locale.ROOT)
+        val prefixCleaned = if (isSinhala) cleanPrefix else cleanPrefix.lowercase(Locale.ROOT)
+        val targetVocabulary = if (isSinhala) commonSinhalaVocabulary else commonEnglishVocabulary
+        val starterFallback = if (isSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
 
         // 1. Fetch user words from history matching prefix
         val userWords = try {
-            wordFrequencyDao.getSuggestionsForPrefix(prefixLower, limit = 10)
+            wordFrequencyDao.getSuggestionsForPrefix(prefixCleaned, limit = 20)
+                .filter { if (isSinhala) isSinhalaWord(it.word) else isEnglishWord(it.word) }
         } catch (_: Exception) {
             emptyList()
         }
 
         // 2. Score candidates: User words get heavy weighting based on frequency
-        // (same word used more -> suggested more)
         val scoreMap = mutableMapOf<String, Int>()
 
         for (item in userWords) {
-            val score = 1000 + (item.frequency * 50) + if (item.word == prefixLower) 200 else 0
+            val score = 1000 + (item.frequency * 50) + if (item.word == prefixCleaned) 200 else 0
             scoreMap[item.word] = score
         }
 
-        // 3. Match from common vocabulary
-        for (vocab in commonVocabulary) {
-            if (vocab.startsWith(prefixLower)) {
+        // 3. Match from common vocabulary of the selected language
+        for (vocab in targetVocabulary) {
+            if (vocab.startsWith(prefixCleaned, ignoreCase = !isSinhala)) {
                 if (!scoreMap.containsKey(vocab)) {
-                    // Vocabulary words have lower base score than user history
-                    scoreMap[vocab] = 100 + if (vocab == prefixLower) 50 else 0
+                    scoreMap[vocab] = 100 + if (vocab.equals(prefixCleaned, ignoreCase = !isSinhala)) 50 else 0
                 }
             }
         }
@@ -92,22 +127,28 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
             .map { it.key }
             .toMutableList()
 
-        // If fewer than 3, add fallback words starting with or containing prefix or prefix itself
+        // 5. If fewer than 3, add fallback words starting with or containing prefix from the same language
         if (sortedCandidates.size < 3) {
-            if (!sortedCandidates.contains(prefixLower)) {
-                sortedCandidates.add(prefixLower)
+            if (!sortedCandidates.contains(prefixCleaned)) {
+                sortedCandidates.add(prefixCleaned)
             }
-            for (vocab in commonVocabulary) {
+            for (vocab in targetVocabulary) {
                 if (sortedCandidates.size >= 3) break
-                if (vocab.contains(prefixLower) && !sortedCandidates.contains(vocab)) {
+                if (vocab.contains(prefixCleaned, ignoreCase = !isSinhala) && !sortedCandidates.contains(vocab)) {
                     sortedCandidates.add(vocab)
+                }
+            }
+            for (fallback in starterFallback) {
+                if (sortedCandidates.size >= 3) break
+                if (!sortedCandidates.contains(fallback)) {
+                    sortedCandidates.add(fallback)
                 }
             }
         }
 
-        // 5. Adjust casing according to how user typed the prefix
+        // 6. Adjust casing if English, or preserve as-is for Sinhala
         val formatted = sortedCandidates.take(3).map { word ->
-            applyCasing(cleanPrefix, word)
+            if (isSinhala) word else applyCasing(cleanPrefix, word)
         }
 
         formatted
@@ -118,7 +159,12 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
      * Increments the frequency count for this word.
      */
     suspend fun recordWordUsed(word: String) = withContext(Dispatchers.IO) {
-        val clean = word.trim().trim { !it.isLetterOrDigit() }.lowercase(Locale.ROOT)
+        val isSinhala = isSinhalaWord(word)
+        val clean = if (isSinhala) {
+            word.trim().trim { it.isWhitespace() || it in listOf('.', ',', '!', '?', ';', ':', '(', ')', '"', '\'') }
+        } else {
+            word.trim().trim { !it.isLetterOrDigit() }.lowercase(Locale.ROOT)
+        }
         if (clean.length < 2) return@withContext
 
         try {
