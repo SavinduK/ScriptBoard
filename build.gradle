@@ -1,0 +1,3 @@
+tasks.register('assembleDebug', Exec) {
+    commandLine 'npm', 'run', 'build'
+}
