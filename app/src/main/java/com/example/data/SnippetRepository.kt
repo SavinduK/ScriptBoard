@@ -82,22 +82,74 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
         snippetDao.clearUnpinned()
     }
 
-    suspend fun saveToClipboardHistory(text: String) {
-        if (text.isBlank()) return
+    /**
+     * Purges unpinned clipboard history older than [retentionDays] days.
+     * Pinned snippets are safely preserved and never deleted.
+     */
+    suspend fun purgeExpiredHistory(retentionDays: Int): Int {
+        if (retentionDays <= 0) return 0
+        val cutoff = System.currentTimeMillis() - (retentionDays.toLong() * 24L * 60L * 60L * 1000L)
+        return snippetDao.deleteHistoryOlderThan(cutoff)
+    }
+
+    suspend fun saveToClipboardHistory(
+        text: String,
+        syncId: String = "",
+        originDeviceId: String = ""
+    ): SnippetEntity? {
+        if (text.isBlank()) return null
         val existing = snippetDao.findByContent(text)
-        if (existing == null) {
+        return if (existing == null) {
             val title = text.lineSequence().firstOrNull()?.trim()?.take(25)?.ifEmpty { "Clipboard Text" } ?: "Clipboard Text"
-            snippetDao.insertSnippet(
-                SnippetEntity(
-                    title = title,
-                    content = text,
-                    isPinned = false,
-                    category = "History",
-                    timestamp = System.currentTimeMillis()
-                )
+            val entity = SnippetEntity(
+                title = title,
+                content = text,
+                isPinned = false,
+                category = "History",
+                timestamp = System.currentTimeMillis(),
+                syncId = syncId,
+                originDeviceId = originDeviceId
             )
-        } else if (!existing.isPinned) {
-            snippetDao.updateSnippet(existing.copy(timestamp = System.currentTimeMillis()))
+            val newId = snippetDao.insertSnippet(entity)
+            entity.copy(id = newId)
+        } else {
+            if (!existing.isPinned) {
+                snippetDao.updateSnippet(existing.copy(timestamp = System.currentTimeMillis()))
+            }
+            existing
         }
+    }
+
+    suspend fun saveSyncedSnippet(
+        title: String,
+        content: String,
+        isPinned: Boolean,
+        category: String,
+        timestamp: Long,
+        imageUri: String?,
+        isImage: Boolean,
+        mimeType: String?,
+        syncId: String,
+        originDeviceId: String
+    ): SnippetEntity {
+        // Prevent duplicate insert if already present by syncId
+        if (syncId.isNotBlank()) {
+            val existing = snippetDao.findBySyncId(syncId)
+            if (existing != null) return existing
+        }
+        val entity = SnippetEntity(
+            title = title,
+            content = content,
+            isPinned = isPinned,
+            category = category,
+            timestamp = timestamp,
+            imageUri = imageUri,
+            isImage = isImage,
+            mimeType = mimeType,
+            syncId = syncId,
+            originDeviceId = originDeviceId
+        )
+        val id = snippetDao.insertSnippet(entity)
+        return entity.copy(id = id)
     }
 }

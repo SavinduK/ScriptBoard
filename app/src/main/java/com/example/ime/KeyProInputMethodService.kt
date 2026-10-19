@@ -61,18 +61,50 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         repository = SnippetRepository(db.snippetDao())
         keyboardPrefs = KeyboardPreferences.getInstance(this)
 
-        // Clipboard history auto-save listener (Request #4)
+        // Clipboard history auto-save and cross-device sync listener
         try {
+            val syncManager = com.example.sync.ClipboardSyncManager.getInstance(this)
+            // Auto-purge old history if enabled
+            if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
+                serviceScope.launch(Dispatchers.IO) {
+                    repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
+                }
+            }
+
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
                 try {
                     if (cm != null && cm.hasPrimaryClip()) {
                         val clip = cm.primaryClip
                         if (clip != null && clip.itemCount > 0) {
-                            val text = clip.getItemAt(0).text?.toString()
-                            if (!text.isNullOrBlank()) {
+                            val item = clip.getItemAt(0)
+                            val uri = item.uri
+                            if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
                                 serviceScope.launch(Dispatchers.IO) {
-                                    repository.saveToClipboardHistory(text)
+                                    val id = repository.saveImageToClipboard(uri.toString())
+                                    val savedEntity = repository.allSnippets
+                                    // Broadcast image snippet to paired devices
+                                    val entity = com.example.data.SnippetEntity(
+                                        id = id,
+                                        title = "Image Clip",
+                                        content = uri.toString(),
+                                        isPinned = false,
+                                        category = "Images",
+                                        imageUri = uri.toString(),
+                                        isImage = true,
+                                        mimeType = "image/*"
+                                    )
+                                    syncManager.broadcastSnippet(entity)
+                                }
+                            } else {
+                                val text = item.text?.toString()
+                                if (!text.isNullOrBlank()) {
+                                    serviceScope.launch(Dispatchers.IO) {
+                                        val saved = repository.saveToClipboardHistory(text)
+                                        if (saved != null) {
+                                            syncManager.broadcastSnippet(saved)
+                                        }
+                                    }
                                 }
                             }
                         }

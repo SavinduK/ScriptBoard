@@ -40,8 +40,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val wordSuggestionManager = WordSuggestionManager(AppDatabase.getDatabase(application).wordFrequencyDao())
+    val syncManager = com.example.sync.ClipboardSyncManager.getInstance(application)
+
+    val pairedDevices: StateFlow<List<com.example.data.ConnectedDeviceEntity>> = syncManager.connectedDeviceDao.getAllDevices()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val syncActivityLog = syncManager.syncActivityLog
+    val autoDeleteClipboardEnabled = keyboardPrefs.autoDeleteClipboardEnabled
+    val clipboardRetentionDays = keyboardPrefs.clipboardRetentionDays
+    val clipboardSyncEnabled = keyboardPrefs.clipboardSyncEnabled
+    val clipboardSyncImages = keyboardPrefs.clipboardSyncImages
+    val localDeviceName = keyboardPrefs.localDeviceName
 
     init {
+        // Auto-purge expired history on startup if enabled
+        if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
+            viewModelScope.launch {
+                repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
+            }
+        }
+
         try {
             clipboardManager.addPrimaryClipChangedListener {
                 try {
@@ -51,13 +69,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val uri = item.uri
                         if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
                             viewModelScope.launch {
-                                repository.saveImageToClipboard(uri.toString())
+                                val id = repository.saveImageToClipboard(uri.toString())
+                                val entity = SnippetEntity(
+                                    id = id,
+                                    title = "Image Clip",
+                                    content = uri.toString(),
+                                    isPinned = false,
+                                    category = "Images",
+                                    imageUri = uri.toString(),
+                                    isImage = true,
+                                    mimeType = "image/*"
+                                )
+                                syncManager.broadcastSnippet(entity)
                             }
                         } else {
                             val text = item.text?.toString()
                             if (!text.isNullOrBlank()) {
                                 viewModelScope.launch {
-                                    repository.saveToClipboardHistory(text)
+                                    val saved = repository.saveToClipboardHistory(text)
+                                    if (saved != null) {
+                                        syncManager.broadcastSnippet(saved)
+                                    }
                                 }
                             }
                         }
@@ -531,5 +563,97 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.clearUnpinned()
             _lastActionStatus.value = "Cleared clipboard history"
         }
+    }
+
+    fun setAutoDeleteClipboard(enabled: Boolean) {
+        keyboardPrefs.setAutoDeleteClipboardEnabled(enabled)
+        if (enabled) {
+            viewModelScope.launch {
+                val purgedCount = repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
+                _lastActionStatus.value = "Auto-delete enabled (${keyboardPrefs.clipboardRetentionDays.value} days). Cleaned $purgedCount items."
+            }
+        } else {
+            _lastActionStatus.value = "Auto-delete disabled"
+        }
+    }
+
+    fun setClipboardRetention(days: Int) {
+        keyboardPrefs.setClipboardRetentionDays(days)
+        if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
+            viewModelScope.launch {
+                val purgedCount = repository.purgeExpiredHistory(days)
+                _lastActionStatus.value = "Retention set to $days days. Cleaned $purgedCount items."
+            }
+        } else {
+            _lastActionStatus.value = "Retention set to $days days"
+        }
+    }
+
+    fun purgeExpiredHistoryNow(onComplete: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val count = repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
+            _lastActionStatus.value = "Cleaned $count expired history items."
+            onComplete(count)
+        }
+    }
+
+    fun setClipboardSync(enabled: Boolean) {
+        keyboardPrefs.setClipboardSyncEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Clipboard sync enabled" else "Clipboard sync disabled"
+    }
+
+    fun setClipboardSyncImages(enabled: Boolean) {
+        keyboardPrefs.setClipboardSyncImages(enabled)
+        _lastActionStatus.value = if (enabled) "Image syncing enabled" else "Image syncing disabled"
+    }
+
+    fun setDeviceName(name: String) {
+        keyboardPrefs.setLocalDeviceName(name)
+        _lastActionStatus.value = "Device name updated: $name"
+    }
+
+    fun pairDevice(
+        ip: String,
+        port: Int = 8765,
+        token: String = "",
+        name: String = "",
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val result = syncManager.pairWithDevice(ip, port, token, name)
+            if (result.isSuccess) {
+                _lastActionStatus.value = "Paired with ${result.getOrNull()?.name ?: ip}"
+                onResult(true)
+            } else {
+                _lastActionStatus.value = "Pairing failed: ${result.exceptionOrNull()?.message}"
+                onResult(false)
+            }
+        }
+    }
+
+    fun unpairDevice(deviceId: String) {
+        viewModelScope.launch {
+            syncManager.unpairDevice(deviceId)
+            _lastActionStatus.value = "Device unpaired"
+        }
+    }
+
+    fun simulateTestDevicePairing() {
+        viewModelScope.launch {
+            syncManager.simulateTestDevicePairing()
+            _lastActionStatus.value = "Simulated peer device paired & test clips synced!"
+        }
+    }
+
+    fun sendTestBroadcast(text: String) {
+        val snippet = SnippetEntity(
+            title = "Test Sync",
+            content = text,
+            isPinned = false,
+            category = "Synced",
+            originDeviceId = keyboardPrefs.getLocalDeviceId()
+        )
+        syncManager.broadcastSnippet(snippet)
+        _lastActionStatus.value = "Broadcasted test clip to all connected devices"
     }
 }

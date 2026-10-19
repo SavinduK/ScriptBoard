@@ -22,6 +22,16 @@ class KeyProApplication : Application(), ImageLoaderFactory {
                 val db = AppDatabase.getDatabase(this@KeyProApplication)
                 val repo = StickerRepository(db.stickerDao())
                 repo.ensureSampleStickersSeeded(this@KeyProApplication)
+
+                // Start background clipboard sync manager
+                val syncManager = com.example.sync.ClipboardSyncManager.getInstance(this@KeyProApplication)
+
+                // Check and auto-purge expired history (7, 14, 28 days) if enabled
+                val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(this@KeyProApplication)
+                if (prefs.autoDeleteClipboardEnabled.value) {
+                    val snippetRepo = com.example.data.SnippetRepository(db.snippetDao())
+                    snippetRepo.purgeExpiredHistory(prefs.clipboardRetentionDays.value)
+                }
             } catch (_: Exception) {}
         }
     }

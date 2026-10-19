@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,10 @@ fun InKeyboardClipboardView(
     onBackToLetters: () -> Unit
 ) {
     val context = LocalContext.current
+    val prefs = remember { com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context) }
+    val autoDeleteEnabled by prefs.autoDeleteClipboardEnabled.collectAsState()
+    val retentionDays by prefs.clipboardRetentionDays.collectAsState()
+
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(ClipboardTab.ALL) }
 
@@ -215,6 +220,30 @@ fun InKeyboardClipboardView(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 6.dp)
         ) {
+            // Retention & Sync Quick Status Bar
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.functionKeyBackground.copy(alpha = 0.5f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (autoDeleteEnabled) "⏱ Auto-cleans after $retentionDays days" else "⏱ Keep history indefinitely",
+                        fontSize = 11.sp,
+                        color = colors.letterKeySecondaryTextColor
+                    )
+                    Text(
+                        text = "🔄 P2P Sync Active",
+                        fontSize = 11.sp,
+                        color = colors.enterKeyBackground
+                    )
+                }
+            }
+
             // IMAGES TAB
             if (selectedTab == ClipboardTab.IMAGES) {
                 item {

@@ -83,6 +83,62 @@ class KeyboardPreferences(context: Context) {
     private val _githubRepoBranch = MutableStateFlow(prefs.getString(KEY_GITHUB_REPO_BRANCH, DEFAULT_REPO_BRANCH) ?: DEFAULT_REPO_BRANCH)
     val githubRepoBranch: StateFlow<String> = _githubRepoBranch.asStateFlow()
 
+    // Clipboard Auto-Deletion (Retention: 7, 14, 28 days)
+    private val _autoDeleteClipboardEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_DELETE_CLIPBOARD, false))
+    val autoDeleteClipboardEnabled: StateFlow<Boolean> = _autoDeleteClipboardEnabled.asStateFlow()
+
+    private val _clipboardRetentionDays = MutableStateFlow(prefs.getInt(KEY_CLIPBOARD_RETENTION_DAYS, 7))
+    val clipboardRetentionDays: StateFlow<Int> = _clipboardRetentionDays.asStateFlow()
+
+    // Cross-Device Clipboard Sync Settings
+    private val _clipboardSyncEnabled = MutableStateFlow(prefs.getBoolean(KEY_CLIPBOARD_SYNC_ENABLED, true))
+    val clipboardSyncEnabled: StateFlow<Boolean> = _clipboardSyncEnabled.asStateFlow()
+
+    private val _clipboardSyncImages = MutableStateFlow(prefs.getBoolean(KEY_CLIPBOARD_SYNC_IMAGES, true))
+    val clipboardSyncImages: StateFlow<Boolean> = _clipboardSyncImages.asStateFlow()
+
+    private val _localDeviceName = MutableStateFlow(
+        prefs.getString(KEY_LOCAL_DEVICE_NAME, android.os.Build.MODEL ?: "Android Device")
+            ?: (android.os.Build.MODEL ?: "Android Device")
+    )
+    val localDeviceName: StateFlow<String> = _localDeviceName.asStateFlow()
+
+    fun getLocalDeviceId(): String {
+        var id = prefs.getString(KEY_LOCAL_DEVICE_ID, null)
+        if (id.isNullOrBlank()) {
+            id = java.util.UUID.randomUUID().toString().take(12)
+            prefs.edit().putString(KEY_LOCAL_DEVICE_ID, id).apply()
+        }
+        return id
+    }
+
+    fun setAutoDeleteClipboardEnabled(enabled: Boolean) {
+        _autoDeleteClipboardEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_AUTO_DELETE_CLIPBOARD, enabled).apply()
+    }
+
+    fun setClipboardRetentionDays(days: Int) {
+        val validDays = if (days in listOf(7, 14, 28)) days else 7
+        _clipboardRetentionDays.value = validDays
+        prefs.edit().putInt(KEY_CLIPBOARD_RETENTION_DAYS, validDays).apply()
+    }
+
+    fun setClipboardSyncEnabled(enabled: Boolean) {
+        _clipboardSyncEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_CLIPBOARD_SYNC_ENABLED, enabled).apply()
+    }
+
+    fun setClipboardSyncImages(enabled: Boolean) {
+        _clipboardSyncImages.value = enabled
+        prefs.edit().putBoolean(KEY_CLIPBOARD_SYNC_IMAGES, enabled).apply()
+    }
+
+    fun setLocalDeviceName(name: String) {
+        val trimmed = name.trim().ifEmpty { android.os.Build.MODEL ?: "Android Device" }
+        _localDeviceName.value = trimmed
+        prefs.edit().putString(KEY_LOCAL_DEVICE_NAME, trimmed).apply()
+    }
+
     fun setGithubRepoConfig(owner: String, repo: String, branch: String = "main") {
         val cleanOwner = owner.trim()
         val cleanRepo = repo.trim()
@@ -274,6 +330,13 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_GITHUB_REPO_OWNER = "github_repo_owner"
         private const val KEY_GITHUB_REPO_NAME = "github_repo_name"
         private const val KEY_GITHUB_REPO_BRANCH = "github_repo_branch"
+
+        private const val KEY_AUTO_DELETE_CLIPBOARD = "clipboard_auto_delete_enabled"
+        private const val KEY_CLIPBOARD_RETENTION_DAYS = "clipboard_retention_days"
+        private const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
+        private const val KEY_CLIPBOARD_SYNC_IMAGES = "clipboard_sync_images"
+        private const val KEY_LOCAL_DEVICE_ID = "local_device_id"
+        private const val KEY_LOCAL_DEVICE_NAME = "local_device_name"
 
         const val DEFAULT_REPO_OWNER = "SavinduK"
         const val DEFAULT_REPO_NAME = "ScriptBoard"

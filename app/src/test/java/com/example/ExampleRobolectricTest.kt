@@ -404,5 +404,128 @@ class ExampleRobolectricTest {
     val modes = com.example.ui.keyboard.model.KeyboardLayoutMode.values()
     assertTrue("KeyboardLayoutMode must contain GLIDE_TYPING", modes.any { it.name == "GLIDE_TYPING" })
   }
+
+  @Test
+  fun `clipboard auto-deletion purges unpinned history older than retention days and preserves pinned snippets`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = com.example.data.AppDatabase.getDatabase(context)
+    val dao = db.snippetDao()
+    val repo = com.example.data.SnippetRepository(dao)
+
+    val now = System.currentTimeMillis()
+    val eightDaysAgo = now - (8L * 24L * 60L * 60L * 1000L)
+    val fifteenDaysAgo = now - (15L * 24L * 60L * 60L * 1000L)
+
+    // Insert old unpinned history item (8 days old)
+    dao.insertSnippet(
+      com.example.data.SnippetEntity(
+        title = "Old History 8d",
+        content = "Temporary unpinned 8d text",
+        isPinned = false,
+        timestamp = eightDaysAgo
+      )
+    )
+
+    // Insert old unpinned history item (15 days old)
+    dao.insertSnippet(
+      com.example.data.SnippetEntity(
+        title = "Old History 15d",
+        content = "Temporary unpinned 15d text",
+        isPinned = false,
+        timestamp = fifteenDaysAgo
+      )
+    )
+
+    // Insert old PINNED item (15 days old) - MUST NOT BE DELETED!
+    val pinnedId = dao.insertSnippet(
+      com.example.data.SnippetEntity(
+        title = "Important Pinned 15d",
+        content = "Important password or address",
+        isPinned = true,
+        timestamp = fifteenDaysAgo
+      )
+    )
+
+    // Insert fresh history item (today) - MUST NOT BE DELETED!
+    val freshId = dao.insertSnippet(
+      com.example.data.SnippetEntity(
+        title = "Fresh History",
+        content = "Copied 5 mins ago",
+        isPinned = false,
+        timestamp = now
+      )
+    )
+
+    // Purge items older than 7 days
+    val purgedCount = repo.purgeExpiredHistory(retentionDays = 7)
+    assertTrue("Should have purged at least 2 items older than 7 days", purgedCount >= 2)
+
+    // Verify pinned item still exists!
+    val pinnedItem = dao.findByContent("Important password or address")
+    assertNotNull("Pinned items must never be deleted by auto-retention", pinnedItem)
+    assertTrue("Pinned item must remain pinned", pinnedItem!!.isPinned)
+
+    // Verify fresh item still exists!
+    val freshItem = dao.findByContent("Copied 5 mins ago")
+    assertNotNull("Fresh history items within retention window must be preserved", freshItem)
+
+    // Verify 8d and 15d unpinned items were purged
+    val oldItem8 = dao.findByContent("Temporary unpinned 8d text")
+    assertTrue("Unpinned 8d item should be purged by 7-day retention", oldItem8 == null)
+  }
+
+  @Test
+  fun `qr code pairing payload serialization and deserialization`() {
+    val json = com.example.sync.QRCodeUtil.buildPairingJson(
+      deviceId = "dev_12345",
+      deviceName = "Galaxy S24",
+      ip = "192.168.1.150",
+      port = 8765,
+      token = "sec_test_token"
+    )
+
+    val parsed = com.example.sync.QRCodeUtil.parsePairingString(json)
+    assertNotNull("Parsed pairing payload should not be null", parsed)
+    assertEquals("dev_12345", parsed!!.deviceId)
+    assertEquals("Galaxy S24", parsed.deviceName)
+    assertEquals("192.168.1.150", parsed.ip)
+    assertEquals(8765, parsed.port)
+    assertEquals("sec_test_token", parsed.token)
+
+    // Test raw IP fallback parsing
+    val parsedRaw = com.example.sync.QRCodeUtil.parsePairingString("192.168.1.200:8765")
+    assertNotNull(parsedRaw)
+    assertEquals("192.168.1.200", parsedRaw!!.ip)
+    assertEquals(8765, parsedRaw.port)
+  }
+
+  @Test
+  fun `clipboard sync manager detects and blocks cyclic loops`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val syncManager = com.example.sync.ClipboardSyncManager.getInstance(context)
+
+    val testSyncId = "test_sync_id_${System.currentTimeMillis()}"
+    assertTrue("Sync ID should not be processed yet", !syncManager.isSyncIdProcessed(testSyncId))
+
+    syncManager.markSyncIdProcessed(testSyncId)
+    assertTrue("Sync ID must be marked as processed to prevent loop", syncManager.isSyncIdProcessed(testSyncId))
+  }
+
+  @Test
+  fun `simulated test device pairing seeds connected device and synced clips`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val syncManager = com.example.sync.ClipboardSyncManager.getInstance(context)
+
+    syncManager.simulateTestDevicePairing()
+
+    val devices = syncManager.connectedDeviceDao.getAllDevicesList()
+    assertTrue("Connected devices should contain at least 1 device", devices.isNotEmpty())
+    assertTrue("Should have paired device", devices.any { it.name.contains("Samsung", ignoreCase = true) })
+
+    val db = com.example.data.AppDatabase.getDatabase(context)
+    val dao = db.snippetDao()
+    val syncedTextClip = dao.findByContent("https://developer.samsung.com/continuity-clipboard-sync")
+    assertNotNull("Simulated synced text clip should be saved to Room", syncedTextClip)
+  }
 }
 

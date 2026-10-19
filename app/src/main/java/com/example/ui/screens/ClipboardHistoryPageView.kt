@@ -25,25 +25,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoDelete
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,6 +83,12 @@ fun ClipboardHistoryPageView(
     pinnedSnippets: List<SnippetEntity>,
     historySnippets: List<SnippetEntity>,
     colors: KeyboardColors,
+    autoDeleteEnabled: Boolean = false,
+    retentionDays: Int = 7,
+    onToggleAutoDelete: (Boolean) -> Unit = {},
+    onChangeRetentionDays: (Int) -> Unit = {},
+    onPurgeExpiredNow: () -> Unit = {},
+    onNavigateToConnectedDevices: () -> Unit = {},
     onBack: () -> Unit,
     onTogglePin: (SnippetEntity) -> Unit,
     onDeleteSnippet: (Long) -> Unit,
@@ -273,6 +287,155 @@ fun ClipboardHistoryPageView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            // Auto-Delete History & Connected Devices Card
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        // Auto-Delete History Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(colors.enterKeyBackground.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoDelete,
+                                        contentDescription = null,
+                                        tint = colors.enterKeyBackground,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Auto-Delete History",
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (autoDeleteEnabled) "Unpinned clips deleted after $retentionDays days" else "Disabled • Unpinned clips kept indefinitely",
+                                        color = colors.letterKeySecondaryTextColor,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = autoDeleteEnabled,
+                                onCheckedChange = onToggleAutoDelete,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = colors.enterKeyBackground
+                                ),
+                                modifier = Modifier.testTag("switch_auto_delete_clipboard")
+                            )
+                        }
+
+                        // Retention Days Selector (7, 14, 28 days)
+                        if (autoDeleteEnabled) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(7, 14, 28).forEach { days ->
+                                    val isSelected = retentionDays == days
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSelected) colors.enterKeyBackground
+                                                else colors.background
+                                            )
+                                            .clickable { onChangeRetentionDays(days) }
+                                            .padding(horizontal = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "$days Days",
+                                            color = if (isSelected) Color.White else colors.letterKeyTextColor,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+
+                                FilledTonalButton(
+                                    onClick = onPurgeExpiredNow,
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("btn_clean_expired_now"),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = colors.background,
+                                        contentColor = colors.enterKeyBackground
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Text("Clean Now", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "🔒 Pinned snippets are protected and never auto-deleted.",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.background.copy(alpha = 0.5f))
+                                .clickable { onNavigateToConnectedDevices() }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Devices,
+                                    contentDescription = null,
+                                    tint = colors.enterKeyBackground,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Cross-Device Sync (Wi-Fi P2P)",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = "Open >",
+                                color = colors.enterKeyBackground,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             // IMAGES SECTION (when Images tab selected)
             if (selectedFilter == HistoryFilter.IMAGES) {
                 item {

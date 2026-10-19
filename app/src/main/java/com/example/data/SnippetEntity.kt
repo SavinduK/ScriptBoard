@@ -15,5 +15,7 @@ data class SnippetEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val imageUri: String? = null,
     val isImage: Boolean = false,
-    val mimeType: String? = null
+    val mimeType: String? = null,
+    val syncId: String = "",
+    val originDeviceId: String = ""
 )

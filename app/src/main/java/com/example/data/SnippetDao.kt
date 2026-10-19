@@ -38,4 +38,13 @@ interface SnippetDao {
 
     @Query("DELETE FROM snippets WHERE isPinned = 0")
     suspend fun clearUnpinned()
+
+    @Query("DELETE FROM snippets WHERE isPinned = 0 AND timestamp < :cutoffTimestamp")
+    suspend fun deleteHistoryOlderThan(cutoffTimestamp: Long): Int
+
+    @Query("SELECT * FROM snippets WHERE syncId = :syncId LIMIT 1")
+    suspend fun findBySyncId(syncId: String): SnippetEntity?
+
+    @Query("SELECT * FROM snippets WHERE timestamp > :sinceTimestamp ORDER BY timestamp DESC LIMIT 50")
+    suspend fun getClipsSince(sinceTimestamp: Long): List<SnippetEntity>
 }

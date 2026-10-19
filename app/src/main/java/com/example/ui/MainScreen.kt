@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.screens.ClipboardHistoryPageView
+import com.example.ui.screens.ConnectedDevicesScreen
 import com.example.ui.screens.EmojiPacksScreen
 import com.example.ui.screens.LanguagesScreen
 import com.example.ui.screens.SettingsPageView
@@ -78,6 +80,7 @@ enum class MainScreenSection {
     TEST_KEYBOARD,
     SETTINGS_PAGE,
     CLIPBOARD_HISTORY,
+    CONNECTED_DEVICES,
     STICKERS,
     LANGUAGES,
     EMOJI_PACKS
@@ -110,6 +113,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             "languages" -> MainScreenSection.LANGUAGES
             "emoji_packs" -> MainScreenSection.EMOJI_PACKS
             "clipboard" -> MainScreenSection.CLIPBOARD_HISTORY
+            "connected_devices" -> MainScreenSection.CONNECTED_DEVICES
             "settings" -> MainScreenSection.SETTINGS_PAGE
             "test" -> MainScreenSection.TEST_KEYBOARD
             else -> MainScreenSection.HUB
@@ -308,14 +312,24 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD C: SAVED CLIPBOARD HISTORY
                             HubNavigationCard(
                                 icon = Icons.Default.ContentPaste,
-                                title = " Clipboard History",
-                                description = "Browse auto-saved clipboard clips, search frequently used texts, and manage your pinned quick snippets.",
+                                title = "Clipboard History",
+                                description = "Browse auto-saved clipboard clips, search frequently used texts, auto-delete history after 7/14/28 days, and manage pinned snippets.",
                                 colors = colors,
                                 testTag = "card_saved_clipboard_history",
                                 onClick = { currentSection = MainScreenSection.CLIPBOARD_HISTORY }
                             )
 
-                            // CARD D: STICKERS
+                            // CARD D: CONNECTED DEVICES & CROSS-DEVICE SYNC
+                            HubNavigationCard(
+                                icon = Icons.Default.Devices,
+                                title = "Connected Devices & Cross-Device Sync",
+                                description = "Sync clipboard history between two devices via Wi-Fi & Bluetooth. Show QR code on one device and scan from another to pair and sync text & images.",
+                                colors = colors,
+                                testTag = "card_connected_devices",
+                                onClick = { currentSection = MainScreenSection.CONNECTED_DEVICES }
+                            )
+
+                            // CARD E: STICKERS
                             HubNavigationCard(
                                 icon = Icons.Default.AutoAwesome,
                                 title = "Stickers",
@@ -325,7 +339,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                 onClick = { currentSection = MainScreenSection.STICKERS }
                             )
 
-                            // CARD E: LANGUAGE PACKAGES (Sinhala, etc.)
+                            // CARD F: LANGUAGE PACKAGES (Sinhala, etc.)
                             HubNavigationCard(
                                 icon = Icons.Default.Language,
                                 title = "Language Packages",
@@ -335,7 +349,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                 onClick = { currentSection = MainScreenSection.LANGUAGES }
                             )
 
-                            // CARD F: EMOJI & SYMBOL PACKAGES (Runic, Hieroglyphs, etc.)
+                            // CARD G: EMOJI & SYMBOL PACKAGES (Runic, Hieroglyphs, etc.)
                             HubNavigationCard(
                                 icon = Icons.Default.AutoAwesome,
                                 title = "Emoji & Symbol Packages (Runic, Hieroglyphs, etc.)",
@@ -400,10 +414,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 }
 
                 MainScreenSection.CLIPBOARD_HISTORY -> {
+                    val autoDeleteEnabled by viewModel.autoDeleteClipboardEnabled.collectAsState()
+                    val retentionDays by viewModel.clipboardRetentionDays.collectAsState()
                     ClipboardHistoryPageView(
                         pinnedSnippets = pinnedSnippets,
                         historySnippets = historySnippets,
                         colors = colors,
+                        autoDeleteEnabled = autoDeleteEnabled,
+                        retentionDays = retentionDays,
+                        onToggleAutoDelete = { viewModel.setAutoDeleteClipboard(it) },
+                        onChangeRetentionDays = { viewModel.setClipboardRetention(it) },
+                        onPurgeExpiredNow = {
+                            viewModel.purgeExpiredHistoryNow { count ->
+                                android.widget.Toast.makeText(context, "Cleaned $count expired history clips", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onNavigateToConnectedDevices = { currentSection = MainScreenSection.CONNECTED_DEVICES },
                         onBack = { currentSection = MainScreenSection.HUB },
                         onTogglePin = { viewModel.toggleSnippetPin(it) },
                         onDeleteSnippet = { viewModel.deleteSnippet(it) },
@@ -414,6 +440,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             viewModel.saveImageSnippet(uri)
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() }
+                    )
+                }
+
+                MainScreenSection.CONNECTED_DEVICES -> {
+                    ConnectedDevicesScreen(
+                        viewModel = viewModel,
+                        colors = colors,
+                        onBack = { currentSection = MainScreenSection.HUB }
                     )
                 }
 
