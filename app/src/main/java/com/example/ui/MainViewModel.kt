@@ -50,6 +50,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val clipboardRetentionDays = keyboardPrefs.clipboardRetentionDays
     val clipboardSyncEnabled = keyboardPrefs.clipboardSyncEnabled
     val clipboardSyncImages = keyboardPrefs.clipboardSyncImages
+    val persistentSyncServiceEnabled = keyboardPrefs.persistentSyncServiceEnabled
+    val bluetoothSyncEnabled = keyboardPrefs.bluetoothSyncEnabled
+    val wifiSyncEnabled = keyboardPrefs.wifiSyncEnabled
     val localDeviceName = keyboardPrefs.localDeviceName
 
     init {
@@ -612,15 +615,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _lastActionStatus.value = "Device name updated: $name"
     }
 
+    fun setPersistentSyncService(enabled: Boolean) {
+        keyboardPrefs.setPersistentSyncServiceEnabled(enabled)
+        val app = getApplication<android.app.Application>()
+        if (enabled) {
+            com.example.sync.ClipboardSyncForegroundService.start(app)
+            _lastActionStatus.value = "Persistent background sync service enabled"
+        } else {
+            com.example.sync.ClipboardSyncForegroundService.stop(app)
+            _lastActionStatus.value = "Persistent background sync service stopped"
+        }
+    }
+
+    fun setBluetoothSync(enabled: Boolean) {
+        keyboardPrefs.setBluetoothSyncEnabled(enabled)
+        if (enabled) {
+            syncManager.restartBluetoothListener()
+        }
+        _lastActionStatus.value = if (enabled) "Bluetooth RFCOMM sync enabled" else "Bluetooth sync disabled"
+    }
+
+    fun setWifiSync(enabled: Boolean) {
+        keyboardPrefs.setWifiSyncEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Wi-Fi mDNS & TCP sync enabled" else "Wi-Fi sync disabled"
+    }
+
+    fun triggerSubnetScan() {
+        syncManager.triggerSubnetScan()
+        _lastActionStatus.value = "Scanning local subnet for paired devices..."
+    }
+
+    fun reconnectAllPeers() {
+        syncManager.connectToPairedDevices()
+        _lastActionStatus.value = "Reconnecting to paired devices..."
+    }
+
     fun pairDevice(
         ip: String,
         port: Int = 8765,
         token: String = "",
         name: String = "",
+        bluetoothMac: String = "",
         onResult: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val result = syncManager.pairWithDevice(ip, port, token, name)
+            val result = syncManager.pairWithDevice(ip, port, token, name, bluetoothMac)
             if (result.isSuccess) {
                 _lastActionStatus.value = "Paired with ${result.getOrNull()?.name ?: ip}"
                 onResult(true)

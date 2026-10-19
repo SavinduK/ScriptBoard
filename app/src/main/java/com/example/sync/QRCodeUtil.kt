@@ -60,18 +60,20 @@ object QRCodeUtil {
     fun buildPairingJson(
         deviceId: String,
         deviceName: String,
+        sharedSecret: String,
         ip: String,
-        port: Int,
-        token: String
+        port: Int = 8765,
+        bluetoothMac: String = ""
     ): String {
         return JSONObject().apply {
             put("type", "KEYPRO_PAIR")
-            put("version", 1)
+            put("version", 2)
             put("deviceId", deviceId)
             put("deviceName", deviceName)
+            put("sharedSecret", sharedSecret)
             put("ip", ip)
             put("port", port)
-            put("token", token)
+            put("bluetoothMac", bluetoothMac)
         }.toString()
     }
 
@@ -87,14 +89,16 @@ object QRCodeUtil {
                 val name = json.optString("deviceName", "").ifEmpty { json.optString("name", "Remote Device") }
                 val ip = json.optString("ip", "")
                 val port = json.optInt("port", 8765)
-                val token = json.optString("token", "")
-                if (ip.isNotBlank() && deviceId.isNotBlank()) {
+                val secret = json.optString("sharedSecret", json.optString("token", ""))
+                val btMac = json.optString("bluetoothMac", "")
+                if (deviceId.isNotBlank()) {
                     PairingPayload(
                         deviceId = deviceId,
                         deviceName = name,
-                        ip = ip,
+                        sharedSecret = secret,
+                        ip = ip.ifBlank { "192.168.1.1" },
                         port = if (port > 0) port else 8765,
-                        token = token
+                        bluetoothMac = btMac
                     )
                 } else null
             } else if (clean.contains(":")) {
@@ -105,18 +109,20 @@ object QRCodeUtil {
                 PairingPayload(
                     deviceId = "dev_${ip.replace(".", "_")}",
                     deviceName = "Device ($ip)",
+                    sharedSecret = "",
                     ip = ip,
                     port = port,
-                    token = ""
+                    bluetoothMac = ""
                 )
             } else if (clean.count { it == '.' } == 3) {
                 // IP only
                 PairingPayload(
                     deviceId = "dev_${clean.replace(".", "_")}",
                     deviceName = "Device ($clean)",
+                    sharedSecret = "",
                     ip = clean,
                     port = 8765,
-                    token = ""
+                    bluetoothMac = ""
                 )
             } else null
         } catch (_: Exception) {

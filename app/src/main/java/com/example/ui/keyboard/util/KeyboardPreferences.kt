@@ -97,6 +97,15 @@ class KeyboardPreferences(context: Context) {
     private val _clipboardSyncImages = MutableStateFlow(prefs.getBoolean(KEY_CLIPBOARD_SYNC_IMAGES, true))
     val clipboardSyncImages: StateFlow<Boolean> = _clipboardSyncImages.asStateFlow()
 
+    private val _persistentSyncServiceEnabled = MutableStateFlow(prefs.getBoolean(KEY_PERSISTENT_SYNC_SERVICE, true))
+    val persistentSyncServiceEnabled: StateFlow<Boolean> = _persistentSyncServiceEnabled.asStateFlow()
+
+    private val _bluetoothSyncEnabled = MutableStateFlow(prefs.getBoolean(KEY_BLUETOOTH_SYNC_ENABLED, true))
+    val bluetoothSyncEnabled: StateFlow<Boolean> = _bluetoothSyncEnabled.asStateFlow()
+
+    private val _wifiSyncEnabled = MutableStateFlow(prefs.getBoolean(KEY_WIFI_SYNC_ENABLED, true))
+    val wifiSyncEnabled: StateFlow<Boolean> = _wifiSyncEnabled.asStateFlow()
+
     private val _localDeviceName = MutableStateFlow(
         prefs.getString(KEY_LOCAL_DEVICE_NAME, android.os.Build.MODEL ?: "Android Device")
             ?: (android.os.Build.MODEL ?: "Android Device")
@@ -110,6 +119,32 @@ class KeyboardPreferences(context: Context) {
             prefs.edit().putString(KEY_LOCAL_DEVICE_ID, id).apply()
         }
         return id
+    }
+
+    fun getLocalSharedSecret(): String {
+        var secret = prefs.getString(KEY_LOCAL_SHARED_SECRET, null)
+        if (secret.isNullOrBlank()) {
+            // Generate a secure random 32-character hex secret
+            val randomBytes = ByteArray(16)
+            java.security.SecureRandom().nextBytes(randomBytes)
+            secret = randomBytes.joinToString("") { "%02x".format(it) }
+            prefs.edit().putString(KEY_LOCAL_SHARED_SECRET, secret).apply()
+        }
+        return secret
+    }
+
+    fun getLocalBluetoothMac(): String {
+        return try {
+            val addr = android.bluetooth.BluetoothAdapter.getDefaultAdapter()?.address
+            if (!addr.isNullOrBlank() && addr != "02:00:00:00:00:00") {
+                addr
+            } else {
+                val id = getLocalDeviceId()
+                "02:00:${id.take(2)}:${id.drop(2).take(2)}:${id.drop(4).take(2)}:${id.drop(6).take(2)}"
+            }
+        } catch (_: Exception) {
+            "02:00:00:00:00:00"
+        }
     }
 
     fun setAutoDeleteClipboardEnabled(enabled: Boolean) {
@@ -131,6 +166,21 @@ class KeyboardPreferences(context: Context) {
     fun setClipboardSyncImages(enabled: Boolean) {
         _clipboardSyncImages.value = enabled
         prefs.edit().putBoolean(KEY_CLIPBOARD_SYNC_IMAGES, enabled).apply()
+    }
+
+    fun setPersistentSyncServiceEnabled(enabled: Boolean) {
+        _persistentSyncServiceEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_PERSISTENT_SYNC_SERVICE, enabled).apply()
+    }
+
+    fun setBluetoothSyncEnabled(enabled: Boolean) {
+        _bluetoothSyncEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_BLUETOOTH_SYNC_ENABLED, enabled).apply()
+    }
+
+    fun setWifiSyncEnabled(enabled: Boolean) {
+        _wifiSyncEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_WIFI_SYNC_ENABLED, enabled).apply()
     }
 
     fun setLocalDeviceName(name: String) {
@@ -337,6 +387,10 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_CLIPBOARD_SYNC_IMAGES = "clipboard_sync_images"
         private const val KEY_LOCAL_DEVICE_ID = "local_device_id"
         private const val KEY_LOCAL_DEVICE_NAME = "local_device_name"
+        private const val KEY_LOCAL_SHARED_SECRET = "local_shared_secret"
+        private const val KEY_PERSISTENT_SYNC_SERVICE = "persistent_sync_service"
+        private const val KEY_BLUETOOTH_SYNC_ENABLED = "bluetooth_sync_enabled"
+        private const val KEY_WIFI_SYNC_ENABLED = "wifi_sync_enabled"
 
         const val DEFAULT_REPO_OWNER = "SavinduK"
         const val DEFAULT_REPO_NAME = "ScriptBoard"

@@ -479,9 +479,10 @@ class ExampleRobolectricTest {
     val json = com.example.sync.QRCodeUtil.buildPairingJson(
       deviceId = "dev_12345",
       deviceName = "Galaxy S24",
+      sharedSecret = "sec_test_token_abc123",
       ip = "192.168.1.150",
       port = 8765,
-      token = "sec_test_token"
+      bluetoothMac = "00:11:22:33:44:55"
     )
 
     val parsed = com.example.sync.QRCodeUtil.parsePairingString(json)
@@ -490,13 +491,30 @@ class ExampleRobolectricTest {
     assertEquals("Galaxy S24", parsed.deviceName)
     assertEquals("192.168.1.150", parsed.ip)
     assertEquals(8765, parsed.port)
-    assertEquals("sec_test_token", parsed.token)
+    assertEquals("sec_test_token_abc123", parsed.sharedSecret)
+    assertEquals("00:11:22:33:44:55", parsed.bluetoothMac)
 
     // Test raw IP fallback parsing
     val parsedRaw = com.example.sync.QRCodeUtil.parsePairingString("192.168.1.200:8765")
     assertNotNull(parsedRaw)
     assertEquals("192.168.1.200", parsedRaw!!.ip)
     assertEquals(8765, parsedRaw.port)
+  }
+
+  @Test
+  fun `hmac nonce authentication verifies legitimate peer and rejects invalid secret`() {
+    val secret = "my_super_secret_shared_token_keypro"
+    val nonce = com.example.sync.CryptoUtil.generateNonce(16)
+    assertTrue("Nonce should be 32 hex chars", nonce.length == 32)
+
+    val hmac = com.example.sync.CryptoUtil.computeHmac(secret, nonce)
+    assertTrue("Computed HMAC should not be blank", hmac.isNotBlank())
+
+    val verified = com.example.sync.CryptoUtil.verifyHmac(secret, nonce, hmac)
+    assertTrue("Valid HMAC must pass verification", verified)
+
+    val badHmac = com.example.sync.CryptoUtil.verifyHmac("wrong_attacker_secret", nonce, hmac)
+    assertTrue("HMAC with wrong secret must be rejected", !badHmac)
   }
 
   @Test

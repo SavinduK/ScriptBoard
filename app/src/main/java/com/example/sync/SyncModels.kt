@@ -2,12 +2,13 @@ package com.example.sync
 
 data class PairingPayload(
     val type: String = "KEYPRO_PAIR",
-    val version: Int = 1,
+    val version: Int = 2,
     val deviceId: String,
     val deviceName: String,
+    val sharedSecret: String,
     val ip: String,
-    val port: Int,
-    val token: String
+    val port: Int = 8765,
+    val bluetoothMac: String = ""
 )
 
 data class SyncClipPayload(
@@ -30,5 +31,19 @@ data class SyncActivityEvent(
     val description: String,
     val isOutgoing: Boolean,
     val isImage: Boolean = false,
-    val isLoopPrevented: Boolean = false
+    val isLoopPrevented: Boolean = false,
+    val transport: String = "Wi-Fi (P2P)"
+)
+
+/**
+ * Streaming wire message for persistent TCP and RFCOMM sockets.
+ */
+data class SocketFrame(
+    val type: String, // CHALLENGE, AUTH, AUTH_OK, AUTH_FAIL, CLIP, PING, PONG, IP_UPDATE
+    val nonce: String? = null,
+    val deviceId: String? = null,
+    val hmac: String? = null,
+    val newIp: String? = null,
+    val newPort: Int? = null,
+    val clip: SyncClipPayload? = null
 )

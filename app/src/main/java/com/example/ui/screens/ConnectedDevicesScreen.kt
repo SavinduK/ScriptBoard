@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -118,6 +120,9 @@ fun ConnectedDevicesScreen(
     val syncLogs by viewModel.syncActivityLog.collectAsState()
     val syncEnabled by viewModel.clipboardSyncEnabled.collectAsState()
     val syncImages by viewModel.clipboardSyncImages.collectAsState()
+    val persistentServiceEnabled by viewModel.persistentSyncServiceEnabled.collectAsState()
+    val bluetoothSyncEnabled by viewModel.bluetoothSyncEnabled.collectAsState()
+    val wifiSyncEnabled by viewModel.wifiSyncEnabled.collectAsState()
     val localDeviceName by viewModel.localDeviceName.collectAsState()
 
     var showQrDialog by remember { mutableStateOf(false) }
@@ -128,14 +133,17 @@ fun ConnectedDevicesScreen(
     val localIp = remember { syncManager.getLocalIpAddress() }
     val localPort = remember { syncManager.getActivePort() }
     val localDeviceId = remember { viewModel.keyboardPrefs.getLocalDeviceId() }
+    val localSharedSecret = remember { viewModel.keyboardPrefs.getLocalSharedSecret() }
+    val localBtMac = remember { viewModel.keyboardPrefs.getLocalBluetoothMac() }
 
-    val pairingJson = remember(localDeviceId, localDeviceName, localIp, localPort) {
+    val pairingJson = remember(keys = arrayOf(localDeviceId, localDeviceName, localIp, localPort, localSharedSecret, localBtMac)) {
         QRCodeUtil.buildPairingJson(
             deviceId = localDeviceId,
             deviceName = localDeviceName,
+            sharedSecret = localSharedSecret,
             ip = localIp,
             port = localPort,
-            token = "keypro_sec_${localDeviceId.take(6)}"
+            bluetoothMac = localBtMac
         )
     }
 
@@ -155,8 +163,9 @@ fun ConnectedDevicesScreen(
                                 viewModel.pairDevice(
                                     ip = parsed.ip,
                                     port = parsed.port,
-                                    token = parsed.token,
-                                    name = parsed.deviceName
+                                    token = parsed.sharedSecret,
+                                    name = parsed.deviceName,
+                                    bluetoothMac = parsed.bluetoothMac
                                 ) { success ->
                                     if (success) {
                                         Toast.makeText(context, "Successfully paired with ${parsed.deviceName}!", Toast.LENGTH_SHORT).show()
@@ -215,35 +224,28 @@ fun ConnectedDevicesScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Wi-Fi & Bluetooth Clipboard Continuity",
+                        text = "Wi-Fi (mDNS/TCP) & Bluetooth RFCOMM Sync",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 11.sp
                     )
                 }
             }
 
-            // Quick Simulate Pair button for instant emulator testing
-            FilledTonalButton(
-                onClick = {
-                    viewModel.simulateTestDevicePairing()
-                    Toast.makeText(context, "Simulated Samsung Galaxy S24 Ultra paired!", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier
-                    .height(34.dp)
-                    .testTag("btn_simulate_pair"),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = colors.enterKeyBackground.copy(alpha = 0.2f),
-                    contentColor = colors.enterKeyBackground
-                ),
-                contentPadding = PaddingValues(horizontal = 10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Sync,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Test Pair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            // Quick actions
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        viewModel.reconnectAllPeers()
+                        Toast.makeText(context, "Reconnecting live sockets...", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Reconnect",
+                        tint = colors.letterKeyTextColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
@@ -306,7 +308,7 @@ fun ConnectedDevicesScreen(
                                         }
                                     }
                                     Text(
-                                        text = "IP: $localIp:$localPort • P2P Mesh Active",
+                                        text = "IP: $localIp:$localPort • ID: ${localDeviceId.take(8)}",
                                         color = colors.letterKeySecondaryTextColor,
                                         fontSize = 12.sp
                                     )
@@ -388,12 +390,36 @@ fun ConnectedDevicesScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Sync Controls",
+                            text = "Sync & Transport Controls",
                             color = colors.letterKeyTextColor,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
 
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Persistent Foreground Service Toggle (connectedDevice)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Keep Alive in Background", color = colors.letterKeyTextColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Persistent foreground service (connectedDevice) with screen off & WifiLock", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
+                            }
+                            Switch(
+                                checked = persistentServiceEnabled,
+                                onCheckedChange = { viewModel.setPersistentSyncService(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = colors.enterKeyBackground
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Divider(color = colors.background.copy(alpha = 0.4f), thickness = 0.8.dp)
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // Global Sync Toggle
@@ -404,11 +430,59 @@ fun ConnectedDevicesScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Clipboard Sync", color = colors.letterKeyTextColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                Text("Sync copies across your phones and tablets", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
+                                Text("Sync copies across your phones and tablets seamlessly", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
                             }
                             Switch(
                                 checked = syncEnabled,
                                 onCheckedChange = { viewModel.setClipboardSync(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = colors.enterKeyBackground
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Divider(color = colors.background.copy(alpha = 0.4f), thickness = 0.8.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Wi-Fi mDNS & Streaming Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Wi-Fi Continuity (mDNS + TCP)", color = colors.letterKeyTextColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Auto-resolves peers via _clipsync._tcp and streams via open socket", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
+                            }
+                            Switch(
+                                checked = wifiSyncEnabled,
+                                onCheckedChange = { viewModel.setWifiSync(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = colors.enterKeyBackground
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Divider(color = colors.background.copy(alpha = 0.4f), thickness = 0.8.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Bluetooth Classic RFCOMM Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Bluetooth Classic (RFCOMM)", color = colors.letterKeyTextColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Nearby direct sync without needing a shared Wi-Fi router", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
+                            }
+                            Switch(
+                                checked = bluetoothSyncEnabled,
+                                onCheckedChange = { viewModel.setBluetoothSync(it) },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = colors.enterKeyBackground
@@ -428,7 +502,7 @@ fun ConnectedDevicesScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Sync Images as Well as Text", color = colors.letterKeyTextColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                Text("Transfer screenshots and copied photos over Wi-Fi", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
+                                Text("Transfer screenshots and copied photos across devices", color = colors.letterKeySecondaryTextColor, fontSize = 11.sp)
                             }
                             Switch(
                                 checked = syncImages,
@@ -444,7 +518,7 @@ fun ConnectedDevicesScreen(
                         Divider(color = colors.background.copy(alpha = 0.4f), thickness = 0.8.dp)
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Anti-Cyclic Sync Notice
+                        // Anti-Cyclic Sync & HMAC Notice
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -461,10 +535,59 @@ fun ConnectedDevicesScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Anti-Cyclic Loop Protection: Unique sync IDs & origin tagging prevent echo loops automatically.",
+                                text = "Protected: Anti-cyclic loop prevention, direct database insertion (no system clipboard touch), and HMAC-SHA256 authenticated handshakes.",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 11.sp
                             )
+                        }
+                    }
+                }
+            }
+
+            // Quick Network Utilities (Subnet Scan & Test Simulator)
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Discovery & Tools",
+                            color = colors.letterKeyTextColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilledTonalButton(
+                                onClick = {
+                                    viewModel.triggerSubnetScan()
+                                    Toast.makeText(context, "Scanning /24 subnet for paired devices...", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scan Subnet", fontSize = 12.sp)
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    viewModel.simulateTestDevicePairing()
+                                    Toast.makeText(context, "Simulated Samsung Galaxy S24 Ultra connected!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Devices, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Simulate S24", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -528,7 +651,7 @@ fun ConnectedDevicesScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Open this screen on another device on the same Wi-Fi network and tap 'Pair Device' to scan the QR code.",
+                                text = "Open this screen on another device on Wi-Fi or Bluetooth, or tap 'Pair Device' to scan the pairing QR code.",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 12.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -557,7 +680,7 @@ fun ConnectedDevicesScreen(
             item {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Live Sync Activity",
+                    text = "Live Sync Activity Log",
                     color = colors.letterKeyTextColor,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
@@ -574,7 +697,7 @@ fun ConnectedDevicesScreen(
                     )
                 }
             } else {
-                items(syncLogs.take(10), key = { it.id }) { log ->
+                items(syncLogs.take(15), key = { it.id }) { log ->
                     SyncLogItem(log = log, colors = colors)
                 }
             }
@@ -606,7 +729,7 @@ fun ConnectedDevicesScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Scan this QR code from your second phone or tablet on the same Wi-Fi network:",
+                        text = "Scan this QR code from your second device to establish an authenticated sync channel:",
                         fontSize = 12.sp,
                         color = colors.letterKeySecondaryTextColor,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -614,7 +737,6 @@ fun ConnectedDevicesScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // QR Code Graphic on clean white card
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -629,13 +751,18 @@ fun ConnectedDevicesScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "$localDeviceName • $localIp:$localPort",
+                        text = "$localDeviceName • IP Hint: $localIp:$localPort",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.letterKeyTextColor
+                    )
+                    Text(
+                        text = "Shared Secret: ${localSharedSecret.take(8)}... • BT: $localBtMac",
+                        fontSize = 10.sp,
+                        color = colors.letterKeySecondaryTextColor
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -714,7 +841,7 @@ fun ConnectedDevicesScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Divider(modifier = Modifier.weight(1f), color = colors.background)
-                        Text("  OR ENTER IP MANUALLY  ", fontSize = 10.sp, color = colors.letterKeySecondaryTextColor)
+                        Text("  OR PAIR VIA IP / CODE  ", fontSize = 10.sp, color = colors.letterKeySecondaryTextColor)
                         Divider(modifier = Modifier.weight(1f), color = colors.background)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -723,8 +850,8 @@ fun ConnectedDevicesScreen(
                         value = ipInput,
                         onValueChange = { ipInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Peer IP:Port (e.g. 192.168.1.150:8765)") },
-                        placeholder = { Text("192.168.1.150") },
+                        label = { Text("Peer IP:Port or Paste Pairing Code") },
+                        placeholder = { Text("192.168.1.150:8765") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = colors.enterKeyBackground,
@@ -757,15 +884,16 @@ fun ConnectedDevicesScreen(
                             viewModel.pairDevice(
                                 ip = parsed.ip,
                                 port = parsed.port,
-                                token = parsed.token,
-                                name = nameInput.ifBlank { parsed.deviceName }
+                                token = parsed.sharedSecret,
+                                name = nameInput.ifBlank { parsed.deviceName },
+                                bluetoothMac = parsed.bluetoothMac
                             ) { success ->
                                 isConnecting = false
                                 if (success) {
                                     Toast.makeText(context, "Connected to ${parsed.deviceName}!", Toast.LENGTH_SHORT).show()
                                     showPairDialog = false
                                 } else {
-                                    Toast.makeText(context, "Saved device. Will sync once connected on Wi-Fi.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Saved device. Will sync once connected on Wi-Fi or Bluetooth.", Toast.LENGTH_SHORT).show()
                                     showPairDialog = false
                                 }
                             }
@@ -862,7 +990,7 @@ private fun PairedDeviceItem(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(
                             if (device.isOnline) Color(0xFF4CAF50).copy(alpha = 0.15f)
@@ -871,7 +999,7 @@ private fun PairedDeviceItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Devices,
+                        imageVector = if (device.bluetoothMac.isNotBlank()) Icons.Default.Bluetooth else Icons.Default.Devices,
                         contentDescription = null,
                         tint = if (device.isOnline) Color(0xFF4CAF50) else colors.letterKeySecondaryTextColor,
                         modifier = Modifier.size(20.dp)
@@ -881,18 +1009,42 @@ private fun PairedDeviceItem(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = device.name,
+                            color = colors.letterKeyTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (device.isOnline) Color(0xFF2E7D32).copy(alpha = 0.2f)
+                                    else colors.background
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = if (device.isOnline) "Active" else "Standby",
+                                color = if (device.isOnline) Color(0xFF4CAF50) else colors.letterKeySecondaryTextColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                     Text(
-                        text = device.name,
-                        color = colors.letterKeyTextColor,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${device.ipAddress}:${device.port} • Synced $lastSyncFormatted",
+                        text = "${device.ipAddress}:${device.port} • ${device.transportType}",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 11.sp
+                    )
+                    Text(
+                        text = "Synced: $lastSyncFormatted",
+                        color = colors.letterKeySecondaryTextColor.copy(alpha = 0.8f),
+                        fontSize = 10.sp
                     )
                 }
             }
@@ -958,12 +1110,27 @@ private fun SyncLogItem(log: SyncActivityEvent, colors: KeyboardColors) {
             )
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = log.title,
-                    color = colors.letterKeyTextColor,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = log.title,
+                        color = colors.letterKeyTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.background)
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = log.transport,
+                            color = colors.letterKeySecondaryTextColor,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
                 Text(
                     text = log.description,
                     color = colors.letterKeySecondaryTextColor,

@@ -73,12 +73,21 @@ class ClipboardSyncServer(
     }
 
     private suspend fun handleClient(socket: Socket) {
+        var keepSocketAlive = false
         try {
-            socket.soTimeout = 10000
+            socket.soTimeout = 8000
             val reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
             val output = socket.getOutputStream()
 
             val requestLine = reader.readLine() ?: return
+
+            // Check if this is a raw socket stream connection
+            if (requestLine.startsWith("{") || requestLine.startsWith("KEYPRO_STREAM")) {
+                keepSocketAlive = true
+                syncManager.persistentSocketManager.handleIncomingStream(socket)
+                return
+            }
+
             val parts = requestLine.split(" ")
             if (parts.size < 2) {
                 sendResponse(output, 400, "Bad Request", "{}")
@@ -88,7 +97,17 @@ class ClipboardSyncServer(
             val method = parts[0].uppercase()
             val path = parts[1]
 
-            // Read headers to determine Content-Length
+            // If client is upgrading to persistent streaming socket
+            if (path == "/api/sync/stream") {
+                keepSocketAlive = true
+                val upgradeHeader = "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: application/octet-stream\r\n\r\n"
+                output.write(upgradeHeader.toByteArray(Charsets.UTF_8))
+                output.flush()
+                syncManager.persistentSocketManager.handleIncomingStream(socket)
+                return
+            }
+
+            // Read headers
             var contentLength = 0
             var line: String? = reader.readLine()
             while (!line.isNullOrBlank()) {
@@ -115,12 +134,18 @@ class ClipboardSyncServer(
             val body = bodyBuilder.toString()
 
             when {
-                path == "/api/ping" -> {
+                path.startsWith("/api/ping") -> {
+                    val nonce = CryptoUtil.generateNonce(16)
+                    val secret = preferences.getLocalSharedSecret()
+                    val hmac = CryptoUtil.computeHmac(secret, nonce)
                     val responseJson = JSONObject().apply {
                         put("status", "ok")
                         put("deviceId", preferences.getLocalDeviceId())
                         put("deviceName", preferences.localDeviceName.value)
-                        put("version", 1)
+                        put("port", activePort)
+                        put("nonce", nonce)
+                        put("hmac", hmac)
+                        put("version", 2)
                         put("timestamp", System.currentTimeMillis())
                     }.toString()
                     sendResponse(output, 200, "OK", responseJson)
@@ -140,9 +165,11 @@ class ClipboardSyncServer(
             }
         } catch (_: Exception) {
         } finally {
-            try {
-                socket.close()
-            } catch (_: Exception) {}
+            if (!keepSocketAlive) {
+                try {
+                    socket.close()
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -153,17 +180,22 @@ class ClipboardSyncServer(
             val remoteDeviceName = json.optString("deviceName", "Remote Device")
             val remoteIp = json.optString("ip")
             val remotePort = json.optInt("port", 8765)
-            val token = json.optString("token", "")
+            val remoteSecret = json.optString("sharedSecret", json.optString("token", ""))
+            val remoteBtMac = json.optString("bluetoothMac", "")
 
             if (remoteDeviceId.isNotBlank() && remoteIp.isNotBlank()) {
-                // Register device in local DB
+                // Register device in local DB with shared secret
                 val entity = ConnectedDeviceEntity(
                     deviceId = remoteDeviceId,
                     name = remoteDeviceName,
                     ipAddress = remoteIp,
                     port = remotePort,
-                    authToken = token,
+                    authToken = remoteSecret,
+                    sharedSecret = remoteSecret,
+                    bluetoothMac = remoteBtMac,
                     isOnline = true,
+                    connectionStatus = "Connected (Paired)",
+                    transportType = if (remoteBtMac.isNotBlank()) "Wi-Fi & Bluetooth" else "Wi-Fi (P2P)",
                     lastSyncedTimestamp = System.currentTimeMillis()
                 )
                 connectedDeviceDao.insertOrUpdate(entity)
@@ -171,15 +203,21 @@ class ClipboardSyncServer(
                 syncManager.logEvent(
                     SyncActivityEvent(
                         title = "Paired with $remoteDeviceName",
-                        description = "Connected via Wi-Fi ($remoteIp:$remotePort)",
-                        isOutgoing = false
+                        description = "Connected via Wi-Fi ($remoteIp:$remotePort) & Shared Secret",
+                        isOutgoing = false,
+                        transport = "Wi-Fi (P2P)"
                     )
                 )
+
+                // Start persistent socket stream connection immediately
+                syncManager.persistentSocketManager.startPersistentConnection(entity)
 
                 val responseJson = JSONObject().apply {
                     put("status", "paired")
                     put("deviceId", preferences.getLocalDeviceId())
                     put("deviceName", preferences.localDeviceName.value)
+                    put("sharedSecret", preferences.getLocalSharedSecret())
+                    put("bluetoothMac", preferences.getLocalBluetoothMac())
                 }.toString()
                 sendResponse(output, 200, "OK", responseJson)
             } else {
@@ -213,7 +251,8 @@ class ClipboardSyncServer(
                         title = "Cyclic Sync Prevented",
                         description = "Dropped clip originated from this device ($syncId)",
                         isOutgoing = false,
-                        isLoopPrevented = true
+                        isLoopPrevented = true,
+                        transport = "Wi-Fi"
                     )
                 )
                 sendResponse(output, 200, "OK", "{\"status\":\"ignored_origin_local\"}")
@@ -227,7 +266,8 @@ class ClipboardSyncServer(
                         title = "Duplicate Clip Prevented",
                         description = "Clip with syncId $syncId already processed",
                         isOutgoing = false,
-                        isLoopPrevented = true
+                        isLoopPrevented = true,
+                        transport = "Wi-Fi"
                     )
                 )
                 sendResponse(output, 200, "OK", "{\"status\":\"ignored_duplicate\"}")
@@ -253,7 +293,7 @@ class ClipboardSyncServer(
                 } catch (_: Exception) {}
             }
 
-            // Save to Room DB
+            // Save directly to Room DB without touching system clipboard
             snippetRepository.saveSyncedSnippet(
                 title = title,
                 content = content,
@@ -277,7 +317,8 @@ class ClipboardSyncServer(
                     title = if (isImage) "Received Image Clip" else "Received Text Clip",
                     description = if (isImage) "Image received from device $originDeviceId" else "'${content.take(30)}'",
                     isOutgoing = false,
-                    isImage = isImage
+                    isImage = isImage,
+                    transport = "Wi-Fi (P2P)"
                 )
             )
 
