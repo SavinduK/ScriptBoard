@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ContentPasteGo
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Mic
@@ -36,12 +37,15 @@ fun KeyboardToolbar(
     isExtendedPcActive: Boolean,
     isEmojiActive: Boolean = false,
     isVoiceTypeActive: Boolean = false,
+    isGlideTypingActive: Boolean = false,
+    currentLanguage: String = "en",
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
     onPasteCopiedContent: () -> Unit,
     onOpenClipboard: () -> Unit,
     onOpenEmoji: () -> Unit = {},
     onTriggerVoiceType: () -> Unit = {},
+    onToggleGlideTyping: () -> Unit = {},
     onOpenSettings: () -> Unit
 ) {
     Row(
@@ -119,19 +123,38 @@ fun KeyboardToolbar(
             )
         }
 
-        // 5. Emoji & Stickers button (keep only emoji button to open the menu)
-        IconButton(
-            onClick = onOpenEmoji,
-            modifier = Modifier
-                .size(38.dp)
-                .testTag("btn_toolbar_emoji")
-        ) {
-            Icon(
-                imageVector = Icons.Default.SentimentSatisfiedAlt,
-                contentDescription = "Emoji & Stickers",
-                tint = if (isEmojiActive) colors.enterKeyBackground else colors.toolbarIconTint,
-                modifier = Modifier.size(20.dp)
-            )
+        // 5. Glide typing (Pen icon) for English keyboard, or Emoji for other languages
+        if (currentLanguage == "en") {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isGlideTypingActive) colors.laptopKeyActiveBackground else Color.Transparent)
+                    .clickable(onClick = onToggleGlideTyping)
+                    .testTag("btn_toolbar_glide_typing"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Draw,
+                    contentDescription = "Glide Typing Handwriting",
+                    tint = if (isGlideTypingActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        } else {
+            IconButton(
+                onClick = onOpenEmoji,
+                modifier = Modifier
+                    .size(38.dp)
+                    .testTag("btn_toolbar_emoji")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SentimentSatisfiedAlt,
+                    contentDescription = "Emoji & Stickers",
+                    tint = if (isEmojiActive) colors.enterKeyBackground else colors.toolbarIconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         // 6. Voice typing button (microphone icon)

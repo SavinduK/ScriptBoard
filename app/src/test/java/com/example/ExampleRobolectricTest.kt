@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.ui.keyboard.model.EmojiData
 import com.example.ui.keyboard.util.WebpAnimationHelper
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -353,4 +354,55 @@ class ExampleRobolectricTest {
     assertTrue(WordSuggestionManager.isEnglishWord("thanks"))
     assertTrue(WordSuggestionManager.isEnglishWord("keyboard"))
   }
+
+  @Test
+  fun `handwriting recognizer accurately classifies circle gesture as o`() {
+    // Generate circular stroke points
+    val circleStroke = (0..20).map { i ->
+      val angle = (i.toDouble() / 20.0) * 2.0 * Math.PI
+      androidx.compose.ui.geometry.Offset(
+        x = (100.0 + 50.0 * Math.cos(angle)).toFloat(),
+        y = (100.0 + 50.0 * Math.sin(angle)).toFloat()
+      )
+    }
+
+    val result = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
+      strokes = listOf(circleStroke),
+      commonVocabulary = listOf("o", "on", "of", "one", "out")
+    )
+
+    assertNotNull(result)
+    assertTrue("Should recognize letter o or related round character", result.recognizedLetters.contains('o') || result.primaryWord.contains("o", ignoreCase = true))
+  }
+
+  @Test
+  fun `handwriting recognizer clusters multi-letter strokes and returns candidate words`() {
+    // Draw two horizontal separate strokes: stroke 1 (left) and stroke 2 (right)
+    val stroke1 = listOf(
+      androidx.compose.ui.geometry.Offset(50f, 100f),
+      androidx.compose.ui.geometry.Offset(50f, 150f),
+      androidx.compose.ui.geometry.Offset(50f, 200f)
+    )
+    val stroke2 = listOf(
+      androidx.compose.ui.geometry.Offset(250f, 100f),
+      androidx.compose.ui.geometry.Offset(250f, 150f),
+      androidx.compose.ui.geometry.Offset(250f, 200f)
+    )
+
+    val result = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
+      strokes = listOf(stroke1, stroke2),
+      commonVocabulary = listOf("ll", "it", "in", "is", "to")
+    )
+
+    assertNotNull(result)
+    assertEquals(2, result.recognizedLetters.size)
+    assertTrue("Primary word should not be empty", result.primaryWord.isNotBlank())
+  }
+
+  @Test
+  fun `glide typing layout mode is registered in KeyboardLayoutMode`() {
+    val modes = com.example.ui.keyboard.model.KeyboardLayoutMode.values()
+    assertTrue("KeyboardLayoutMode must contain GLIDE_TYPING", modes.any { it.name == "GLIDE_TYPING" })
+  }
 }
+

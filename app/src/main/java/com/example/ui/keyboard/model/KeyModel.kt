@@ -10,7 +10,8 @@ enum class KeyboardLayoutMode {
     CLIPBOARD,
     SETTINGS,
     STICKERS,
-    VOICE_TYPING
+    VOICE_TYPING,
+    GLIDE_TYPING
 }
 
 enum class ShiftState {
