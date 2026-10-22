@@ -52,6 +52,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
 
+    private val openSessionTrigger = kotlinx.coroutines.flow.MutableStateFlow(0L)
+
     override fun onCreate() {
         super.onCreate()
         savedStateRegistryController.performRestore(null)
@@ -81,16 +83,16 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                             val uri = item.uri
                             if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
                                 serviceScope.launch(Dispatchers.IO) {
-                                    val id = repository.saveImageToClipboard(uri.toString())
-                                    val savedEntity = repository.allSnippets
+                                    val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(this@KeyProInputMethodService, uri.toString())
+                                    val id = repository.saveImageToClipboard(persistentPath)
                                     // Broadcast image snippet to paired devices
                                     val entity = com.example.data.SnippetEntity(
                                         id = id,
                                         title = "Image Clip",
-                                        content = uri.toString(),
+                                        content = persistentPath,
                                         isPinned = false,
                                         category = "Images",
-                                        imageUri = uri.toString(),
+                                        imageUri = persistentPath,
                                         isImage = true,
                                         mimeType = "image/*"
                                     )
@@ -140,6 +142,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 val hapticEnabled by keyboardPrefs.hapticEnabled.collectAsState()
                 val themeType by keyboardPrefs.themeType.collectAsState()
                 val laptopBarVisible by keyboardPrefs.laptopBarVisible.collectAsState()
+                val sessionTrigger by openSessionTrigger.collectAsState()
 
                 val colors = if (themeType == com.example.ui.keyboard.model.KeyboardThemeType.CUSTOM) {
                     keyboardPrefs.getCustomKeyboardColors()
@@ -155,6 +158,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     isSoundEnabled = soundEnabled,
                     isHapticEnabled = hapticEnabled,
                     initialLaptopBarVisible = laptopBarVisible,
+                    openSessionTrigger = sessionTrigger,
                     onAction = { action -> handleImeAction(action, pinnedSnippets) },
                     onTogglePin = { snippet ->
                         serviceScope.launch { repository.togglePin(snippet.id, snippet.isPinned) }
@@ -181,6 +185,11 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         super.onStartInputView(info, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        // Reset keyboard position to English alphabet layout on opening (do not show last view e.g. emoji screen)
+        try {
+            keyboardPrefs.setCurrentLanguage("en")
+        } catch (_: Exception) {}
+        openSessionTrigger.value++
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

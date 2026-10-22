@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -124,8 +125,8 @@ fun GlideTypingView(
     fun triggerRecognition() {
         recognitionJob?.cancel()
         recognitionJob = coroutineScope.launch {
-            // Short debounce after lifting finger
-            delay(280)
+            // Fast responsive debounce after lifting finger/stylus
+            delay(180)
             if (completedStrokes.isNotEmpty()) {
                 val result = HandwritingRecognizer.recognize(completedStrokes, commonVocabulary)
                 if (result.primaryWord.isNotBlank()) {
@@ -137,7 +138,7 @@ fun GlideTypingView(
                     val combined = mutableListOf<String>()
                     result.suggestions.forEach { if (!combined.contains(it)) combined.add(it) }
                     moreSuggestions.forEach { if (!combined.contains(it) && !it.equals(recognizedWord, ignoreCase = true)) combined.add(it) }
-                    suggestedWords = combined.take(5)
+                    suggestedWords = combined.take(6)
                 }
             }
         }
@@ -299,11 +300,15 @@ fun GlideTypingView(
             }
         }
 
-        // 2. MAIN WRITING CANVAS AREA
+        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+        val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
+        val canvasHeight = if (isTablet) 340.dp else 265.dp
+
+        // 2. MAIN WRITING CANVAS AREA (Expanded touch & writing surface)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
+                .height(canvasHeight)
                 .background(colors.background)
                 .pointerInput(Unit) {
                     detectDragGestures(
@@ -439,7 +444,8 @@ fun GlideTypingView(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .navigationBarsPadding()
+                .height(if (isTablet) 56.dp else 48.dp),
             color = colors.toolbarBackground
         ) {
             Row(

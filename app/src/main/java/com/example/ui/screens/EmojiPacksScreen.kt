@@ -264,8 +264,9 @@ fun EmojiPacksScreen(
                 Text(text = pack.icon, fontSize = 28.sp)
             },
             title = {
+                val cleanName = pack.name.replace(Regex("\\s*[\\[\\(].*?[\\]\\)]"), "").trim()
                 Text(
-                    text = "${pack.name} (${pack.itemCount} items)",
+                    text = cleanName,
                     fontWeight = FontWeight.Bold,
                     color = colors.letterKeyTextColor,
                     fontSize = 16.sp
@@ -382,29 +383,14 @@ private fun EmojiPackCard(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
+                    val cleanTitle = pack.name.replace(Regex("\\s*[\\[\\(].*?[\\]\\)]"), "").trim()
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = pack.name,
-                                color = colors.letterKeyTextColor,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(colors.enterKeyBackground.copy(alpha = 0.2f))
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = pack.category,
-                                    color = colors.enterKeyBackground,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        Text(
+                            text = cleanTitle,
+                            color = colors.letterKeyTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
 
                         Text(
                             text = "${pack.nativeName} • ${pack.itemCount} items • ${pack.sizeDisplay}",

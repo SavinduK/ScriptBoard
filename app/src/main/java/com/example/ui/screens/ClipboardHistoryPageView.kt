@@ -109,7 +109,8 @@ fun ClipboardHistoryPageView(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            onSaveImage(uri.toString())
+            val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(context, uri.toString())
+            onSaveImage(persistentPath)
             Toast.makeText(context, "Image added to clipboard history!", Toast.LENGTH_SHORT).show()
         }
     }

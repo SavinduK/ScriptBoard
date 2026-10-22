@@ -227,7 +227,7 @@ fun RowScope.KeyCap(
         if (key.secondaryText != null) {
             Text(
                 text = key.secondaryText,
-                color = colors.letterKeySecondaryTextColor,
+                color = textColor,
                 fontSize = if (heightDp >= 58) 12.sp else 9.5.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)

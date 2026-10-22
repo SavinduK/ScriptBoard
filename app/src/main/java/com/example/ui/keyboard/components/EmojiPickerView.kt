@@ -794,7 +794,7 @@ fun EmojiPickerView(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        text = pack.name,
+                                        text = pack.name.replace(Regex("\\s*[\\[\\(].*?[\\]\\)]"), "").trim(),
                                         color = colors.letterKeyTextColor,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold

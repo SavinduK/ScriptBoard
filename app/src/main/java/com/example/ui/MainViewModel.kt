@@ -72,14 +72,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val uri = item.uri
                         if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
                             viewModelScope.launch {
-                                val id = repository.saveImageToClipboard(uri.toString())
+                                val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(getApplication(), uri.toString())
+                                val id = repository.saveImageToClipboard(persistentPath)
                                 val entity = SnippetEntity(
                                     id = id,
                                     title = "Image Clip",
-                                    content = uri.toString(),
+                                    content = persistentPath,
                                     isPinned = false,
                                     category = "Images",
-                                    imageUri = uri.toString(),
+                                    imageUri = persistentPath,
                                     isImage = true,
                                     mimeType = "image/*"
                                 )
@@ -175,7 +176,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveImageSnippet(uri: String, title: String? = null, isPinned: Boolean = false) {
         viewModelScope.launch {
-            repository.saveImageToClipboard(uri, title, isPinned)
+            val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(getApplication(), uri)
+            repository.saveImageToClipboard(persistentPath, title, isPinned)
             _lastActionStatus.value = "Image saved to clipboard"
         }
     }

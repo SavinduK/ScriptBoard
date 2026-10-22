@@ -1,7 +1,6 @@
 package com.example.ui.keyboard.glide
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -12,7 +11,7 @@ import kotlin.math.sqrt
  * High-performance, offline Handwriting and Glide Stroke Recognizer.
  * Supports single-letter and multi-letter writing with finger or stylus.
  * Uses normalized point-cloud distance matching combined with structural
- * geometric feature analysis and dictionary disambiguation.
+ * geometric feature analysis, stroke segmentation, and dictionary disambiguation.
  */
 object HandwritingRecognizer {
 
@@ -29,7 +28,7 @@ object HandwritingRecognizer {
         val recognizedLetters: List<Char>
     )
 
-    // Predefined canonical templates resampled to 32 points in normalized [0, 1] unit square
+    // Predefined canonical templates resampled to 32 points in normalized unit space
     private val templates: Map<Char, List<Point>> by lazy {
         generateCanonicalTemplates()
     }
@@ -49,7 +48,7 @@ object HandwritingRecognizer {
             )
         }
 
-        // 1. Cluster strokes into individual letter groups based on horizontal separation
+        // 1. Cluster or segment strokes into individual letter groups
         val clusters = clusterStrokes(strokes)
         if (clusters.isEmpty()) {
             return RecognitionResult("", emptyList(), emptyList())
@@ -66,12 +65,12 @@ object HandwritingRecognizer {
 
         val rawWord = topLetters.joinToString("").lowercase()
 
-        // 3. Score against vocabulary if multiple letters or search for best word match
+        // 3. Score against vocabulary with Levenshtein edit distance and candidate permutations
         val matchedWords = findBestWordMatches(clusterCandidates, rawWord, commonVocabulary)
 
         val primaryWord = matchedWords.firstOrNull() ?: rawWord
         val suggestions = matchedWords.filter { it.isNotBlank() && !it.equals(primaryWord, ignoreCase = true) }
-            .take(4)
+            .take(6)
 
         return RecognitionResult(
             primaryWord = primaryWord,
@@ -81,7 +80,8 @@ object HandwritingRecognizer {
     }
 
     /**
-     * Groups strokes into separate letters based on horizontal bounds and drawing flow.
+     * Groups strokes into separate letters based on horizontal bounds, drawing flow,
+     * or segments a continuous glide stroke when it spans multiple characters.
      */
     private fun clusterStrokes(strokes: List<List<Offset>>): List<List<List<Point>>> {
         val validStrokes = strokes.filter { it.size >= 2 }.map { stroke ->
@@ -89,11 +89,27 @@ object HandwritingRecognizer {
         }
         if (validStrokes.isEmpty()) return emptyList()
 
+        // If user made a single continuous stroke, check if it's a multi-letter word
         if (validStrokes.size == 1) {
+            val pts = validStrokes[0]
+            val minX = pts.minOf { it.x }
+            val maxX = pts.maxOf { it.x }
+            val minY = pts.minOf { it.y }
+            val maxY = pts.maxOf { it.y }
+            val width = (maxX - minX).coerceAtLeast(1f)
+            val height = (maxY - minY).coerceAtLeast(1f)
+
+            // If width is much greater than height and has enough points, segment into letters
+            if (width > height * 1.35f && pts.size >= 12) {
+                val segments = segmentContinuousStroke(pts, height)
+                if (segments.size > 1) {
+                    return segments.map { listOf(it) }
+                }
+            }
             return listOf(validStrokes)
         }
 
-        // Calculate bounding boxes for each stroke
+        // Multi-stroke clustering: Calculate bounding boxes for each stroke
         data class StrokeInfo(
             val points: List<Point>,
             val minX: Float,
@@ -101,9 +117,7 @@ object HandwritingRecognizer {
             val minY: Float,
             val maxY: Float
         ) {
-            val width = (maxX - minX).coerceAtLeast(1f)
             val height = (maxY - minY).coerceAtLeast(1f)
-            val centerX = (minX + maxX) / 2f
         }
 
         val strokeInfos = validStrokes.map { pts ->
@@ -114,14 +128,11 @@ object HandwritingRecognizer {
             StrokeInfo(pts, minX, maxX, minY, maxY)
         }
 
-        // Calculate median height to define clustering proximity threshold
         val medianHeight = strokeInfos.map { it.height }.sorted()[strokeInfos.size / 2]
-        val clusterThreshold = (medianHeight * 0.35f).coerceIn(24f, 90f)
+        val clusterThreshold = (medianHeight * 0.40f).coerceIn(24f, 100f)
 
         // Cluster strokes that overlap horizontally or are within threshold
         val clusters = mutableListOf<MutableList<StrokeInfo>>()
-
-        // Sort by minX so letters are processed from left to right
         val sortedStrokes = strokeInfos.sortedBy { it.minX }
 
         for (stroke in sortedStrokes) {
@@ -131,10 +142,7 @@ object HandwritingRecognizer {
             }
 
             val lastCluster = clusters.last()
-            val clusterMinX = lastCluster.minOf { it.minX }
             val clusterMaxX = lastCluster.maxOf { it.maxX }
-
-            // Check if this stroke overlaps with the cluster or is within clusterThreshold
             val isOverlapping = stroke.minX <= clusterMaxX
             val isClose = (stroke.minX - clusterMaxX) < clusterThreshold
 
@@ -146,6 +154,53 @@ object HandwritingRecognizer {
         }
 
         return clusters.map { cluster -> cluster.map { it.points } }
+    }
+
+    /**
+     * Splits a continuous horizontal swipe/cursive glide stroke at natural letter transition points.
+     */
+    private fun segmentContinuousStroke(points: List<Point>, strokeHeight: Float): List<List<Point>> {
+        val splitIndices = mutableListOf<Int>()
+        val minSegmentPoints = 6
+        val minXDist = strokeHeight * 0.45f
+
+        var lastSplitX = points.first().x
+        var lastSplitIdx = 0
+
+        for (i in 2 until points.size - 2) {
+            val pPrev = points[i - 1]
+            val pCurr = points[i]
+            val pNext = points[i + 1]
+
+            // Look for local minima in Y (bottom-up connecting strokes) or sharp directional changes
+            val isLocalBottom = pCurr.y >= pPrev.y && pCurr.y >= pNext.y
+            val hasMovedRight = (pCurr.x - lastSplitX) > minXDist
+            val hasEnoughPoints = (i - lastSplitIdx) >= minSegmentPoints
+
+            if (isLocalBottom && hasMovedRight && hasEnoughPoints) {
+                splitIndices.add(i)
+                lastSplitX = pCurr.x
+                lastSplitIdx = i
+            }
+        }
+
+        if (splitIndices.isEmpty()) {
+            return listOf(points)
+        }
+
+        val segments = mutableListOf<List<Point>>()
+        var startIndex = 0
+        for (idx in splitIndices) {
+            if (idx > startIndex) {
+                segments.add(points.subList(startIndex, idx + 1))
+                startIndex = idx
+            }
+        }
+        if (startIndex < points.size) {
+            segments.add(points.subList(startIndex, points.size))
+        }
+
+        return if (segments.isNotEmpty()) segments else listOf(points)
     }
 
     /**
@@ -161,7 +216,7 @@ object HandwritingRecognizer {
         val maxY = allPoints.maxOf { it.y }
         val width = (maxX - minX).coerceAtLeast(1f)
         val height = (maxY - minY).coerceAtLeast(1f)
-        val aspectRatio = height / width // > 2.0 = tall & narrow, < 0.6 = wide
+        val aspectRatio = height / width
 
         // Normalize points into [0, 1] preserving aspect ratio
         val maxDim = max(width, height)
@@ -177,48 +232,45 @@ object HandwritingRecognizer {
 
         val scores = mutableListOf<LetterCandidate>()
 
-        // 1. Point Cloud Distance matching with templates
+        // Distance matching with templates
         for ((char, templatePts) in templates) {
             val dist = pointCloudDistance(centered, templatePts)
             var penalty = 0f
 
-            // Adjust score based on structural heuristics
             val strokeCount = strokes.size
 
-            // Two-stroke letters like 't', 'x', 'i', 'j', 'k'
-            if (char in listOf('t', 'x', 'i', 'j', 'k', 'X', 'T', 'K')) {
-                if (strokeCount == 2) penalty -= 0.15f
-                else if (strokeCount == 1) penalty += 0.20f
+            // Two-stroke letters
+            if (char in listOf('t', 'x', 'i', 'j', 'k', 'X', 'T', 'K', '+')) {
+                if (strokeCount >= 2) penalty -= 0.12f
             }
 
-            // Single stroke smooth letters like 'c', 'o', 's', 'l', 'u', 'v', 'w', 'z'
-            if (char in listOf('c', 'o', 's', 'l', 'u', 'v', 'w', 'z', 'O', 'C', 'S', 'U', 'V', 'W', 'Z')) {
-                if (strokeCount == 1) penalty -= 0.10f
-                else if (strokeCount > 2) penalty += 0.35f
+            // Single stroke smooth letters
+            if (char in listOf('c', 'o', 's', 'l', 'u', 'v', 'w', 'z', 'O', 'C', 'S', 'U', 'V', 'W', 'Z', '0', '1', '2', '3', '6', '8', '9')) {
+                if (strokeCount == 1) penalty -= 0.08f
             }
 
             // Aspect ratio heuristics
             if (char in listOf('l', 'i', '1', 'I', 't', 'j')) {
-                if (aspectRatio > 1.8f) penalty -= 0.20f
-                else if (aspectRatio < 0.9f) penalty += 0.30f
+                if (aspectRatio > 1.6f) penalty -= 0.18f
+                else if (aspectRatio < 0.8f) penalty += 0.25f
             } else if (char in listOf('m', 'w', 'W', 'M')) {
-                if (aspectRatio < 1.1f) penalty -= 0.15f
+                if (aspectRatio < 1.1f) penalty -= 0.14f
             }
 
-            // Closed loop check for 'o', '0', 'O', '8', 'e', 'a'
+            // Closed loop check for 'o', '0', 'O', '8', 'e', 'a', 'b', 'd', 'p', 'q'
+            val start = resampled.first()
+            val end = resampled.last()
+            val startEndDist = hypot(start.x - end.x, start.y - end.y)
             if (char in listOf('o', 'O', '0', '8')) {
-                val start = resampled.first()
-                val end = resampled.last()
-                val startEndDist = hypot(start.x - end.x, start.y - end.y)
-                if (startEndDist < 0.35f) penalty -= 0.30f
-                else penalty += 0.25f
+                if (startEndDist < 0.25f) penalty -= 0.22f
+                else penalty += 0.20f
             }
 
             val finalScore = (dist + penalty).coerceAtLeast(0.01f)
             scores.add(LetterCandidate(char, finalScore))
         }
 
-        return scores.sortedBy { it.score }.take(5)
+        return scores.sortedBy { it.score }.take(6)
     }
 
     /**
@@ -311,42 +363,53 @@ object HandwritingRecognizer {
     }
 
     /**
-     * Disambiguates letter candidates against common English dictionary words.
+     * Disambiguates letter candidates against common English dictionary words
+     * using Levenshtein distance, candidate permutations, and prefix completions.
      */
     private fun findBestWordMatches(
         clusterCandidates: List<List<LetterCandidate>>,
         rawWord: String,
-        vocabulary: List<String>
+        passedVocab: List<String>
     ): List<String> {
         val results = mutableListOf<String>()
 
-        if (vocabulary.isEmpty() || clusterCandidates.isEmpty()) {
-            results.add(rawWord)
+        val vocabulary = if (passedVocab.isNotEmpty()) (passedVocab + RICH_ENGLISH_DICTIONARY).distinct() else RICH_ENGLISH_DICTIONARY
+
+        if (clusterCandidates.isEmpty()) {
+            if (rawWord.isNotBlank()) results.add(rawWord)
             return results
         }
 
         val wordLen = clusterCandidates.size
 
-        // If single letter:
+        // Case 1: Single letter
         if (wordLen == 1) {
-            val primaryChar = clusterCandidates[0].firstOrNull()?.char?.toString() ?: rawWord
+            val topCandidates = clusterCandidates[0].take(3)
+            val primaryChar = topCandidates.firstOrNull()?.char?.toString() ?: rawWord
             results.add(primaryChar)
-            // Add top 3 words starting with this letter
+
+            // Add top common words starting with this letter
             vocabulary.filter { it.startsWith(primaryChar, ignoreCase = true) }
-                .take(3)
+                .take(5)
                 .forEach { if (!results.contains(it)) results.add(it) }
+
+            // Also add other top letter candidates
+            topCandidates.drop(1).forEach { cand ->
+                val ch = cand.char.toString()
+                if (!results.contains(ch)) results.add(ch)
+            }
             return results
         }
 
-        // Check if rawWord directly exists in vocabulary
+        // Case 2: Exact match in vocabulary
         val exactMatch = vocabulary.firstOrNull { it.equals(rawWord, ignoreCase = true) }
         if (exactMatch != null) {
             results.add(exactMatch)
         }
 
-        // Try candidate permutations for short words (up to 4 letters)
+        // Case 3: Candidate permutations for short words (2 to 5 letters)
         if (wordLen in 2..5) {
-            val candidateSets = clusterCandidates.map { it.take(3).map { c -> c.char.lowercaseChar() } }
+            val candidateSets = clusterCandidates.map { it.take(2).map { c -> c.char.lowercaseChar() } }
             val possibleCombinations = mutableListOf<String>()
 
             fun generateCombos(index: Int, current: String) {
@@ -360,7 +423,6 @@ object HandwritingRecognizer {
             }
             generateCombos(0, "")
 
-            // Match against vocabulary with length prioritization
             for (combo in possibleCombinations) {
                 val vocabMatch = vocabulary.firstOrNull { it.equals(combo, ignoreCase = true) }
                 if (vocabMatch != null && !results.contains(vocabMatch)) {
@@ -369,20 +431,98 @@ object HandwritingRecognizer {
             }
         }
 
-        // Add prefix completions from vocabulary
-        for (vocab in vocabulary) {
-            if (vocab.startsWith(rawWord, ignoreCase = true) && !results.contains(vocab)) {
-                results.add(vocab)
-                if (results.size >= 5) break
+        // Case 4: Fuzzy Levenshtein matching (distance <= 2)
+        val firstChar = rawWord.firstOrNull()?.lowercaseChar()
+        val lastChar = rawWord.lastOrNull()?.lowercaseChar()
+
+        val fuzzyMatches = vocabulary
+            .filter { abs(it.length - wordLen) <= 2 }
+            .mapNotNull { word ->
+                val dist = levenshteinDistance(rawWord, word.lowercase())
+                if (dist <= 2) {
+                    var score = 100 - (dist * 30)
+                    if (firstChar != null && word.startsWith(firstChar, ignoreCase = true)) score += 40
+                    if (lastChar != null && word.endsWith(lastChar, ignoreCase = true)) score += 20
+                    Pair(word, score)
+                } else null
+            }
+            .sortedByDescending { it.second }
+            .map { it.first }
+
+        for (fuzzy in fuzzyMatches) {
+            if (!results.contains(fuzzy)) {
+                results.add(fuzzy)
+                if (results.size >= 6) break
             }
         }
 
-        if (results.isEmpty() || !results.contains(rawWord)) {
-            results.add(0, rawWord)
+        // Case 5: Prefix matches
+        for (vocab in vocabulary) {
+            if (vocab.startsWith(rawWord, ignoreCase = true) && !results.contains(vocab)) {
+                results.add(vocab)
+                if (results.size >= 6) break
+            }
+        }
+
+        // If rawWord not included, insert it at first or second position
+        if (!results.contains(rawWord) && rawWord.isNotBlank()) {
+            if (results.isEmpty()) results.add(rawWord)
+            else results.add(1, rawWord)
         }
 
         return results
     }
+
+    private fun levenshteinDistance(s1: String, s2: String): Int {
+        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
+        for (i in 0..s1.length) dp[i][0] = i
+        for (j in 0..s2.length) dp[0][j] = j
+
+        for (i in 1..s1.length) {
+            for (j in 1..s2.length) {
+                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+                dp[i][j] = minOf(
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
+                )
+            }
+        }
+        return dp[s1.length][s2.length]
+    }
+
+    /**
+     * Rich built-in English dictionary for glide typing recognition.
+     */
+    private val RICH_ENGLISH_DICTIONARY: List<String> = listOf(
+        "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not",
+        "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from",
+        "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would",
+        "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which",
+        "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know",
+        "take", "people", "into", "year", "your", "good", "some", "could", "them", "see",
+        "other", "than", "then", "now", "look", "only", "come", "its", "over", "think",
+        "also", "back", "after", "use", "two", "how", "our", "work", "first", "well",
+        "way", "even", "new", "want", "because", "any", "these", "give", "day", "most",
+        "us", "great", "here", "please", "thank", "thanks", "today", "tomorrow", "yesterday",
+        "morning", "evening", "night", "meet", "meeting", "call", "message", "email",
+        "phone", "address", "where", "why", "let", "check", "send", "received", "nice",
+        "happy", "awesome", "perfect", "help", "need", "love", "really", "very", "right",
+        "sure", "tell", "much", "before", "while", "should", "going", "been", "being",
+        "doing", "having", "working", "trying", "looking", "welcome", "sounds", "fine",
+        "talk", "later", "soon", "ready", "done", "start", "stop", "again", "always",
+        "never", "maybe", "yes", "yeah", "okay", "alright", "sorry", "excuse", "appreciate",
+        "regards", "best", "cheers", "update", "project", "code", "android", "keyboard",
+        "mobile", "device", "quick", "fast", "speed", "test", "hello", "hi", "hey",
+        "cat", "dog", "sun", "car", "run", "pen", "write", "note", "read", "book",
+        "home", "friend", "smile", "laugh", "walk", "drive", "food", "water", "coffee",
+        "tea", "lunch", "dinner", "sleep", "dream", "game", "play", "music", "song",
+        "watch", "movie", "video", "photo", "picture", "file", "open", "close", "save",
+        "share", "copy", "paste", "cut", "undo", "redo", "find", "search", "view",
+        "edit", "type", "text", "word", "line", "page", "screen", "button", "icon",
+        "list", "card", "view", "menu", "tab", "setting", "system", "data", "info",
+        "name", "user", "pass", "login", "sync", "wifi", "bluetooth", "cloud", "store"
+    )
 
     /**
      * Generates normalized 32-point canonical templates for letters and symbols.
@@ -395,184 +535,234 @@ object HandwritingRecognizer {
             map[char] = centerPoints(resampled)
         }
 
-        // a: loop counter-clockwise from (0.7, 0.4) down to (0.3, 0.8) then stem down (0.7, 0.4) to (0.7, 0.9)
+        // a
         createTemplate('a', listOf(
             Point(0.7f, 0.4f), Point(0.4f, 0.35f), Point(0.2f, 0.6f),
             Point(0.4f, 0.85f), Point(0.7f, 0.65f), Point(0.7f, 0.4f), Point(0.7f, 0.9f)
         ))
 
-        // b: stem down then loop right
+        // b
         createTemplate('b', listOf(
             Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.25f, 0.5f),
             Point(0.65f, 0.5f), Point(0.75f, 0.7f), Point(0.65f, 0.9f), Point(0.25f, 0.9f)
         ))
 
-        // c: arc from top-right to bottom-right
+        // c
         createTemplate('c', listOf(
             Point(0.75f, 0.3f), Point(0.5f, 0.2f), Point(0.25f, 0.5f),
             Point(0.5f, 0.8f), Point(0.75f, 0.7f)
         ))
 
-        // d: loop left then stem down
+        // d
         createTemplate('d', listOf(
             Point(0.75f, 0.5f), Point(0.35f, 0.5f), Point(0.25f, 0.7f),
             Point(0.35f, 0.9f), Point(0.75f, 0.9f), Point(0.75f, 0.1f), Point(0.75f, 0.9f)
         ))
 
-        // e: horizontal bar then arc left and down
+        // e
         createTemplate('e', listOf(
             Point(0.25f, 0.55f), Point(0.75f, 0.55f), Point(0.5f, 0.25f),
             Point(0.25f, 0.55f), Point(0.4f, 0.85f), Point(0.75f, 0.8f)
         ))
 
-        // f: hook top down and cross
+        // f
         createTemplate('f', listOf(
             Point(0.7f, 0.2f), Point(0.5f, 0.1f), Point(0.45f, 0.9f),
             Point(0.25f, 0.45f), Point(0.65f, 0.45f)
         ))
 
-        // g: circle top + descender hook bottom
+        // g
         createTemplate('g', listOf(
             Point(0.7f, 0.35f), Point(0.35f, 0.35f), Point(0.3f, 0.6f),
             Point(0.7f, 0.6f), Point(0.7f, 0.35f), Point(0.7f, 0.95f), Point(0.35f, 0.95f)
         ))
 
-        // h: stem down then arch
+        // h
         createTemplate('h', listOf(
             Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.25f, 0.5f),
             Point(0.5f, 0.4f), Point(0.75f, 0.55f), Point(0.75f, 0.9f)
         ))
 
-        // i: vertical line + dot
+        // i
         createTemplate('i', listOf(
             Point(0.5f, 0.35f), Point(0.5f, 0.9f), Point(0.5f, 0.18f), Point(0.52f, 0.22f)
         ))
 
-        // j: hook with dot
+        // j
         createTemplate('j', listOf(
             Point(0.6f, 0.35f), Point(0.6f, 0.9f), Point(0.35f, 0.95f),
             Point(0.6f, 0.18f), Point(0.62f, 0.22f)
         ))
 
-        // k: vertical stem + diagonal arms
+        // k
         createTemplate('k', listOf(
             Point(0.3f, 0.1f), Point(0.3f, 0.9f), Point(0.7f, 0.35f),
             Point(0.3f, 0.6f), Point(0.7f, 0.9f)
         ))
 
-        // l: straight vertical line
+        // l
         createTemplate('l', listOf(
             Point(0.5f, 0.1f), Point(0.5f, 0.5f), Point(0.5f, 0.9f)
         ))
 
-        // m: two arches
+        // m
         createTemplate('m', listOf(
             Point(0.15f, 0.9f), Point(0.15f, 0.4f), Point(0.35f, 0.35f), Point(0.5f, 0.6f),
             Point(0.5f, 0.9f), Point(0.5f, 0.4f), Point(0.75f, 0.35f), Point(0.85f, 0.9f)
         ))
 
-        // n: one arch
+        // n
         createTemplate('n', listOf(
             Point(0.25f, 0.9f), Point(0.25f, 0.4f), Point(0.5f, 0.35f),
             Point(0.75f, 0.55f), Point(0.75f, 0.9f)
         ))
 
-        // o: smooth circle
+        // o
         createTemplate('o', (0..16).map { i ->
             val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
             Point((0.5 + 0.35 * Math.cos(angle)).toFloat(), (0.5 + 0.35 * Math.sin(angle)).toFloat())
         })
-        createTemplate('O', (0..16).map { i ->
-            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
-            Point((0.5 + 0.38 * Math.cos(angle)).toFloat(), (0.5 + 0.42 * Math.sin(angle)).toFloat())
-        })
 
-        // p: stem down below baseline + loop top
+        // p
         createTemplate('p', listOf(
             Point(0.25f, 0.35f), Point(0.25f, 0.95f), Point(0.25f, 0.35f),
             Point(0.65f, 0.35f), Point(0.75f, 0.55f), Point(0.65f, 0.7f), Point(0.25f, 0.7f)
         ))
 
-        // q: loop + descender
+        // q
         createTemplate('q', listOf(
             Point(0.7f, 0.35f), Point(0.35f, 0.35f), Point(0.3f, 0.55f),
             Point(0.7f, 0.7f), Point(0.7f, 0.35f), Point(0.7f, 0.95f)
         ))
 
-        // r: stem down + hook right
+        // r
         createTemplate('r', listOf(
             Point(0.3f, 0.4f), Point(0.3f, 0.9f), Point(0.3f, 0.55f),
             Point(0.55f, 0.4f), Point(0.75f, 0.45f)
         ))
 
-        // s: s-curve
+        // s
         createTemplate('s', listOf(
             Point(0.75f, 0.35f), Point(0.45f, 0.25f), Point(0.3f, 0.45f),
             Point(0.65f, 0.65f), Point(0.55f, 0.85f), Point(0.25f, 0.75f)
         ))
 
-        // t: cross vertical + horizontal
+        // t
         createTemplate('t', listOf(
             Point(0.5f, 0.15f), Point(0.5f, 0.85f), Point(0.65f, 0.85f),
             Point(0.25f, 0.4f), Point(0.75f, 0.4f)
         ))
 
-        // u: cup shape
+        // u
         createTemplate('u', listOf(
             Point(0.25f, 0.35f), Point(0.25f, 0.75f), Point(0.5f, 0.85f),
             Point(0.75f, 0.75f), Point(0.75f, 0.35f), Point(0.75f, 0.9f)
         ))
 
-        // v: point down
+        // v
         createTemplate('v', listOf(
             Point(0.2f, 0.3f), Point(0.5f, 0.85f), Point(0.8f, 0.3f)
         ))
 
-        // w: double v
+        // w
         createTemplate('w', listOf(
             Point(0.15f, 0.3f), Point(0.35f, 0.85f), Point(0.5f, 0.5f),
             Point(0.65f, 0.85f), Point(0.85f, 0.3f)
         ))
 
-        // x: two crossing diagonals
+        // x
         createTemplate('x', listOf(
             Point(0.25f, 0.25f), Point(0.75f, 0.85f),
             Point(0.75f, 0.25f), Point(0.25f, 0.85f)
         ))
 
-        // y: v shape + descending tail
+        // y
         createTemplate('y', listOf(
             Point(0.25f, 0.35f), Point(0.5f, 0.65f), Point(0.75f, 0.35f),
             Point(0.5f, 0.65f), Point(0.3f, 0.95f)
         ))
 
-        // z: zigzag
+        // z
         createTemplate('z', listOf(
             Point(0.25f, 0.35f), Point(0.75f, 0.35f), Point(0.25f, 0.85f), Point(0.75f, 0.85f)
         ))
 
-        // Uppercase templates:
+        // Uppercase templates
         createTemplate('A', listOf(
             Point(0.15f, 0.9f), Point(0.5f, 0.1f), Point(0.85f, 0.9f),
             Point(0.3f, 0.6f), Point(0.7f, 0.6f)
         ))
-        createTemplate('T', listOf(
-            Point(0.15f, 0.15f), Point(0.85f, 0.15f),
-            Point(0.5f, 0.15f), Point(0.5f, 0.9f)
+        createTemplate('B', listOf(
+            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.65f, 0.3f),
+            Point(0.35f, 0.5f), Point(0.7f, 0.7f), Point(0.25f, 0.9f)
         ))
-        createTemplate('I', listOf(
-            Point(0.3f, 0.15f), Point(0.7f, 0.15f),
-            Point(0.5f, 0.15f), Point(0.5f, 0.85f),
-            Point(0.3f, 0.85f), Point(0.7f, 0.85f)
+        createTemplate('C', listOf(
+            Point(0.8f, 0.25f), Point(0.45f, 0.15f), Point(0.2f, 0.5f),
+            Point(0.45f, 0.85f), Point(0.8f, 0.75f)
+        ))
+        createTemplate('D', listOf(
+            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.3f, 0.1f),
+            Point(0.75f, 0.5f), Point(0.3f, 0.9f)
+        ))
+        createTemplate('E', listOf(
+            Point(0.75f, 0.15f), Point(0.25f, 0.15f), Point(0.25f, 0.85f),
+            Point(0.75f, 0.85f), Point(0.25f, 0.5f), Point(0.65f, 0.5f)
         ))
         createTemplate('H', listOf(
             Point(0.25f, 0.1f), Point(0.25f, 0.9f),
             Point(0.25f, 0.5f), Point(0.75f, 0.5f),
             Point(0.75f, 0.1f), Point(0.75f, 0.9f)
         ))
-        createTemplate('E', listOf(
-            Point(0.75f, 0.15f), Point(0.25f, 0.15f), Point(0.25f, 0.85f),
-            Point(0.75f, 0.85f), Point(0.25f, 0.5f), Point(0.65f, 0.5f)
+        createTemplate('I', listOf(
+            Point(0.3f, 0.15f), Point(0.7f, 0.15f),
+            Point(0.5f, 0.15f), Point(0.5f, 0.85f),
+            Point(0.3f, 0.85f), Point(0.7f, 0.85f)
+        ))
+        createTemplate('O', (0..16).map { i ->
+            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
+            Point((0.5 + 0.38 * Math.cos(angle)).toFloat(), (0.5 + 0.42 * Math.sin(angle)).toFloat())
+        })
+        createTemplate('S', listOf(
+            Point(0.75f, 0.25f), Point(0.45f, 0.15f), Point(0.25f, 0.35f),
+            Point(0.65f, 0.55f), Point(0.55f, 0.85f), Point(0.25f, 0.75f)
+        ))
+        createTemplate('T', listOf(
+            Point(0.15f, 0.15f), Point(0.85f, 0.15f),
+            Point(0.5f, 0.15f), Point(0.5f, 0.9f)
+        ))
+
+        // Numbers 0-9
+        createTemplate('0', (0..16).map { i ->
+            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
+            Point((0.5 + 0.3 * Math.cos(angle)).toFloat(), (0.5 + 0.42 * Math.sin(angle)).toFloat())
+        })
+        createTemplate('1', listOf(
+            Point(0.35f, 0.25f), Point(0.5f, 0.15f), Point(0.5f, 0.9f),
+            Point(0.3f, 0.9f), Point(0.7f, 0.9f)
+        ))
+        createTemplate('2', listOf(
+            Point(0.3f, 0.3f), Point(0.5f, 0.15f), Point(0.75f, 0.3f),
+            Point(0.25f, 0.85f), Point(0.8f, 0.85f)
+        ))
+        createTemplate('3', listOf(
+            Point(0.25f, 0.2f), Point(0.75f, 0.2f), Point(0.45f, 0.5f),
+            Point(0.75f, 0.65f), Point(0.3f, 0.85f)
+        ))
+        createTemplate('4', listOf(
+            Point(0.7f, 0.85f), Point(0.7f, 0.15f),
+            Point(0.25f, 0.65f), Point(0.85f, 0.65f)
+        ))
+        createTemplate('5', listOf(
+            Point(0.75f, 0.15f), Point(0.3f, 0.15f), Point(0.3f, 0.5f),
+            Point(0.75f, 0.6f), Point(0.3f, 0.85f)
+        ))
+        createTemplate('7', listOf(
+            Point(0.25f, 0.15f), Point(0.75f, 0.15f), Point(0.45f, 0.9f)
+        ))
+        createTemplate('8', listOf(
+            Point(0.5f, 0.5f), Point(0.3f, 0.3f), Point(0.5f, 0.15f),
+            Point(0.7f, 0.3f), Point(0.5f, 0.5f), Point(0.3f, 0.7f),
+            Point(0.5f, 0.85f), Point(0.7f, 0.7f), Point(0.5f, 0.5f)
         ))
 
         return map

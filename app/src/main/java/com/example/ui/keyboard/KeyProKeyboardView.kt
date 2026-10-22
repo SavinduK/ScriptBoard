@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +81,7 @@ fun KeyProKeyboardView(
     isSoundEnabled: Boolean = true,
     isHapticEnabled: Boolean = true,
     initialLaptopBarVisible: Boolean = true,
+    openSessionTrigger: Long = 0L,
     onAction: (KeyAction) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit = {},
     onDeleteSnippet: (Long) -> Unit = {},
@@ -123,6 +125,18 @@ fun KeyProKeyboardView(
         )
     }
     var selectedSinhalaLetter by remember { mutableStateOf("ව") }
+
+    // Reset keyboard position to English alphabet layout whenever the keyboard is opened in an app
+    LaunchedEffect(openSessionTrigger) {
+        if (openSessionTrigger > 0L) {
+            layoutMode = KeyboardLayoutMode.TEXT
+            shiftState = ShiftState.OFF
+            currentWordBuffer = ""
+            isCtrlActive = false
+            isAltActive = false
+            selectedSinhalaLetter = "ව"
+        }
+    }
 
     // Update 3 word suggestions dynamically as user types in the selected keyboard language
     LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled, currentLanguage) {
@@ -708,8 +722,12 @@ fun KeyProKeyboardView(
             }
         }
 
-        // Bottom spacer
-        Spacer(modifier = Modifier.height(if (isTablet) 32.dp else 24.dp))
+        // Tablet / Large Screen Inset Fix: Prevent bottom row of keys from being covered by the IME switcher / close bar
+        Spacer(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .height(if (isTablet) 58.dp else 22.dp)
+        )
         }
     }
 }

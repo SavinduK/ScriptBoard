@@ -41,7 +41,7 @@ object KeyboardThemes {
         toolbarIconActiveTint = Color(0xFF8AB4F8),
         letterKeyBackground = Color(0xFF33353D),
         letterKeyTextColor = Color(0xFFE8EAED),
-        letterKeySecondaryTextColor = Color(0xFF9AA0A6),
+        letterKeySecondaryTextColor = Color(0xFFE8EAED),
         functionKeyBackground = Color(0xFF282A30),
         functionKeyTextColor = Color(0xFFE8EAED),
         enterKeyBackground = Color(0xFF8AB4F8),
@@ -65,7 +65,7 @@ object KeyboardThemes {
         toolbarIconActiveTint = Color(0xFF64B5F6),
         letterKeyBackground = Color(0xFF1C1C1F),
         letterKeyTextColor = Color(0xFFFFFFFF),
-        letterKeySecondaryTextColor = Color(0xFF888894),
+        letterKeySecondaryTextColor = Color(0xFFFFFFFF),
         functionKeyBackground = Color(0xFF141416),
         functionKeyTextColor = Color(0xFFFFFFFF),
         enterKeyBackground = Color(0xFF2979FF),
@@ -89,7 +89,7 @@ object KeyboardThemes {
         toolbarIconActiveTint = Color(0xFF0B57D0),
         letterKeyBackground = Color(0xFFFFFFFF),
         letterKeyTextColor = Color(0xFF1F1F1F),
-        letterKeySecondaryTextColor = Color(0xFF747775),
+        letterKeySecondaryTextColor = Color(0xFF1F1F1F),
         functionKeyBackground = Color(0xFFD6DBDF),
         functionKeyTextColor = Color(0xFF1F1F1F),
         enterKeyBackground = Color(0xFF0B57D0),
@@ -113,7 +113,7 @@ object KeyboardThemes {
         toolbarIconActiveTint = Color(0xFF00E5FF),
         letterKeyBackground = Color(0xFF132238),
         letterKeyTextColor = Color(0xFFE1F5FE),
-        letterKeySecondaryTextColor = Color(0xFF00B0FF),
+        letterKeySecondaryTextColor = Color(0xFFE1F5FE),
         functionKeyBackground = Color(0xFF0F1A2A),
         functionKeyTextColor = Color(0xFF80D8FF),
         enterKeyBackground = Color(0xFF00E5FF),
@@ -138,7 +138,7 @@ object KeyboardThemes {
     ): KeyboardColors {
         val luminance = (background.red * 0.299f + background.green * 0.587f + background.blue * 0.114f)
         val isDark = luminance < 0.5f
-        val secondaryTextColor = if (isDark) letterKeyTextColor.copy(alpha = 0.65f) else letterKeyTextColor.copy(alpha = 0.6f)
+        val secondaryTextColor = letterKeyTextColor
         val enterLuminance = (enterKeyBackground.red * 0.299f + enterKeyBackground.green * 0.587f + enterKeyBackground.blue * 0.114f)
         val enterTextColor = if (enterLuminance < 0.55f) Color.White else Color.Black
 

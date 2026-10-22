@@ -505,7 +505,10 @@ class ClipboardSyncManager private constructor(private val context: Context) {
     private fun readImageAsBase64(imageUri: String?): String? {
         if (imageUri.isNullOrBlank()) return null
         return try {
-            val stream: InputStream? = if (imageUri.startsWith("content://") || imageUri.startsWith("file://")) {
+            val fileCheck = File(imageUri)
+            val stream: InputStream? = if (fileCheck.exists() && fileCheck.isFile) {
+                fileCheck.inputStream()
+            } else if (imageUri.startsWith("content://") || imageUri.startsWith("file://") || imageUri.startsWith("android.resource://")) {
                 context.contentResolver.openInputStream(Uri.parse(imageUri))
             } else {
                 File(imageUri).inputStream()

@@ -94,12 +94,12 @@ fun InKeyboardClipboardView(
                     val item = clip.getItemAt(0)
                     val uri = item.uri
                     if (uri != null && (clip.description.hasMimeType("image/*") || uri.toString().contains("image") || uri.scheme == "content")) {
-                        val uriStr = uri.toString()
-                        val alreadyInHistory = historySnippets.any { it.imageUri == uriStr || it.content == uriStr } ||
-                                pinnedSnippets.any { it.imageUri == uriStr || it.content == uriStr }
+                        val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(context, uri.toString())
+                        val alreadyInHistory = historySnippets.any { it.imageUri == persistentPath || it.content == persistentPath || it.imageUri == uri.toString() } ||
+                                pinnedSnippets.any { it.imageUri == persistentPath || it.content == persistentPath || it.imageUri == uri.toString() }
                         if (!alreadyInHistory) {
                             val dateStr = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
-                            onSaveSnippet("Image ($dateStr)", uriStr, false, "Images", "")
+                            onSaveSnippet("Image ($dateStr)", persistentPath, false, "Images", "")
                         }
                     } else {
                         val text = item.text?.toString()
