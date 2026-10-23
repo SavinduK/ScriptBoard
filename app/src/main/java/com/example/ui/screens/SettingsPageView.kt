@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
@@ -75,14 +77,18 @@ fun SettingsPageView(
     isHoldForSymbolsEnabled: Boolean,
     isAutoSuggestEnabled: Boolean = true,
     keyFontSize: Float = 24f,
+    tabletKeyboardScale: Float = 1.0f,
+    isHideOnPhysicalKeyboardEnabled: Boolean = true,
     onBack: () -> Unit,
     onThemeSelected: (KeyboardThemeType) -> Unit,
     onKeyFontSizeChanged: (Float) -> Unit = {},
+    onTabletKeyboardScaleChanged: (Float) -> Unit = {},
     onToggleSound: (Boolean) -> Unit,
     onToggleHaptic: (Boolean) -> Unit,
     onToggleLaptopBar: (Boolean) -> Unit,
     onToggleHoldForSymbols: (Boolean) -> Unit,
     onToggleAutoSuggest: (Boolean) -> Unit = {},
+    onToggleHideOnPhysicalKeyboard: (Boolean) -> Unit = {},
     onCustomColorsChanged: (bg: Int, keyBg: Int, text: Int, accent: Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -400,6 +406,110 @@ fun SettingsPageView(
                 }
             }
 
+            // Section: Tablet & Large Screen Keyboard Size
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Devices,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Tablet & Large Screen Keyboard Size",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Resize key height and layout scale on tablets",
+                                    color = colors.letterKeySecondaryTextColor,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.enterKeyBackground)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${(tabletKeyboardScale * 100).toInt()}%",
+                                color = colors.enterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Preset buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "Compact\n(85%)" to 0.85f,
+                            "Standard\n(100%)" to 1.0f,
+                            "Comfort\n(115%)" to 1.15f,
+                            "Expanded\n(130%)" to 1.30f
+                        ).forEach { (label, scale) ->
+                            val isSelected = kotlin.math.abs(tabletKeyboardScale - scale) < 0.05f
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                    .clickable { onTabletKeyboardScaleChanged(scale) }
+                                    .padding(vertical = 8.dp)
+                                    .testTag("btn_tablet_scale_${(scale * 100).toInt()}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Slider(
+                        value = tabletKeyboardScale,
+                        onValueChange = { onTabletKeyboardScaleChanged(it) },
+                        valueRange = 0.75f..1.40f,
+                        steps = 12,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("slider_tablet_keyboard_scale"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.enterKeyBackground,
+                            activeTrackColor = colors.enterKeyBackground,
+                            inactiveTrackColor = colors.background
+                        )
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Section 2: Typing Feedback
@@ -475,6 +585,18 @@ fun SettingsPageView(
                         onCheckedChange = onToggleLaptopBar,
                         colors = colors,
                         testTag = "page_switch_laptop_bar"
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    SettingsPageToggle(
+                        icon = Icons.Default.Keyboard,
+                        title = "Hide on Physical Keyboard",
+                        subtitle = "Suppress on-screen keys when USB or Bluetooth keyboard is connected",
+                        checked = isHideOnPhysicalKeyboardEnabled,
+                        onCheckedChange = onToggleHideOnPhysicalKeyboard,
+                        colors = colors,
+                        testTag = "page_switch_hide_physical_keyboard"
                     )
                 }
             }

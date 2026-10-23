@@ -2,7 +2,12 @@ package com.example.ime
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.Configuration
+import android.hardware.input.InputManager
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -42,6 +47,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     private lateinit var repository: SnippetRepository
     private lateinit var keyboardPrefs: KeyboardPreferences
     private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+    private var inputDeviceListener: InputManager.InputDeviceListener? = null
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -115,11 +121,63 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             }
             cm?.addPrimaryClipChangedListener(clipboardListener)
         } catch (_: Exception) {}
+
+        // Listen for hardware/physical keyboard connections (USB OTG, dock, Bluetooth)
+        try {
+            val im = getSystemService(Context.INPUT_SERVICE) as? InputManager
+            val listener = object : InputManager.InputDeviceListener {
+                override fun onInputDeviceAdded(deviceId: Int) {
+                    checkAndHideIfPhysicalKeyboardConnected()
+                }
+
+                override fun onInputDeviceRemoved(deviceId: Int) {
+                    // Physical keyboard removed
+                }
+
+                override fun onInputDeviceChanged(deviceId: Int) {
+                    checkAndHideIfPhysicalKeyboardConnected()
+                }
+            }
+            inputDeviceListener = listener
+            im?.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
+        } catch (_: Exception) {}
+    }
+
+    fun isPhysicalKeyboardConnected(): Boolean {
+        try {
+            val im = getSystemService(Context.INPUT_SERVICE) as? InputManager
+            if (im != null) {
+                for (id in im.inputDeviceIds) {
+                    val device = im.getInputDevice(id) ?: continue
+                    if (!device.isVirtual && (device.sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD) {
+                        if (device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC) {
+                            return true
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        val config = resources.configuration
+        return config.keyboard != Configuration.KEYBOARD_NOKEYS &&
+                config.hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_YES
+    }
+
+    private fun checkAndHideIfPhysicalKeyboardConnected() {
+        if (keyboardPrefs.hideOnPhysicalKeyboard.value && isPhysicalKeyboardConnected()) {
+            requestHideSelf(0)
+        }
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
-    override fun onEvaluateInputViewShown(): Boolean = true
+    override fun onEvaluateInputViewShown(): Boolean {
+        if (keyboardPrefs.hideOnPhysicalKeyboard.value && isPhysicalKeyboardConnected()) {
+            return false
+        }
+        val config = resources.configuration
+        return config.keyboard == Configuration.KEYBOARD_NOKEYS
+                || config.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_YES
+    }
 
     override fun onCreateInputView(): View {
         window?.window?.decorView?.let { decorView ->
@@ -183,6 +241,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        if (keyboardPrefs.hideOnPhysicalKeyboard.value && isPhysicalKeyboardConnected()) {
+            requestHideSelf(0)
+            return
+        }
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         // Reset keyboard position to English alphabet layout on opening (do not show last view e.g. emoji screen)
@@ -190,6 +252,13 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             keyboardPrefs.setCurrentLanguage("en")
         } catch (_: Exception) {}
         openSessionTrigger.value++
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (keyboardPrefs.hideOnPhysicalKeyboard.value && isPhysicalKeyboardConnected()) {
+            requestHideSelf(0)
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -459,6 +528,11 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             clipboardListener?.let { cm?.removePrimaryClipChangedListener(it) }
+        } catch (_: Exception) {}
+
+        try {
+            val im = getSystemService(Context.INPUT_SERVICE) as? InputManager
+            inputDeviceListener?.let { im?.unregisterInputDeviceListener(it) }
         } catch (_: Exception) {}
 
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)

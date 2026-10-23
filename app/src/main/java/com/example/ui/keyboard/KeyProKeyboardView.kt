@@ -113,9 +113,10 @@ fun KeyProKeyboardView(
         onDispose { }
     }
 
+    val prefLaptopBarVisible by keyboardPrefs.laptopBarVisible.collectAsState()
     var layoutMode by remember { mutableStateOf(KeyboardLayoutMode.TEXT) }
     var shiftState by remember { mutableStateOf(ShiftState.OFF) }
-    var isLaptopBarVisible by remember { mutableStateOf(initialLaptopBarVisible) }
+    var isLaptopBarVisible by remember(prefLaptopBarVisible) { mutableStateOf(prefLaptopBarVisible) }
     var isCtrlActive by remember { mutableStateOf(false) }
     var isAltActive by remember { mutableStateOf(false) }
     var currentWordBuffer by remember { mutableStateOf("") }
@@ -312,24 +313,28 @@ fun KeyProKeyboardView(
     val isLaptopLayout = layoutMode == KeyboardLayoutMode.EXTENDED_PC
     val isSinhala = currentLanguage == "si" && layoutMode == KeyboardLayoutMode.TEXT
 
+    val tabletScale by keyboardPrefs.tabletKeyboardScale.collectAsState()
+    val effectiveScale = if (isTablet) tabletScale else 1.0f
+
     // Increased key sizes and responsive scaling for large displays
-    val calculatedHeightDp = when {
+    val baseHeightDp = when {
         isLaptopLayout -> if (isTablet) 52 else 42
         isSinhala -> if (isTablet) 54 else 45
         else -> if (isTablet) 66 else 54
     }
+    val calculatedHeightDp = (baseHeightDp * effectiveScale).toInt()
 
     // Increased spacing between keys
-    val keyHorizontalPadding = if (isTablet) 4.5f else 3.5f
-    val keyVerticalPadding = if (isTablet) 4.5f else 3.8f
-    val keyCornerRadius = if (isTablet) 12 else 10
-    val rowVerticalPadding = if (isTablet) 2.5.dp else 1.8.dp
+    val keyHorizontalPadding = if (isTablet) (4.5f * effectiveScale).coerceAtLeast(3f) else 3.5f
+    val keyVerticalPadding = if (isTablet) (4.5f * effectiveScale).coerceAtLeast(3.5f) else 3.8f
+    val keyCornerRadius = if (isTablet) (12 * effectiveScale).toInt().coerceAtLeast(8) else 10
+    val rowVerticalPadding = if (isTablet) (2.5f * effectiveScale).dp else 1.8.dp
 
     // Scaled font sizes
     val calculatedFontSize = when {
-        isLaptopLayout -> if (isTablet) 16f else 13f
-        isSinhala -> if (isTablet) 24f else 19f
-        else -> if (isTablet) (keyFontSize * 1.25f).coerceAtLeast(28f) else keyFontSize
+        isLaptopLayout -> if (isTablet) (16f * effectiveScale) else 13f
+        isSinhala -> if (isTablet) (24f * effectiveScale) else 19f
+        else -> if (isTablet) ((keyFontSize * 1.25f) * effectiveScale).coerceAtLeast(24f) else keyFontSize
     }
 
     Box(
@@ -374,7 +379,11 @@ fun KeyProKeyboardView(
                 isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
                 isGlideTypingActive = layoutMode == KeyboardLayoutMode.GLIDE_TYPING,
                 currentLanguage = currentLanguage,
-                onToggleLaptopBar = { isLaptopBarVisible = !isLaptopBarVisible },
+                onToggleLaptopBar = {
+                    val next = !isLaptopBarVisible
+                    isLaptopBarVisible = next
+                    keyboardPrefs.setLaptopBarVisible(next)
+                },
                 onToggleExtendedPcKeys = {
                     layoutMode = if (layoutMode == KeyboardLayoutMode.EXTENDED_PC) {
                         KeyboardLayoutMode.TEXT

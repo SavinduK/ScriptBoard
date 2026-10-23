@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
@@ -76,6 +77,7 @@ fun InKeyboardSettingsView(
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val autoSuggestEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+    val hideOnPhysicalKeyboard by keyboardPrefs.hideOnPhysicalKeyboard.collectAsState()
 
     var showRgbThemeDialog by remember { mutableStateOf(false) }
 
@@ -465,6 +467,19 @@ fun InKeyboardSettingsView(
                         onCheckedChange = { keyboardPrefs.setLaptopBarVisible(it) },
                         colors = colors,
                         testTag = "switch_laptop_bar_inline"
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Hide on Physical Keyboard
+                    SettingToggleRow(
+                        icon = Icons.Default.Keyboard,
+                        title = "Hide on Physical Keyboard",
+                        subtitle = "Suppress on-screen keys when USB or Bluetooth keyboard is connected",
+                        checked = hideOnPhysicalKeyboard,
+                        onCheckedChange = { keyboardPrefs.setHideOnPhysicalKeyboard(it) },
+                        colors = colors,
+                        testTag = "switch_hide_physical_keyboard_inline"
                     )
                 }
             }

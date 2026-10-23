@@ -100,6 +100,14 @@ class KeyboardPreferences(context: Context) {
     private val _persistentSyncServiceEnabled = MutableStateFlow(prefs.getBoolean(KEY_PERSISTENT_SYNC_SERVICE, true))
     val persistentSyncServiceEnabled: StateFlow<Boolean> = _persistentSyncServiceEnabled.asStateFlow()
 
+    // Tablet / Screen Keyboard Scale (0.75f to 1.4f, default 1.0f)
+    private val _tabletKeyboardScale = MutableStateFlow(prefs.getFloat(KEY_TABLET_KEYBOARD_SCALE, 1.0f))
+    val tabletKeyboardScale: StateFlow<Float> = _tabletKeyboardScale.asStateFlow()
+
+    // Hide keyboard when physical/hardware keyboard is connected (Wired USB or Bluetooth)
+    private val _hideOnPhysicalKeyboard = MutableStateFlow(prefs.getBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, true))
+    val hideOnPhysicalKeyboard: StateFlow<Boolean> = _hideOnPhysicalKeyboard.asStateFlow()
+
     private val _bluetoothSyncEnabled = MutableStateFlow(prefs.getBoolean(KEY_BLUETOOTH_SYNC_ENABLED, true))
     val bluetoothSyncEnabled: StateFlow<Boolean> = _bluetoothSyncEnabled.asStateFlow()
 
@@ -171,6 +179,17 @@ class KeyboardPreferences(context: Context) {
     fun setPersistentSyncServiceEnabled(enabled: Boolean) {
         _persistentSyncServiceEnabled.value = enabled
         prefs.edit().putBoolean(KEY_PERSISTENT_SYNC_SERVICE, enabled).apply()
+    }
+
+    fun setTabletKeyboardScale(scale: Float) {
+        val clamped = scale.coerceIn(0.75f, 1.4f)
+        _tabletKeyboardScale.value = clamped
+        prefs.edit().putFloat(KEY_TABLET_KEYBOARD_SCALE, clamped).apply()
+    }
+
+    fun setHideOnPhysicalKeyboard(enabled: Boolean) {
+        _hideOnPhysicalKeyboard.value = enabled
+        prefs.edit().putBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, enabled).apply()
     }
 
     fun setBluetoothSyncEnabled(enabled: Boolean) {
@@ -389,6 +408,8 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_LOCAL_DEVICE_NAME = "local_device_name"
         private const val KEY_LOCAL_SHARED_SECRET = "local_shared_secret"
         private const val KEY_PERSISTENT_SYNC_SERVICE = "persistent_sync_service"
+        private const val KEY_TABLET_KEYBOARD_SCALE = "tablet_keyboard_scale"
+        private const val KEY_HIDE_ON_PHYSICAL_KEYBOARD = "hide_on_physical_keyboard"
         private const val KEY_BLUETOOTH_SYNC_ENABLED = "bluetooth_sync_enabled"
         private const val KEY_WIFI_SYNC_ENABLED = "wifi_sync_enabled"
 

@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -16,13 +15,9 @@ import com.example.MainActivity
 
 class ClipboardSyncForegroundService : Service() {
 
-    private var wifiLock: WifiManager.WifiLock? = null
-    private var multicastLock: WifiManager.MulticastLock? = null
-
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        acquireLocks()
         startForegroundServiceWithNotification()
         // Ensure the ClipboardSyncManager is active
         ClipboardSyncManager.getInstance(applicationContext).startServices()
@@ -42,7 +37,6 @@ class ClipboardSyncForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        releaseLocks()
         super.onDestroy()
     }
 
@@ -73,8 +67,8 @@ class ClipboardSyncForegroundService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("KeyPro Sync Active")
-            .setContentText("Background clipboard sync connected (Wi-Fi & Bluetooth)")
+            .setContentTitle("KeyPro Cloud Sync Active")
+            .setContentText("Google Cloud clipboard sync connected")
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -82,11 +76,7 @@ class ClipboardSyncForegroundService : Service() {
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            } else {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            }
+            val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             try {
                 startForeground(NOTIFICATION_ID, notification, serviceType)
             } catch (_: Exception) {
@@ -95,35 +85,6 @@ class ClipboardSyncForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-    }
-
-    private fun acquireLocks() {
-        try {
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            if (wm != null) {
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "KeyPro:SyncWifiLock").apply {
-                    setReferenceCounted(false)
-                    acquire()
-                }
-                multicastLock = wm.createMulticastLock("KeyPro:SyncMulticastLock").apply {
-                    setReferenceCounted(false)
-                    acquire()
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun releaseLocks() {
-        try {
-            if (wifiLock?.isHeld == true) {
-                wifiLock?.release()
-            }
-            wifiLock = null
-            if (multicastLock?.isHeld == true) {
-                multicastLock?.release()
-            }
-            multicastLock = null
-        } catch (_: Exception) {}
     }
 
     companion object {

@@ -41,6 +41,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val wordSuggestionManager = WordSuggestionManager(AppDatabase.getDatabase(application).wordFrequencyDao())
     val syncManager = com.example.sync.ClipboardSyncManager.getInstance(application)
+    val authManager = syncManager.authManager
+    val currentUser = authManager.currentUser
+    val isCloudConnected = syncManager.isCloudConnected
+    val tabletKeyboardScale = keyboardPrefs.tabletKeyboardScale
 
     val pairedDevices: StateFlow<List<com.example.data.ConnectedDeviceEntity>> = syncManager.connectedDeviceDao.getAllDevices()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -51,9 +55,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val clipboardSyncEnabled = keyboardPrefs.clipboardSyncEnabled
     val clipboardSyncImages = keyboardPrefs.clipboardSyncImages
     val persistentSyncServiceEnabled = keyboardPrefs.persistentSyncServiceEnabled
-    val bluetoothSyncEnabled = keyboardPrefs.bluetoothSyncEnabled
-    val wifiSyncEnabled = keyboardPrefs.wifiSyncEnabled
     val localDeviceName = keyboardPrefs.localDeviceName
+    val hideOnPhysicalKeyboard = keyboardPrefs.hideOnPhysicalKeyboard
 
     init {
         // Auto-purge expired history on startup if enabled
@@ -629,53 +632,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setBluetoothSync(enabled: Boolean) {
-        keyboardPrefs.setBluetoothSyncEnabled(enabled)
-        if (enabled) {
-            syncManager.restartBluetoothListener()
-        }
-        _lastActionStatus.value = if (enabled) "Bluetooth RFCOMM sync enabled" else "Bluetooth sync disabled"
+    fun setTabletKeyboardScale(scale: Float) {
+        keyboardPrefs.setTabletKeyboardScale(scale)
+        _lastActionStatus.value = "Tablet keyboard scale set to ${(scale * 100).toInt()}%"
     }
 
-    fun setWifiSync(enabled: Boolean) {
-        keyboardPrefs.setWifiSyncEnabled(enabled)
-        _lastActionStatus.value = if (enabled) "Wi-Fi mDNS & TCP sync enabled" else "Wi-Fi sync disabled"
+    fun setHideOnPhysicalKeyboard(enabled: Boolean) {
+        keyboardPrefs.setHideOnPhysicalKeyboard(enabled)
+        _lastActionStatus.value = if (enabled) "Hide on physical keyboard: ON" else "Hide on physical keyboard: OFF"
     }
 
-    fun triggerSubnetScan() {
-        syncManager.triggerSubnetScan()
-        _lastActionStatus.value = "Scanning local subnet for paired devices..."
-    }
-
-    fun reconnectAllPeers() {
-        syncManager.connectToPairedDevices()
-        _lastActionStatus.value = "Reconnecting to paired devices..."
-    }
-
-    fun pairDevice(
-        ip: String,
-        port: Int = 8765,
-        token: String = "",
-        name: String = "",
-        bluetoothMac: String = "",
-        onResult: (Boolean) -> Unit = {}
+    fun signInWithGoogle(
+        activity: android.app.Activity,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
     ) {
-        viewModelScope.launch {
-            val result = syncManager.pairWithDevice(ip, port, token, name, bluetoothMac)
-            if (result.isSuccess) {
-                _lastActionStatus.value = "Paired with ${result.getOrNull()?.name ?: ip}"
-                onResult(true)
-            } else {
-                _lastActionStatus.value = "Pairing failed: ${result.exceptionOrNull()?.message}"
-                onResult(false)
+        authManager.signInWithGoogle(
+            activity = activity,
+            onSuccess = { user ->
+                _lastActionStatus.value = "Signed in as ${user.email ?: user.uid}"
+                onSuccess()
+            },
+            onError = { err ->
+                _lastActionStatus.value = "Sign in error: $err"
+                onError(err)
             }
+        )
+    }
+
+    fun signOut(context: Context, onComplete: () -> Unit = {}) {
+        authManager.signOut(context) {
+            _lastActionStatus.value = "Signed out of Google account"
+            onComplete()
         }
     }
 
-    fun unpairDevice(deviceId: String) {
+    fun removeConnectedDevice(deviceId: String) {
         viewModelScope.launch {
-            syncManager.unpairDevice(deviceId)
-            _lastActionStatus.value = "Device unpaired"
+            syncManager.connectedDeviceDao.deleteDevice(deviceId)
+            _lastActionStatus.value = "Device removed"
         }
     }
 
@@ -688,13 +683,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendTestBroadcast(text: String) {
         val snippet = SnippetEntity(
-            title = "Test Sync",
+            title = "Cloud Test Clip",
             content = text,
             isPinned = false,
             category = "Synced",
             originDeviceId = keyboardPrefs.getLocalDeviceId()
         )
         syncManager.broadcastSnippet(snippet)
-        _lastActionStatus.value = "Broadcasted test clip to all connected devices"
+        _lastActionStatus.value = "Broadcasted clip to Firebase Cloud"
     }
 }

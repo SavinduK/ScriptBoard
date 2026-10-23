@@ -389,6 +389,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 }
 
                 MainScreenSection.SETTINGS_PAGE -> {
+                    val tabletScale by viewModel.tabletKeyboardScale.collectAsState()
+                    val hideOnPhysicalKeyboard by viewModel.hideOnPhysicalKeyboard.collectAsState()
                     SettingsPageView(
                         colors = colors,
                         currentThemeType = currentThemeType,
@@ -399,14 +401,18 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
                         isAutoSuggestEnabled = isAutoSuggestEnabled,
                         keyFontSize = keyFontSize,
+                        tabletKeyboardScale = tabletScale,
+                        isHideOnPhysicalKeyboardEnabled = hideOnPhysicalKeyboard,
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
                         onKeyFontSizeChanged = { viewModel.setKeyFontSize(it) },
+                        onTabletKeyboardScaleChanged = { viewModel.setTabletKeyboardScale(it) },
                         onToggleSound = { viewModel.setSoundEnabled(it) },
                         onToggleHaptic = { viewModel.setHapticEnabled(it) },
                         onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
                         onToggleHoldForSymbols = { viewModel.setHoldForSymbolsEnabled(it) },
                         onToggleAutoSuggest = { viewModel.setAutoSuggestEnabled(it) },
+                        onToggleHideOnPhysicalKeyboard = { viewModel.setHideOnPhysicalKeyboard(it) },
                         onCustomColorsChanged = { bg, keyBg, text, accent ->
                             viewModel.keyboardPrefs.setCustomThemeColors(bg, keyBg, text, accent)
                         }

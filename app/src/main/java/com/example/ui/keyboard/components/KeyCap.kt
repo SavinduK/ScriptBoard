@@ -228,10 +228,11 @@ fun RowScope.KeyCap(
             Text(
                 text = key.secondaryText,
                 color = textColor,
-                fontSize = if (heightDp >= 58) 12.sp else 9.5.sp,
+                fontSize = if (heightDp >= 58) 16.5.sp else 14.sp,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = (horizontalPaddingDp + 1).dp, top = 2.dp)
+                    .padding(end = (horizontalPaddingDp + 1.5f).dp, top = 2.dp)
             )
         }
 

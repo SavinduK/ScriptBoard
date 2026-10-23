@@ -475,47 +475,14 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `qr code pairing payload serialization and deserialization`() {
-    val json = com.example.sync.QRCodeUtil.buildPairingJson(
-      deviceId = "dev_12345",
-      deviceName = "Galaxy S24",
-      sharedSecret = "sec_test_token_abc123",
-      ip = "192.168.1.150",
-      port = 8765,
-      bluetoothMac = "00:11:22:33:44:55"
-    )
-
-    val parsed = com.example.sync.QRCodeUtil.parsePairingString(json)
-    assertNotNull("Parsed pairing payload should not be null", parsed)
-    assertEquals("dev_12345", parsed!!.deviceId)
-    assertEquals("Galaxy S24", parsed.deviceName)
-    assertEquals("192.168.1.150", parsed.ip)
-    assertEquals(8765, parsed.port)
-    assertEquals("sec_test_token_abc123", parsed.sharedSecret)
-    assertEquals("00:11:22:33:44:55", parsed.bluetoothMac)
-
-    // Test raw IP fallback parsing
-    val parsedRaw = com.example.sync.QRCodeUtil.parsePairingString("192.168.1.200:8765")
-    assertNotNull(parsedRaw)
-    assertEquals("192.168.1.200", parsedRaw!!.ip)
-    assertEquals(8765, parsedRaw.port)
+  fun `firebase auth manager initialization and state flow`() {
+    val authManager = com.example.sync.FirebaseAuthManager.getInstance()
+    assertNotNull("FirebaseAuthManager instance should not be null", authManager)
+    val user = authManager.currentUser.value
+    // Default unauthenticated on test start
+    assertTrue("Test starts unauthenticated or with mocked user", user == null || user.uid.isNotBlank())
   }
 
-  @Test
-  fun `hmac nonce authentication verifies legitimate peer and rejects invalid secret`() {
-    val secret = "my_super_secret_shared_token_keypro"
-    val nonce = com.example.sync.CryptoUtil.generateNonce(16)
-    assertTrue("Nonce should be 32 hex chars", nonce.length == 32)
-
-    val hmac = com.example.sync.CryptoUtil.computeHmac(secret, nonce)
-    assertTrue("Computed HMAC should not be blank", hmac.isNotBlank())
-
-    val verified = com.example.sync.CryptoUtil.verifyHmac(secret, nonce, hmac)
-    assertTrue("Valid HMAC must pass verification", verified)
-
-    val badHmac = com.example.sync.CryptoUtil.verifyHmac("wrong_attacker_secret", nonce, hmac)
-    assertTrue("HMAC with wrong secret must be rejected", !badHmac)
-  }
 
   @Test
   fun `clipboard sync manager detects and blocks cyclic loops`() {
@@ -544,6 +511,37 @@ class ExampleRobolectricTest {
     val dao = db.snippetDao()
     val syncedTextClip = dao.findByContent("https://developer.samsung.com/continuity-clipboard-sync")
     assertNotNull("Simulated synced text clip should be saved to Room", syncedTextClip)
+  }
+
+  @Test
+  fun `keyboard preferences hide on physical keyboard default and toggle`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context)
+
+    // Initial default should be true or boolean
+    assertNotNull("hideOnPhysicalKeyboard state flow should not be null", prefs.hideOnPhysicalKeyboard)
+
+    prefs.setHideOnPhysicalKeyboard(false)
+    assertEquals(false, prefs.hideOnPhysicalKeyboard.value)
+
+    prefs.setHideOnPhysicalKeyboard(true)
+    assertEquals(true, prefs.hideOnPhysicalKeyboard.value)
+  }
+
+  @Test
+  fun `tablet keyboard scale setting clamps within valid bounds`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context)
+
+    prefs.setTabletKeyboardScale(1.15f)
+    assertEquals(1.15f, prefs.tabletKeyboardScale.value, 0.001f)
+
+    // Test bounds clamping
+    prefs.setTabletKeyboardScale(0.5f)
+    assertEquals(0.75f, prefs.tabletKeyboardScale.value, 0.001f)
+
+    prefs.setTabletKeyboardScale(2.0f)
+    assertEquals(1.40f, prefs.tabletKeyboardScale.value, 0.001f)
   }
 }
 

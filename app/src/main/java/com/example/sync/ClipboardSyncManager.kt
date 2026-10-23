@@ -1,17 +1,29 @@
 package com.example.sync
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.util.Base64
 import android.util.Log
+import com.example.R
 import com.example.data.AppDatabase
 import com.example.data.ConnectedDeviceDao
 import com.example.data.ConnectedDeviceEntity
 import com.example.data.SnippetEntity
 import com.example.data.SnippetRepository
 import com.example.ui.keyboard.util.KeyboardPreferences
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.DocumentChange
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,21 +32,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.net.Inet4Address
-import java.net.NetworkInterface
 import java.util.Collections
 import java.util.LinkedHashSet
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 class ClipboardSyncManager private constructor(private val context: Context) {
 
@@ -43,234 +46,171 @@ class ClipboardSyncManager private constructor(private val context: Context) {
     private val database = AppDatabase.getDatabase(context)
     val snippetRepository = SnippetRepository(database.snippetDao())
     val connectedDeviceDao: ConnectedDeviceDao = database.connectedDeviceDao()
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
-        .build()
+    val authManager = FirebaseAuthManager.getInstance()
 
     // Activity and logging stream
     private val _syncActivityLog = MutableStateFlow<List<SyncActivityEvent>>(emptyList())
     val syncActivityLog: StateFlow<List<SyncActivityEvent>> = _syncActivityLog.asStateFlow()
 
-    private val _isServerRunning = MutableStateFlow(false)
-    val isServerRunning: StateFlow<Boolean> = _isServerRunning.asStateFlow()
+    private val _isCloudConnected = MutableStateFlow(false)
+    val isCloudConnected: StateFlow<Boolean> = _isCloudConnected.asStateFlow()
 
     // In-memory cache of processed sync IDs to prevent echo and cyclic loops
     private val processedSyncIds = Collections.synchronizedSet(LinkedHashSet<String>())
     private val maxCacheSize = 300
 
-    val persistentSocketManager = PersistentSocketManager(
-        context = context,
-        scope = scope,
-        preferences = preferences,
-        connectedDeviceDao = connectedDeviceDao,
-        onClipReceived = { clip, deviceId -> handleIncomingClip(clip, deviceId, "Wi-Fi (TCP Socket)") },
-        onLogEvent = { logEvent(it) }
-    )
+    private var clipboardListenerRegistration: ListenerRegistration? = null
+    private var devicesListenerRegistration: ListenerRegistration? = null
 
-    val bluetoothSyncHelper = BluetoothSyncHelper(
-        context = context,
-        scope = scope,
-        preferences = preferences,
-        connectedDeviceDao = connectedDeviceDao,
-        onClipReceived = { clip, deviceId -> handleIncomingClip(clip, deviceId, "Bluetooth RFCOMM") },
-        onLogEvent = { logEvent(it) }
-    )
-
-    private val nsdHelper = NsdHelper(
-        context = context,
-        scope = scope,
-        preferences = preferences,
-        connectedDeviceDao = connectedDeviceDao,
-        onPeerDiscovered = { deviceId, ip, port ->
-            scope.launch {
-                val dev = connectedDeviceDao.getDeviceById(deviceId)
-                if (dev != null) {
-                    persistentSocketManager.startPersistentConnection(dev)
-                    logEvent(
-                        SyncActivityEvent(
-                            title = "Peer Discovered via mDNS",
-                            description = "Re-connected to ${dev.name} at $ip:$port",
-                            isOutgoing = false,
-                            transport = "mDNS / NSD"
-                        )
-                    )
-                }
-            }
-        }
-    )
-
-    private val networkChangeMonitor = NetworkChangeMonitor(context) { newIp ->
-        onLocalNetworkChanged(newIp)
-    }
-
-    val subnetScanner = SubnetScanner(connectedDeviceDao) { device, newIp, port ->
-        scope.launch {
-            persistentSocketManager.startPersistentConnection(device)
-            logEvent(
-                SyncActivityEvent(
-                    title = "Subnet Fallback Discovery",
-                    description = "Authenticated and re-connected to ${device.name} at $newIp:$port",
-                    isOutgoing = false,
-                    transport = "Subnet /24 Scan"
-                )
-            )
+    private fun getAuthSafe(): FirebaseAuth? {
+        return try {
+            FirebaseAuth.getInstance()
+        } catch (_: Exception) {
+            null
         }
     }
 
-    val server = ClipboardSyncServer(
-        context = context,
-        preferences = preferences,
-        snippetRepository = snippetRepository,
-        connectedDeviceDao = connectedDeviceDao,
-        syncManager = this
-    )
+    private fun getFirestoreSafe(): FirebaseFirestore? {
+        return try {
+            FirebaseFirestore.getInstance(context.applicationContext.getString(R.string.firestore_database_id))
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     init {
-        startServices()
+        // Observe Auth state and connect/disconnect Firestore listeners
+        try {
+            val auth = getAuthSafe()
+            auth?.addAuthStateListener { firebaseAuth ->
+                val user = firebaseAuth.currentUser
+                if (user != null) {
+                    _isCloudConnected.value = true
+                    startCloudSync(user)
+                } else {
+                    _isCloudConnected.value = false
+                    stopCloudSync()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FirebaseSync", "Failed to register auth listener: ${e.message}")
+        }
+
+        // Attempt silent sign-in on initialization if previously signed in
+        authManager.attemptAutoSignIn(context)
     }
 
     fun startServices() {
-        if (!_isServerRunning.value) {
-            server.start(8765)
-            _isServerRunning.value = true
-            logEvent(
-                SyncActivityEvent(
-                    title = "KeyPro Sync Engine Ready",
-                    description = "Listening on port ${server.activePort} (Wi-Fi mDNS & Bluetooth RFCOMM)",
-                    isOutgoing = false,
-                    transport = "Daemon"
-                )
-            )
-        }
-
-        // Register mDNS and start discovery
-        if (preferences.wifiSyncEnabled.value) {
-            nsdHelper.registerService(server.activePort)
-            nsdHelper.startDiscovery()
-            networkChangeMonitor.start()
-        }
-
-        // Start Bluetooth listener
-        if (preferences.bluetoothSyncEnabled.value) {
-            bluetoothSyncHelper.startListening()
-        }
-
-        // Connect persistent sockets to already paired devices
-        connectToPairedDevices()
-
-        // Start persistent foreground service if enabled
-        if (preferences.persistentSyncServiceEnabled.value) {
-            ClipboardSyncForegroundService.start(context)
+        val user = getAuthSafe()?.currentUser
+        if (user != null) {
+            _isCloudConnected.value = true
+            startCloudSync(user)
+        } else {
+            authManager.attemptAutoSignIn(context)
         }
     }
 
-    fun connectToPairedDevices() {
-        scope.launch {
-            val paired = connectedDeviceDao.getAllDevicesList()
-            for (device in paired) {
-                if (device.ipAddress.isNotBlank()) {
-                    persistentSocketManager.startPersistentConnection(device)
-                }
-                if (device.bluetoothMac.isNotBlank()) {
-                    bluetoothSyncHelper.connectToDevice(device)
-                }
-            }
-        }
-    }
+    private fun startCloudSync(user: FirebaseUser) {
+        val db = getFirestoreSafe() ?: return
+        val uid = user.uid
+        val localDeviceId = preferences.getLocalDeviceId()
+        val localDeviceName = preferences.localDeviceName.value.ifBlank { Build.MODEL ?: "Android Device" }
 
-    private fun onLocalNetworkChanged(newIp: String) {
-        logEvent(
-            SyncActivityEvent(
-                title = "Local IP Changed",
-                description = "New network address: $newIp. Pushing update to peers.",
-                isOutgoing = true,
-                transport = "Network Monitor"
-            )
+        // 1. Register this device under /users/{uid}/devices/{localDeviceId}
+        val deviceData = hashMapOf<String, Any>(
+            "userId" to uid,
+            "deviceId" to localDeviceId,
+            "deviceName" to localDeviceName,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
         )
-        // 1. Re-register NSD service
-        nsdHelper.unregisterService()
-        nsdHelper.registerService(server.activePort)
-
-        // 2. Push IP update over existing sockets
-        persistentSocketManager.pushIpUpdate(newIp, server.activePort)
-
-        // 3. Drop stale sockets and reconnect
-        persistentSocketManager.dropAllSockets()
-        connectToPairedDevices()
-    }
-
-    fun onBluetoothDeviceConnected(mac: String) {
-        scope.launch {
-            val dev = connectedDeviceDao.getDeviceByMac(mac)
-            if (dev != null) {
-                bluetoothSyncHelper.connectToDevice(dev)
-            }
-        }
-    }
-
-    fun onBluetoothDeviceDisconnected(mac: String) {
-        scope.launch {
-            val dev = connectedDeviceDao.getDeviceByMac(mac)
-            if (dev != null) {
-                connectedDeviceDao.updateStatusAndTransport(
-                    dev.deviceId,
-                    isOnline = false,
-                    status = "Standby (Disconnected)",
-                    transport = "Bluetooth"
-                )
-            }
-        }
-    }
-
-    fun restartBluetoothListener() {
-        bluetoothSyncHelper.startListening()
-    }
-
-    fun triggerSubnetScan() {
-        scope.launch {
-            val localIp = getLocalIpAddress()
-            logEvent(
-                SyncActivityEvent(
-                    title = "Scanning Local Subnet",
-                    description = "Probing /24 subnet for paired peers with HMAC verification...",
-                    isOutgoing = true,
-                    transport = "Subnet /24 Scan"
-                )
-            )
-            val found = subnetScanner.scanSubnet(localIp, server.activePort)
-            logEvent(
-                SyncActivityEvent(
-                    title = "Subnet Scan Finished",
-                    description = "Probed subnet. Authenticated $found paired device(s).",
-                    isOutgoing = false,
-                    transport = "Subnet /24 Scan"
-                )
-            )
-        }
-    }
-
-    fun getActivePort(): Int = server.activePort
-
-    fun getLocalIpAddress(): String {
         try {
-            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            for (intf in interfaces) {
-                if (intf.isLoopback || !intf.isUp) continue
-                val addrs = Collections.list(intf.inetAddresses)
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        val ip = addr.hostAddress ?: ""
-                        if (!ip.startsWith("127.")) {
-                            return ip
+            db.collection("users").document(uid)
+                .collection("devices").document(localDeviceId)
+                .set(deviceData, SetOptions.merge())
+                .addOnFailureListener { e ->
+                    Log.w("FirebaseSync", "Device registration non-fatal notice: ${e.message}")
+                }
+        } catch (e: Exception) {
+            Log.w("FirebaseSync", "Device reg error: ${e.message}")
+        }
+
+        // 2. Listen to /users/{uid}/devices to populate paired devices list
+        devicesListenerRegistration?.remove()
+        try {
+            devicesListenerRegistration = db.collection("users").document(uid)
+                .collection("devices")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("FirebaseSync", "Devices listen error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        scope.launch {
+                            for (doc in snapshot.documents) {
+                                val devId = doc.getString("deviceId") ?: doc.id
+                                if (devId != localDeviceId) {
+                                    val devName = doc.getString("deviceName") ?: "Android Peer"
+                                    val entity = ConnectedDeviceEntity(
+                                        deviceId = devId,
+                                        name = devName,
+                                        ipAddress = "Cloud (${user.email ?: "Google Account"})",
+                                        isOnline = true,
+                                        connectionStatus = "Synced via Firebase",
+                                        transportType = "Google Cloud",
+                                        lastSyncedTimestamp = System.currentTimeMillis()
+                                    )
+                                    connectedDeviceDao.insertOrUpdate(entity)
+                                }
+                            }
                         }
                     }
                 }
-            }
-        } catch (_: Exception) {}
-        return "192.168.1.100"
+        } catch (e: Exception) {
+            Log.e("FirebaseSync", "Failed to attach devices listener", e)
+        }
+
+        // 3. Listen to /users/{uid}/clipboard_items for real-time broadcasts
+        clipboardListenerRegistration?.remove()
+        try {
+            clipboardListenerRegistration = db.collection("users").document(uid)
+                .collection("clipboard_items")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(40)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("FirebaseSync", "Clipboard listen error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        for (change in snapshot.documentChanges) {
+                            if (change.type == DocumentChange.Type.ADDED) {
+                                val doc = change.document
+                                handleIncomingRemoteClip(doc.id, doc.data)
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e("FirebaseSync", "Failed to attach clipboard listener", e)
+        }
+
+        logEvent(
+            SyncActivityEvent(
+                title = "Firebase Cloud Sync Active",
+                description = "Connected with account ${user.email ?: user.uid}",
+                isOutgoing = false,
+                transport = "Firebase Cloud"
+            )
+        )
+    }
+
+    private fun stopCloudSync() {
+        clipboardListenerRegistration?.remove()
+        clipboardListenerRegistration = null
+        devicesListenerRegistration?.remove()
+        devicesListenerRegistration = null
+        _isCloudConnected.value = false
     }
 
     fun markSyncIdProcessed(syncId: String) {
@@ -299,50 +239,38 @@ class ClipboardSyncManager private constructor(private val context: Context) {
     }
 
     /**
-     * Handles an incoming synced clip from any transport (Persistent TCP Socket, Bluetooth RFCOMM, or HTTP).
-     * Enforces cyclic sync prevention and inserts directly into the keyboard's own database.
-     * Never touches system clipboard, avoiding OS clip event loops.
+     * Handles incoming broadcast clip from Firestore snapshot stream.
      */
-    fun handleIncomingClip(clip: SyncClipPayload, fromDeviceId: String, transport: String) {
+    private fun handleIncomingRemoteClip(clipId: String, data: Map<String, Any>) {
+        val originDeviceId = data["originDeviceId"] as? String ?: ""
         val localDeviceId = preferences.getLocalDeviceId()
 
-        // 1. Prevent cyclic sync if originated from this device
-        if (clip.originDeviceId == localDeviceId) {
-            logEvent(
-                SyncActivityEvent(
-                    title = "Cyclic Sync Prevented",
-                    description = "Dropped clip originated from this device (${clip.syncId.take(8)})",
-                    isOutgoing = false,
-                    isLoopPrevented = true,
-                    transport = transport
-                )
-            )
+        // 1. Prevent cyclic echo if originated from this device
+        if (originDeviceId == localDeviceId) {
             return
         }
 
         // 2. Prevent duplicate processing
-        if (isSyncIdProcessed(clip.syncId)) {
-            logEvent(
-                SyncActivityEvent(
-                    title = "Duplicate Clip Ignored",
-                    description = "Clip with syncId ${clip.syncId.take(8)} already recorded",
-                    isOutgoing = false,
-                    isLoopPrevented = true,
-                    transport = transport
-                )
-            )
+        if (isSyncIdProcessed(clipId)) {
             return
         }
-        markSyncIdProcessed(clip.syncId)
+        markSyncIdProcessed(clipId)
+
+        val title = data["title"] as? String ?: "Synced Clip"
+        val content = data["content"] as? String ?: ""
+        val isImage = (data["isImage"] as? Boolean) ?: false
+        val isPinned = (data["isPinned"] as? Boolean) ?: false
+        val category = data["category"] as? String ?: "Synced"
+        val mimeType = data["mimeType"] as? String ?: if (isImage) "image/png" else "text/plain"
 
         scope.launch {
             var localImageUri: String? = null
-            if (clip.isImage && !clip.imageBase64.isNullOrBlank() && preferences.clipboardSyncImages.value) {
+            if (isImage && content.isNotBlank() && preferences.clipboardSyncImages.value) {
                 try {
-                    val bytes = Base64.decode(clip.imageBase64, Base64.DEFAULT)
+                    val bytes = Base64.decode(content, Base64.DEFAULT)
                     val syncedDir = File(context.filesDir, "synced_clips").apply { mkdirs() }
-                    val extension = if (clip.mimeType?.contains("png") == true) "png" else if (clip.mimeType?.contains("webp") == true) "webp" else "jpg"
-                    val file = File(syncedDir, "clip_${clip.syncId.take(8)}_${System.currentTimeMillis()}.$extension")
+                    val extension = if (mimeType.contains("png")) "png" else if (mimeType.contains("webp")) "webp" else "jpg"
+                    val file = File(syncedDir, "cloud_clip_${clipId.take(8)}_${System.currentTimeMillis()}.$extension")
                     FileOutputStream(file).use { fos ->
                         fos.write(bytes)
                     }
@@ -350,41 +278,56 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                 } catch (_: Exception) {}
             }
 
-            // Save to keyboard database without touching Android system clipboard
+            // Save to keyboard Room database
             snippetRepository.saveSyncedSnippet(
-                title = clip.title,
-                content = clip.content,
-                isPinned = clip.isPinned,
-                category = "Synced",
-                timestamp = clip.timestamp,
+                title = title,
+                content = if (isImage && localImageUri != null) localImageUri else content,
+                isPinned = isPinned,
+                category = category,
+                timestamp = System.currentTimeMillis(),
                 imageUri = localImageUri,
-                isImage = clip.isImage,
-                mimeType = clip.mimeType,
-                syncId = clip.syncId,
-                originDeviceId = clip.originDeviceId
+                isImage = isImage,
+                mimeType = mimeType,
+                syncId = clipId,
+                originDeviceId = originDeviceId
             )
 
-            connectedDeviceDao.updateStatus(fromDeviceId, true, System.currentTimeMillis())
+            // Auto-update device system clipboard if sync enabled
+            if (preferences.clipboardSyncEnabled.value) {
+                withContext(Dispatchers.Main) {
+                    try {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        if (!isImage && content.isNotBlank()) {
+                            val clip = ClipData.newPlainText("Synced: $title", content)
+                            cm?.setPrimaryClip(clip)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
 
             logEvent(
                 SyncActivityEvent(
-                    title = if (clip.isImage) "Received Image Clip" else "Received Text Clip",
-                    description = if (clip.isImage) "Image received from peer ($fromDeviceId)" else "'${clip.content.take(32)}'",
+                    title = if (isImage) "Received Cloud Image" else "Received Cloud Text",
+                    description = if (isImage) "Image received from peer ($originDeviceId)" else "'${content.take(32)}'",
                     isOutgoing = false,
-                    isImage = clip.isImage,
-                    transport = transport
+                    isImage = isImage,
+                    transport = "Firebase Cloud"
                 )
             )
         }
     }
 
     /**
-     * Broadcasts a snippet to all connected peer devices.
-     * Writes to already-open sockets (TCP stream or Bluetooth RFCOMM) with fallback to HTTP push.
+     * Broadcasts a snippet to Firestore.
+     * Firebase real-time listeners on other devices signed in with the same email
+     * receive the broadcast instantly.
      */
     fun broadcastSnippet(snippet: SnippetEntity, customImageBytes: ByteArray? = null) {
         if (!preferences.clipboardSyncEnabled.value) return
 
+        val user = getAuthSafe()?.currentUser ?: return
+        val db = getFirestoreSafe() ?: return
+        val uid = user.uid
         val localDeviceId = preferences.getLocalDeviceId()
 
         // Never re-broadcast clips originated from peers
@@ -392,7 +335,7 @@ class ClipboardSyncManager private constructor(private val context: Context) {
             logEvent(
                 SyncActivityEvent(
                     title = "Cyclic Sync Blocked",
-                    description = "Skipped re-broadcasting peer-originated clip (${snippet.syncId.take(8)})",
+                    description = "Skipped re-broadcasting peer clip (${snippet.syncId.take(8)})",
                     isOutgoing = true,
                     isLoopPrevented = true,
                     transport = "Loop Filter"
@@ -401,271 +344,93 @@ class ClipboardSyncManager private constructor(private val context: Context) {
             return
         }
 
-        val syncId = if (snippet.syncId.isNotBlank()) snippet.syncId else UUID.randomUUID().toString()
+        val syncId = if (snippet.syncId.isNotBlank()) snippet.syncId else "clip_${UUID.randomUUID().toString().replace("-", "")}"
         markSyncIdProcessed(syncId)
 
         scope.launch {
-            val devices = connectedDeviceDao.getAllDevicesList()
-            if (devices.isEmpty()) return@launch
-
-            // Prepare image payload if image
-            var imageBase64: String? = null
+            var payloadContent = snippet.content
             if (snippet.isImage && preferences.clipboardSyncImages.value) {
-                imageBase64 = customImageBytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
-                    ?: readImageAsBase64(snippet.imageUri)
+                val bytes = customImageBytes ?: readImageBytes(snippet.imageUri)
+                if (bytes != null) {
+                    payloadContent = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                }
             }
 
-            val payloadJson = JSONObject().apply {
-                put("syncId", syncId)
-                put("originDeviceId", localDeviceId)
-                put("title", snippet.title)
-                put("content", snippet.content)
-                put("isPinned", snippet.isPinned)
-                put("category", snippet.category)
-                put("timestamp", snippet.timestamp)
-                put("isImage", snippet.isImage)
-                put("mimeType", snippet.mimeType ?: if (snippet.isImage) "image/jpeg" else "text/plain")
-                if (imageBase64 != null) {
-                    put("imageBase64", imageBase64)
-                }
-            }.toString()
+            val payload = hashMapOf<String, Any>(
+                "userId" to uid,
+                "originDeviceId" to localDeviceId,
+                "title" to snippet.title.take(200),
+                "content" to payloadContent.take(500000),
+                "isPinned" to snippet.isPinned,
+                "category" to snippet.category.take(50),
+                "isImage" to snippet.isImage,
+                "mimeType" to (snippet.mimeType ?: if (snippet.isImage) "image/png" else "text/plain").take(100),
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
 
-            for (device in devices) {
-                if (snippet.isImage && !device.syncImages) continue
-                if (!snippet.isImage && !device.syncText) continue
-
-                var sent = false
-
-                // 1. Try sending over already-open TCP streaming socket
-                if (persistentSocketManager.sendClipThroughOpenSocket(device.deviceId, payloadJson)) {
-                    sent = true
-                    connectedDeviceDao.updateStatus(device.deviceId, true, System.currentTimeMillis())
-                    logEvent(
-                        SyncActivityEvent(
-                            title = if (snippet.isImage) "Sent Image (Live Socket)" else "Sent Text (Live Socket)",
-                            description = "Streamed to ${device.name} via persistent TCP socket",
-                            isOutgoing = true,
-                            isImage = snippet.isImage,
-                            transport = "Wi-Fi (TCP Socket)"
-                        )
-                    )
-                }
-
-                // 2. Try sending over already-open Bluetooth RFCOMM socket
-                if (!sent && device.bluetoothMac.isNotBlank()) {
-                    if (bluetoothSyncHelper.sendClip(device.deviceId, payloadJson)) {
-                        sent = true
-                        connectedDeviceDao.updateStatus(device.deviceId, true, System.currentTimeMillis())
+            try {
+                db.collection("users").document(uid)
+                    .collection("clipboard_items").document(syncId)
+                    .set(payload)
+                    .addOnSuccessListener {
                         logEvent(
                             SyncActivityEvent(
-                                title = if (snippet.isImage) "Sent Image (Bluetooth)" else "Sent Text (Bluetooth)",
-                                description = "Streamed to ${device.name} via Bluetooth RFCOMM",
+                                title = if (snippet.isImage) "Synced Image (Cloud)" else "Synced Text (Cloud)",
+                                description = "Broadcasted to account ${user.email ?: uid}",
                                 isOutgoing = true,
                                 isImage = snippet.isImage,
-                                transport = "Bluetooth RFCOMM"
+                                transport = "Firebase Cloud"
                             )
                         )
                     }
-                }
-
-                // 3. Fallback: HTTP Push
-                if (!sent && device.ipAddress.isNotBlank()) {
-                    try {
-                        val mediaType = "application/json; charset=utf-8".toMediaType()
-                        val url = "http://${device.ipAddress}:${device.port}/api/sync/push"
-                        val request = Request.Builder()
-                            .url(url)
-                            .post(payloadJson.toRequestBody(mediaType))
-                            .build()
-
-                        val response = okHttpClient.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            connectedDeviceDao.updateStatus(device.deviceId, true, System.currentTimeMillis())
-                            logEvent(
-                                SyncActivityEvent(
-                                    title = if (snippet.isImage) "Synced Image (HTTP)" else "Synced Text (HTTP)",
-                                    description = "Delivered to ${device.name} (${device.ipAddress})",
-                                    isOutgoing = true,
-                                    isImage = snippet.isImage,
-                                    transport = "Wi-Fi (HTTP)"
-                                )
-                            )
-                        } else {
-                            connectedDeviceDao.updateStatus(device.deviceId, false)
-                        }
-                        response.close()
-                    } catch (_: Exception) {
-                        connectedDeviceDao.updateStatus(device.deviceId, false)
+                    .addOnFailureListener { e ->
+                        Log.e("FirebaseSync", "Failed to broadcast to Firestore: ${e.message}", e)
                     }
-                }
+            } catch (e: Exception) {
+                Log.e("FirebaseSync", "Exception broadcasting to Firestore", e)
             }
         }
     }
 
-    private fun readImageAsBase64(imageUri: String?): String? {
-        if (imageUri.isNullOrBlank()) return null
+    private fun readImageBytes(uriString: String?): ByteArray? {
+        if (uriString.isNullOrBlank()) return null
         return try {
-            val fileCheck = File(imageUri)
-            val stream: InputStream? = if (fileCheck.exists() && fileCheck.isFile) {
-                fileCheck.inputStream()
-            } else if (imageUri.startsWith("content://") || imageUri.startsWith("file://") || imageUri.startsWith("android.resource://")) {
-                context.contentResolver.openInputStream(Uri.parse(imageUri))
+            val file = File(uriString)
+            if (file.exists() && file.isFile) {
+                val rawBytes = file.readBytes()
+                if (rawBytes.size > 350 * 1024) {
+                    val bmp = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+                    if (bmp != null) {
+                        val baos = ByteArrayOutputStream()
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+                        baos.toByteArray()
+                    } else rawBytes
+                } else rawBytes
             } else {
-                File(imageUri).inputStream()
-            }
-            stream?.use { input ->
-                val originalBitmap = BitmapFactory.decodeStream(input) ?: return null
-                val scaled = if (originalBitmap.width > 800 || originalBitmap.height > 800) {
-                    val scale = 800f / maxOf(originalBitmap.width, originalBitmap.height)
-                    Bitmap.createScaledBitmap(
-                        originalBitmap,
-                        (originalBitmap.width * scale).toInt(),
-                        (originalBitmap.height * scale).toInt(),
-                        true
-                    )
-                } else originalBitmap
-
-                val byteStream = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 75, byteStream)
-                Base64.encodeToString(byteStream.toByteArray(), Base64.NO_WRAP)
+                val uri = Uri.parse(uriString)
+                val stream = context.contentResolver.openInputStream(uri)
+                val rawBytes = stream?.readBytes()
+                stream?.close()
+                rawBytes
             }
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Connects to a remote peer device given PairingPayload (from QR code or manual entry).
-     */
-    suspend fun pairWithDevice(
-        ip: String,
-        port: Int,
-        sharedSecret: String,
-        givenName: String = "",
-        bluetoothMac: String = ""
-    ): Result<ConnectedDeviceEntity> = withContext(Dispatchers.IO) {
-        try {
-            val localDeviceId = preferences.getLocalDeviceId()
-            val localName = preferences.localDeviceName.value
-            val localIp = getLocalIpAddress()
-            val localSecret = preferences.getLocalSharedSecret()
-            val localBtMac = preferences.getLocalBluetoothMac()
-
-            val pairPayload = JSONObject().apply {
-                put("deviceId", localDeviceId)
-                put("deviceName", localName)
-                put("ip", localIp)
-                put("port", server.activePort)
-                put("sharedSecret", localSecret)
-                put("token", localSecret)
-                put("bluetoothMac", localBtMac)
-            }.toString()
-
-            val request = Request.Builder()
-                .url("http://$ip:$port/api/pair")
-                .post(pairPayload.toRequestBody("application/json".toMediaType()))
-                .build()
-
-            val response = okHttpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val respBody = response.body?.string() ?: "{}"
-                val json = JSONObject(respBody)
-                val remoteDeviceId = json.optString("deviceId", "dev_${ip.replace(".", "_")}")
-                val remoteName = json.optString("deviceName", givenName.ifEmpty { "Device ($ip)" })
-                val remoteSecret = json.optString("sharedSecret", sharedSecret)
-                val remoteBt = json.optString("bluetoothMac", bluetoothMac)
-
-                val entity = ConnectedDeviceEntity(
-                    deviceId = remoteDeviceId,
-                    name = remoteName,
-                    ipAddress = ip,
-                    port = port,
-                    authToken = remoteSecret,
-                    sharedSecret = remoteSecret,
-                    bluetoothMac = remoteBt,
-                    isOnline = true,
-                    connectionStatus = "Connected (Paired)",
-                    transportType = if (remoteBt.isNotBlank()) "Wi-Fi & Bluetooth" else "Wi-Fi (TCP)",
-                    lastSyncedTimestamp = System.currentTimeMillis()
-                )
-                connectedDeviceDao.insertOrUpdate(entity)
-                logEvent(
-                    SyncActivityEvent(
-                        title = "Paired with $remoteName",
-                        description = "Handshake authenticated with shared secret. Connecting live streams...",
-                        isOutgoing = true,
-                        transport = "Wi-Fi (TCP)"
-                    )
-                )
-
-                // Establish live streaming socket
-                persistentSocketManager.startPersistentConnection(entity)
-                if (remoteBt.isNotBlank()) {
-                    bluetoothSyncHelper.connectToDevice(entity)
-                }
-
-                response.close()
-                Result.success(entity)
-            } else {
-                response.close()
-                Result.failure(Exception("Pairing rejected with code ${response.code}"))
-            }
-        } catch (e: Exception) {
-            // If offline, store paired device anyway as pending peer
-            val remoteDeviceId = "dev_${ip.replace(".", "_")}"
-            val entity = ConnectedDeviceEntity(
-                deviceId = remoteDeviceId,
-                name = givenName.ifEmpty { "Device ($ip)" },
-                ipAddress = ip,
-                port = port,
-                authToken = sharedSecret,
-                sharedSecret = sharedSecret,
-                bluetoothMac = bluetoothMac,
-                isOnline = false,
-                connectionStatus = "Standby (Pending peer online)",
-                transportType = "Wi-Fi / Bluetooth",
-                lastSyncedTimestamp = System.currentTimeMillis()
-            )
-            connectedDeviceDao.insertOrUpdate(entity)
-            logEvent(
-                SyncActivityEvent(
-                    title = "Registered Device ($ip)",
-                    description = "Added to paired list. Auto-reconnect active.",
-                    isOutgoing = true,
-                    transport = "Wi-Fi"
-                )
-            )
-            persistentSocketManager.startPersistentConnection(entity)
-            Result.success(entity)
-        }
-    }
-
-    /**
-     * Creates a simulated connected device for immediate testing in single-device or emulator environments.
-     */
-    suspend fun simulateTestDevicePairing() = withContext(Dispatchers.IO) {
-        val testDeviceId = "sim_samsung_s24_" + (1000..9999).random()
-        val testSecret = "sim_secret_samsung_galaxy_" + (1000..9999).random()
+    suspend fun simulateTestDevicePairing() {
         val testDevice = ConnectedDeviceEntity(
-            deviceId = testDeviceId,
-            name = "Samsung Galaxy S24 Ultra",
-            ipAddress = "192.168.1.185",
-            port = 8765,
-            authToken = testSecret,
-            sharedSecret = testSecret,
-            bluetoothMac = "00:1A:7D:DA:71:13",
+            deviceId = "dev_samsung_tab_simulated",
+            name = "Samsung Galaxy Tab S9",
+            ipAddress = "Cloud (Google Account)",
             isOnline = true,
-            connectionStatus = "Connected (Live Socket)",
-            transportType = "Wi-Fi & Bluetooth RFCOMM",
-            lastSyncedTimestamp = System.currentTimeMillis()
+            connectionStatus = "Synced via Firebase",
+            transportType = "Google Cloud"
         )
         connectedDeviceDao.insertOrUpdate(testDevice)
-
-        // Simulate incoming synced text clip
-        val testTextSyncId = UUID.randomUUID().toString()
-        markSyncIdProcessed(testTextSyncId)
         snippetRepository.saveSyncedSnippet(
-            title = "Samsung Notes Link",
+            title = "Samsung Continuity Link",
             content = "https://developer.samsung.com/continuity-clipboard-sync",
             isPinned = false,
             category = "Synced",
@@ -673,79 +438,8 @@ class ClipboardSyncManager private constructor(private val context: Context) {
             imageUri = null,
             isImage = false,
             mimeType = "text/plain",
-            syncId = testTextSyncId,
-            originDeviceId = testDeviceId
-        )
-
-        // Simulate incoming sample image clip
-        try {
-            val sampleImageFile = File(context.filesDir, "synced_clips").apply { mkdirs() }
-            val imgFile = File(sampleImageFile, "sim_test_${System.currentTimeMillis()}.png")
-            val testBmp = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(testBmp)
-            canvas.drawColor(android.graphics.Color.parseColor("#00B4D8"))
-            val paint = android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
-                textSize = 28f
-                textAlign = android.graphics.Paint.Align.CENTER
-            }
-            canvas.drawText("SYNC", 60f, 68f, paint)
-            FileOutputStream(imgFile).use { fos ->
-                testBmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
-            }
-
-            val testImgSyncId = UUID.randomUUID().toString()
-            markSyncIdProcessed(testImgSyncId)
-            snippetRepository.saveSyncedSnippet(
-                title = "Galaxy Camera Photo",
-                content = imgFile.absolutePath,
-                isPinned = false,
-                category = "Synced",
-                timestamp = System.currentTimeMillis() + 10,
-                imageUri = imgFile.absolutePath,
-                isImage = true,
-                mimeType = "image/png",
-                syncId = testImgSyncId,
-                originDeviceId = testDeviceId
-            )
-        } catch (_: Exception) {}
-
-        logEvent(
-            SyncActivityEvent(
-                title = "Paired with ${testDevice.name}",
-                description = "Handshake authenticated with HMAC. Live socket connected.",
-                isOutgoing = false,
-                transport = "Wi-Fi & Bluetooth"
-            )
-        )
-        logEvent(
-            SyncActivityEvent(
-                title = "Received Text Clip",
-                description = "'https://developer.samsung.com...'",
-                isOutgoing = false,
-                transport = "Wi-Fi (TCP Socket)"
-            )
-        )
-        logEvent(
-            SyncActivityEvent(
-                title = "Received Image Clip",
-                description = "Image clip synced directly into history database",
-                isOutgoing = false,
-                isImage = true,
-                transport = "Bluetooth RFCOMM"
-            )
-        )
-    }
-
-    suspend fun unpairDevice(deviceId: String) = withContext(Dispatchers.IO) {
-        connectedDeviceDao.deleteDevice(deviceId)
-        logEvent(
-            SyncActivityEvent(
-                title = "Device Unpaired",
-                description = "Removed device $deviceId from sync mesh",
-                isOutgoing = true,
-                transport = "Mesh"
-            )
+            syncId = "test_clip_samsung_1",
+            originDeviceId = "dev_samsung_tab_simulated"
         )
     }
 

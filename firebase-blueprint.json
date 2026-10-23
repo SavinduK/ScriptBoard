@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "ClipboardItem": {
+      "title": "ClipboardItem",
+      "description": "A synced clipboard snippet shared across user devices",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner"
+        },
+        "originDeviceId": {
+          "type": "string",
+          "description": "Unique ID of the origin Android device"
+        },
+        "title": {
+          "type": "string",
+          "description": "Snippet preview title"
+        },
+        "content": {
+          "type": "string",
+          "description": "Text content or base64 data of the clipboard item"
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "Whether the snippet is pinned"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category name for organization"
+        },
+        "isImage": {
+          "type": "boolean",
+          "description": "True if this item contains image data"
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "MIME type (e.g. text/plain, image/png)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last modified timestamp"
+        }
+      },
+      "required": ["userId", "originDeviceId", "title", "content", "isImage", "createdAt"]
+    },
+    "DeviceRegistration": {
+      "title": "DeviceRegistration",
+      "description": "Registered device signed in with this user Google account",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Unique local device ID"
+        },
+        "deviceName": {
+          "type": "string",
+          "description": "Device model name"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Device registration timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last active timestamp"
+        }
+      },
+      "required": ["userId", "deviceId", "deviceName", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with email and metadata",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "email": {
+          "type": "string",
+          "description": "Google user email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Profile creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Profile update timestamp"
+        }
+      },
+      "required": ["userId", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile metadata"
+    },
+    "/users/{userId}/devices/{devId}": {
+      "schema": "DeviceRegistration",
+      "description": "Connected devices signed into this user account"
+    },
+    "/users/{userId}/clipboard_items/{clipId}": {
+      "schema": "ClipboardItem",
+      "description": "Clipboard snippets synchronized across devices for this user"
+    }
+  }
+}
