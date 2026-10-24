@@ -96,6 +96,7 @@ fun KeyProKeyboardView(
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val autoSuggestWordsEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+    val altKeyFontSize by keyboardPrefs.altKeyFontSize.collectAsState()
     val currentLanguage by keyboardPrefs.currentLanguage.collectAsState()
     val installedLanguages by keyboardPrefs.installedLanguages.collectAsState()
     val numberRowEnabled by keyboardPrefs.numberRowEnabled.collectAsState()
@@ -336,6 +337,7 @@ fun KeyProKeyboardView(
         isSinhala -> if (isTablet) (24f * effectiveScale) else 19f
         else -> if (isTablet) ((keyFontSize * 1.25f) * effectiveScale).coerceAtLeast(24f) else keyFontSize
     }
+    val calculatedAltFontSize = if (isTablet) (altKeyFontSize * 1.15f * effectiveScale).coerceAtLeast(10f) else altKeyFontSize
 
     Box(
         modifier = Modifier
@@ -711,6 +713,7 @@ fun KeyProKeyboardView(
                                     colors = colors,
                                     heightDp = calculatedHeightDp,
                                     characterFontSize = calculatedFontSize,
+                                    altCharacterFontSize = calculatedAltFontSize,
                                     horizontalPaddingDp = keyHorizontalPadding,
                                     verticalPaddingDp = keyVerticalPadding,
                                     cornerRadiusDp = keyCornerRadius,

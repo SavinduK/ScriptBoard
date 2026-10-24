@@ -57,11 +57,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val persistentSyncServiceEnabled = keyboardPrefs.persistentSyncServiceEnabled
     val localDeviceName = keyboardPrefs.localDeviceName
     val hideOnPhysicalKeyboard = keyboardPrefs.hideOnPhysicalKeyboard
+    val customCategories: StateFlow<Set<String>> = keyboardPrefs.customCategories
 
     init {
-        // Auto-purge expired history on startup if enabled
-        if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
-            viewModelScope.launch {
+        viewModelScope.launch {
+            // Deduplicate duplicate entries from clipboard history
+            repository.deleteDuplicateHistoryEntries()
+            // Auto-purge expired history on startup if enabled
+            if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
                 repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
             }
         }
@@ -91,7 +94,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         } else {
                             val text = item.text?.toString()
-                            if (!text.isNullOrBlank()) {
+                            if (!text.isNullOrBlank() && !syncManager.isContentRecentlySynced(text)) {
                                 viewModelScope.launch {
                                     val saved = repository.saveToClipboardHistory(text)
                                     if (saved != null) {
@@ -126,6 +129,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isHoldForSymbolsEnabled: StateFlow<Boolean> = keyboardPrefs.holdForSymbolsEnabled
     val isAutoSuggestEnabled: StateFlow<Boolean> = keyboardPrefs.autoSuggestEnabled
     val keyFontSize: StateFlow<Float> = keyboardPrefs.keyFontSize
+    val altKeyFontSize: StateFlow<Float> = keyboardPrefs.altKeyFontSize
 
     val currentColors: KeyboardColors
         get() = if (themeType.value == KeyboardThemeType.CUSTOM) {
@@ -175,6 +179,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeyFontSize(size: Float) {
         keyboardPrefs.setKeyFontSize(size)
         _lastActionStatus.value = "Key font size: ${size.toInt()}sp"
+    }
+
+    fun setAltKeyFontSize(size: Float) {
+        keyboardPrefs.setAltKeyFontSize(size)
+        _lastActionStatus.value = "Alt symbol size: ${size.toInt()}sp"
     }
 
     fun saveImageSnippet(uri: String, title: String? = null, isPinned: Boolean = false) {
@@ -547,15 +556,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePin(snippet: SnippetEntity) {
         viewModelScope.launch {
-            repository.togglePin(snippet.id, snippet.isPinned)
-            _lastActionStatus.value = if (!snippet.isPinned) "Pinned: ${snippet.title}" else "Unpinned: ${snippet.title}"
+            val newPinned = repository.togglePin(snippet.id, snippet.isPinned)
+            val updated = snippet.copy(isPinned = newPinned)
+            // Broadcast pinned update to Firebase server so all keyboards under the same gmail sync it
+            syncManager.broadcastSnippet(updated)
+            _lastActionStatus.value = if (newPinned) "Pinned & synced: ${snippet.title}" else "Unpinned: ${snippet.title}"
         }
+    }
+
+    fun pinSnippetWithCategory(snippet: SnippetEntity, category: String) {
+        viewModelScope.launch {
+            val updated = snippet.copy(
+                isPinned = true,
+                category = category,
+                timestamp = System.currentTimeMillis()
+            )
+            repository.updateSnippet(updated)
+            syncManager.broadcastSnippet(updated)
+            _lastActionStatus.value = "Pinned to '$category': ${snippet.title}"
+        }
+    }
+
+    fun unpinSnippet(snippet: SnippetEntity) {
+        viewModelScope.launch {
+            val updated = snippet.copy(
+                isPinned = false,
+                timestamp = System.currentTimeMillis()
+            )
+            repository.updateSnippet(updated)
+            syncManager.broadcastSnippet(updated)
+            _lastActionStatus.value = "Unpinned: ${snippet.title}"
+        }
+    }
+
+    fun addCustomCategory(category: String) {
+        keyboardPrefs.addCustomCategory(category)
     }
 
     fun saveSnippet(title: String, content: String, isPinned: Boolean, category: String, shortcut: String = "") {
         viewModelScope.launch {
-            repository.insertSnippet(title, content, isPinned, category, shortcut)
-            _lastActionStatus.value = "Snippet saved: $title"
+            val id = repository.insertSnippet(title, content, isPinned, category, shortcut)
+            val entity = SnippetEntity(
+                id = id,
+                title = title,
+                content = content,
+                isPinned = isPinned,
+                category = category,
+                shortcut = shortcut,
+                timestamp = System.currentTimeMillis()
+            )
+            // Save & sync pinned snippets to Firebase server
+            if (isPinned) {
+                syncManager.broadcastSnippet(entity)
+            }
+            _lastActionStatus.value = if (isPinned) "Pinned snippet saved & synced to Google Cloud" else "Snippet saved: $title"
         }
     }
 
@@ -563,6 +617,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteSnippet(id)
             _lastActionStatus.value = "Snippet deleted"
+        }
+    }
+
+    fun removeDuplicateHistoryNow(onComplete: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val deleted = repository.deleteDuplicateHistoryEntries()
+            _lastActionStatus.value = if (deleted > 0) "Removed $deleted duplicate copies from history" else "No duplicate clips found"
+            onComplete(deleted)
         }
     }
 

@@ -47,4 +47,16 @@ interface SnippetDao {
 
     @Query("SELECT * FROM snippets WHERE timestamp > :sinceTimestamp ORDER BY timestamp DESC LIMIT 50")
     suspend fun getClipsSince(sinceTimestamp: Long): List<SnippetEntity>
+
+    @Query("SELECT * FROM snippets WHERE content = :text")
+    suspend fun findAllByContent(text: String): List<SnippetEntity>
+
+    @Query("DELETE FROM snippets WHERE id IN (:ids)")
+    suspend fun deleteSnippetsByIds(ids: List<Long>): Int
+
+    @Query("SELECT * FROM snippets WHERE isPinned = 0")
+    suspend fun getAllHistoryList(): List<SnippetEntity>
+
+    @Query("SELECT * FROM snippets WHERE isPinned = 1")
+    suspend fun getPinnedList(): List<SnippetEntity>
 }

@@ -543,5 +543,85 @@ class ExampleRobolectricTest {
     prefs.setTabletKeyboardScale(2.0f)
     assertEquals(1.40f, prefs.tabletKeyboardScale.value, 0.001f)
   }
+
+  @Test
+  fun `alt key font size preference setting and bounds`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context)
+
+    prefs.setAltKeyFontSize(16.0f)
+    assertEquals(16.0f, prefs.altKeyFontSize.value, 0.001f)
+
+    // Test bounds clamping (min 9f, max 24f)
+    prefs.setAltKeyFontSize(5.0f)
+    assertEquals(9.0f, prefs.altKeyFontSize.value, 0.001f)
+
+    prefs.setAltKeyFontSize(30.0f)
+    assertEquals(24.0f, prefs.altKeyFontSize.value, 0.001f)
+  }
+
+  @Test
+  fun `clipboard history deduplication deletes duplicate copies of same entry`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = com.example.data.AppDatabase.getDatabase(context)
+    val dao = db.snippetDao()
+    val repo = com.example.data.SnippetRepository(dao)
+
+    val duplicateText = "Unique entry to duplicate ${System.currentTimeMillis()}"
+
+    // Insert 3 unpinned duplicates with different timestamps
+    dao.insertSnippet(com.example.data.SnippetEntity(title = "Clipboard 1", content = duplicateText, timestamp = 1000L, isPinned = false))
+    dao.insertSnippet(com.example.data.SnippetEntity(title = "Clipboard 2", content = duplicateText, timestamp = 2000L, isPinned = false))
+    dao.insertSnippet(com.example.data.SnippetEntity(title = "Clipboard 3", content = duplicateText, timestamp = 3000L, isPinned = false))
+
+    val beforeList = dao.findAllByContent(duplicateText)
+    assertEquals("Should have 3 duplicates before deduplication", 3, beforeList.size)
+
+    val deletedCount = repo.deleteDuplicateHistoryEntries()
+    assertTrue("Should have deleted duplicate entries", deletedCount >= 2)
+
+    val afterList = dao.findAllByContent(duplicateText)
+    assertEquals("Should only have 1 entry remaining after deduplication", 1, afterList.size)
+    assertEquals("Remaining entry should be the newest one", 3000L, afterList.first().timestamp)
+  }
+
+  @Test
+  fun `handwriting recognizer accurately identifies circle as o and vertical line as l or I`() {
+    // 1. Circle stroke
+    val circleStroke = (0..20).map { i ->
+      val angle = (i.toDouble() / 20.0) * 2.0 * Math.PI
+      androidx.compose.ui.geometry.Offset(
+        x = (150.0 + 50.0 * Math.cos(angle)).toFloat(),
+        y = (150.0 + 50.0 * Math.sin(angle)).toFloat()
+      )
+    }
+
+    val circleResult = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
+      strokes = listOf(circleStroke),
+      commonVocabulary = listOf("o", "on", "of", "open")
+    )
+    assertTrue(
+      "Circle stroke should recognize 'o', 'O', or '0'",
+      circleResult.recognizedLetters.any { it.equals('o', ignoreCase = true) || it == '0' } ||
+      circleResult.candidateLetters.any { it.char.equals('o', ignoreCase = true) || it.char == '0' }
+    )
+
+    // 2. Straight vertical line stroke
+    val lineStroke = listOf(
+      androidx.compose.ui.geometry.Offset(100f, 50f),
+      androidx.compose.ui.geometry.Offset(100f, 150f),
+      androidx.compose.ui.geometry.Offset(100f, 250f)
+    )
+
+    val lineResult = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
+      strokes = listOf(lineStroke)
+    )
+    assertTrue(
+      "Vertical line stroke should recognize 'l', 'I', '1', or 'i'",
+      lineResult.recognizedLetters.any { it.lowercaseChar() in listOf('l', 'i', '1') } ||
+      lineResult.candidateLetters.any { it.char.lowercaseChar() in listOf('l', 'i', '1') }
+    )
+  }
 }
+
 

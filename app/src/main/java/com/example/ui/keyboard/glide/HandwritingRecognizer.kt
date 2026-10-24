@@ -10,8 +10,8 @@ import kotlin.math.sqrt
 /**
  * High-performance, offline Handwriting and Glide Stroke Recognizer.
  * Supports single-letter and multi-letter writing with finger or stylus.
- * Uses normalized point-cloud distance matching combined with structural
- * geometric feature analysis, stroke segmentation, and dictionary disambiguation.
+ * Uses ordered trajectory path distance combined with structural nearest-neighbor
+ * point-clouds, closed-loop detection, aspect ratio heuristics, and dictionary matching.
  */
 object HandwritingRecognizer {
 
@@ -25,11 +25,22 @@ object HandwritingRecognizer {
     data class RecognitionResult(
         val primaryWord: String,
         val suggestions: List<String>,
-        val recognizedLetters: List<Char>
+        val recognizedLetters: List<Char>,
+        val candidateLetters: List<LetterCandidate> = emptyList()
+    )
+
+    data class StrokeTemplate(
+        val char: Char,
+        val points: List<Point>,
+        val isClosed: Boolean = false,
+        val isTall: Boolean = false,
+        val isWide: Boolean = false,
+        val expectedStrokes: Int = 1,
+        val weight: Float = 1.0f
     )
 
     // Predefined canonical templates resampled to 32 points in normalized unit space
-    private val templates: Map<Char, List<Point>> by lazy {
+    private val templates: List<StrokeTemplate> by lazy {
         generateCanonicalTemplates()
     }
 
@@ -44,14 +55,15 @@ object HandwritingRecognizer {
             return RecognitionResult(
                 primaryWord = "",
                 suggestions = emptyList(),
-                recognizedLetters = emptyList()
+                recognizedLetters = emptyList(),
+                candidateLetters = emptyList()
             )
         }
 
         // 1. Cluster or segment strokes into individual letter groups
         val clusters = clusterStrokes(strokes)
         if (clusters.isEmpty()) {
-            return RecognitionResult("", emptyList(), emptyList())
+            return RecognitionResult("", emptyList(), emptyList(), emptyList())
         }
 
         // 2. Classify each cluster into candidate letters
@@ -64,18 +76,20 @@ object HandwritingRecognizer {
         }
 
         val rawWord = topLetters.joinToString("").lowercase()
+        val allTopCandidates = clusterCandidates.firstOrNull() ?: emptyList()
 
         // 3. Score against vocabulary with Levenshtein edit distance and candidate permutations
         val matchedWords = findBestWordMatches(clusterCandidates, rawWord, commonVocabulary)
 
         val primaryWord = matchedWords.firstOrNull() ?: rawWord
         val suggestions = matchedWords.filter { it.isNotBlank() && !it.equals(primaryWord, ignoreCase = true) }
-            .take(6)
+            .take(8)
 
         return RecognitionResult(
             primaryWord = primaryWord,
             suggestions = suggestions,
-            recognizedLetters = topLetters
+            recognizedLetters = topLetters,
+            candidateLetters = allTopCandidates
         )
     }
 
@@ -99,8 +113,8 @@ object HandwritingRecognizer {
             val width = (maxX - minX).coerceAtLeast(1f)
             val height = (maxY - minY).coerceAtLeast(1f)
 
-            // If width is much greater than height and has enough points, segment into letters
-            if (width > height * 1.35f && pts.size >= 12) {
+            // If width is significantly greater than height and has enough points, segment into letters
+            if (width > height * 1.45f && pts.size >= 14) {
                 val segments = segmentContinuousStroke(pts, height)
                 if (segments.size > 1) {
                     return segments.map { listOf(it) }
@@ -230,47 +244,109 @@ object HandwritingRecognizer {
         val resampled = resamplePoints(normalizedStrokes.flatten(), 32)
         val centered = centerPoints(resampled)
 
-        val scores = mutableListOf<LetterCandidate>()
+        val strokeCount = strokes.size
+        val startPt = resampled.first()
+        val endPt = resampled.last()
+        val startEndDist = hypot(startPt.x - endPt.x, startPt.y - endPt.y)
+        val isClosedStroke = startEndDist < 0.28f
+        val isTallStroke = aspectRatio > 1.35f
+        val isWideStroke = aspectRatio < 0.80f
 
-        // Distance matching with templates
-        for ((char, templatePts) in templates) {
-            val dist = pointCloudDistance(centered, templatePts)
-            var penalty = 0f
+        val charBestScores = mutableMapOf<Char, Float>()
 
-            val strokeCount = strokes.size
+        for (tmpl in templates) {
+            val templatePts = if (tmpl.isClosed) {
+                var bestOffset = 0
+                var minStartDistSq = Float.MAX_VALUE
+                val c0 = centered.first()
+                for (k in 0 until 32) {
+                    val dx = c0.x - tmpl.points[k].x
+                    val dy = c0.y - tmpl.points[k].y
+                    val d = dx * dx + dy * dy
+                    if (d < minStartDistSq) {
+                        minStartDistSq = d
+                        bestOffset = k
+                    }
+                }
+                List(32) { idx -> tmpl.points[(idx + bestOffset) % 32] }
+            } else {
+                tmpl.points
+            }
+            if (templatePts.size != 32) continue
 
-            // Two-stroke letters
-            if (char in listOf('t', 'x', 'i', 'j', 'k', 'X', 'T', 'K', '+')) {
-                if (strokeCount >= 2) penalty -= 0.12f
+            // 1. Forward ordered path distance
+            var fwdDist = 0f
+            for (i in 0 until 32) {
+                val dx = centered[i].x - templatePts[i].x
+                val dy = centered[i].y - templatePts[i].y
+                fwdDist += sqrt(dx * dx + dy * dy)
+            }
+            fwdDist /= 32f
+
+            // 2. Reverse ordered path distance (if drawn backwards or clockwise vs counter-clockwise)
+            var revDist = 0f
+            for (i in 0 until 32) {
+                val dx = centered[i].x - templatePts[31 - i].x
+                val dy = centered[i].y - templatePts[31 - i].y
+                revDist += sqrt(dx * dx + dy * dy)
+            }
+            revDist /= 32f
+
+            val orderedDist = min(fwdDist, revDist)
+
+            // 3. Nearest neighbor point cloud distance (tolerates small phase shifts)
+            val nnDist = pointCloudDistance(centered, templatePts)
+
+            // Combined primary distance
+            var baseDist = (orderedDist * 0.65f + nnDist * 0.35f) * tmpl.weight
+
+            // 4. Structural Feature Checks
+            // Closed loop feature matching
+            if (tmpl.isClosed) {
+                if (isClosedStroke) {
+                    baseDist -= 0.14f
+                } else {
+                    baseDist += 0.22f
+                }
+            } else {
+                if (isClosedStroke && tmpl.char !in listOf('B', 'D', 'P', 'R', 'Q', 'b', 'd', 'p', 'q', 'g', 'e', 'a')) {
+                    baseDist += 0.20f
+                }
             }
 
-            // Single stroke smooth letters
-            if (char in listOf('c', 'o', 's', 'l', 'u', 'v', 'w', 'z', 'O', 'C', 'S', 'U', 'V', 'W', 'Z', '0', '1', '2', '3', '6', '8', '9')) {
-                if (strokeCount == 1) penalty -= 0.08f
+            // Aspect ratio matching
+            if (tmpl.isTall) {
+                if (isTallStroke) {
+                    baseDist -= 0.12f
+                } else if (isWideStroke) {
+                    baseDist += 0.22f
+                }
+            }
+            if (tmpl.isWide) {
+                if (isWideStroke) {
+                    baseDist -= 0.12f
+                } else if (isTallStroke) {
+                    baseDist += 0.18f
+                }
             }
 
-            // Aspect ratio heuristics
-            if (char in listOf('l', 'i', '1', 'I', 't', 'j')) {
-                if (aspectRatio > 1.6f) penalty -= 0.18f
-                else if (aspectRatio < 0.8f) penalty += 0.25f
-            } else if (char in listOf('m', 'w', 'W', 'M')) {
-                if (aspectRatio < 1.1f) penalty -= 0.14f
+            // Multi-stroke matching
+            if (tmpl.expectedStrokes >= 2) {
+                if (strokeCount >= 2) baseDist -= 0.10f
+            } else {
+                if (strokeCount == 1) baseDist -= 0.06f
             }
 
-            // Closed loop check for 'o', '0', 'O', '8', 'e', 'a', 'b', 'd', 'p', 'q'
-            val start = resampled.first()
-            val end = resampled.last()
-            val startEndDist = hypot(start.x - end.x, start.y - end.y)
-            if (char in listOf('o', 'O', '0', '8')) {
-                if (startEndDist < 0.25f) penalty -= 0.22f
-                else penalty += 0.20f
+            val finalScore = baseDist.coerceAtLeast(0.01f)
+            val currentBest = charBestScores[tmpl.char]
+            if (currentBest == null || finalScore < currentBest) {
+                charBestScores[tmpl.char] = finalScore
             }
-
-            val finalScore = (dist + penalty).coerceAtLeast(0.01f)
-            scores.add(LetterCandidate(char, finalScore))
         }
 
-        return scores.sortedBy { it.score }.take(6)
+        return charBestScores.map { (char, score) ->
+            LetterCandidate(char, score)
+        }.sortedBy { it.score }.take(10)
     }
 
     /**
@@ -372,7 +448,6 @@ object HandwritingRecognizer {
         passedVocab: List<String>
     ): List<String> {
         val results = mutableListOf<String>()
-
         val vocabulary = if (passedVocab.isNotEmpty()) (passedVocab + RICH_ENGLISH_DICTIONARY).distinct() else RICH_ENGLISH_DICTIONARY
 
         if (clusterCandidates.isEmpty()) {
@@ -384,20 +459,21 @@ object HandwritingRecognizer {
 
         // Case 1: Single letter
         if (wordLen == 1) {
-            val topCandidates = clusterCandidates[0].take(3)
+            val topCandidates = clusterCandidates[0].take(5)
             val primaryChar = topCandidates.firstOrNull()?.char?.toString() ?: rawWord
             results.add(primaryChar)
 
-            // Add top common words starting with this letter
-            vocabulary.filter { it.startsWith(primaryChar, ignoreCase = true) }
-                .take(5)
-                .forEach { if (!results.contains(it)) results.add(it) }
-
-            // Also add other top letter candidates
+            // Include top alternative recognized letters directly in suggestions
             topCandidates.drop(1).forEach { cand ->
                 val ch = cand.char.toString()
                 if (!results.contains(ch)) results.add(ch)
             }
+
+            // Also suggest top common words starting with this letter
+            vocabulary.filter { it.startsWith(primaryChar, ignoreCase = true) }
+                .take(4)
+                .forEach { if (!results.contains(it)) results.add(it) }
+
             return results
         }
 
@@ -452,7 +528,7 @@ object HandwritingRecognizer {
         for (fuzzy in fuzzyMatches) {
             if (!results.contains(fuzzy)) {
                 results.add(fuzzy)
-                if (results.size >= 6) break
+                if (results.size >= 8) break
             }
         }
 
@@ -460,7 +536,7 @@ object HandwritingRecognizer {
         for (vocab in vocabulary) {
             if (vocab.startsWith(rawWord, ignoreCase = true) && !results.contains(vocab)) {
                 results.add(vocab)
-                if (results.size >= 6) break
+                if (results.size >= 8) break
             }
         }
 
@@ -525,246 +601,432 @@ object HandwritingRecognizer {
     )
 
     /**
-     * Generates normalized 32-point canonical templates for letters and symbols.
+     * Generates comprehensive normalized 32-point canonical templates for:
+     * - All uppercase letters ('A'..'Z')
+     * - All lowercase letters ('a'..'z')
+     * - Common single-stroke cursive and print variants
+     * - Digits ('0'..'9')
      */
-    private fun generateCanonicalTemplates(): Map<Char, List<Point>> {
-        val map = mutableMapOf<Char, List<Point>>()
+    private fun generateCanonicalTemplates(): List<StrokeTemplate> {
+        val list = mutableListOf<StrokeTemplate>()
 
-        fun createTemplate(char: Char, rawPoints: List<Point>) {
+        fun addTemplate(
+            char: Char,
+            rawPoints: List<Point>,
+            isClosed: Boolean = false,
+            isTall: Boolean = false,
+            isWide: Boolean = false,
+            expectedStrokes: Int = 1,
+            weight: Float = 1.0f
+        ) {
             val resampled = resamplePoints(rawPoints, 32)
-            map[char] = centerPoints(resampled)
+            val centered = centerPoints(resampled)
+            list.add(
+                StrokeTemplate(
+                    char = char,
+                    points = centered,
+                    isClosed = isClosed,
+                    isTall = isTall,
+                    isWide = isWide,
+                    expectedStrokes = expectedStrokes,
+                    weight = weight
+                )
+            )
         }
 
-        // a
-        createTemplate('a', listOf(
-            Point(0.7f, 0.4f), Point(0.4f, 0.35f), Point(0.2f, 0.6f),
-            Point(0.4f, 0.85f), Point(0.7f, 0.65f), Point(0.7f, 0.4f), Point(0.7f, 0.9f)
+        // Helper for circular shapes
+        fun circlePoints(radiusX: Double, radiusY: Double, startAngle: Double = -Math.PI / 2): List<Point> {
+            return (0..24).map { i ->
+                val angle = startAngle + (i.toDouble() / 24.0) * 2.0 * Math.PI
+                Point((0.5 + radiusX * Math.cos(angle)).toFloat(), (0.5 + radiusY * Math.sin(angle)).toFloat())
+            }
+        }
+
+        // ==========================================
+        // LOWERCASE LETTERS ('a'..'z')
+        // ==========================================
+
+        // a - standard rounded bowl + stem
+        addTemplate('a', listOf(
+            Point(0.75f, 0.35f), Point(0.45f, 0.30f), Point(0.25f, 0.55f),
+            Point(0.45f, 0.85f), Point(0.75f, 0.70f), Point(0.75f, 0.35f), Point(0.75f, 0.90f)
         ))
 
-        // b
-        createTemplate('b', listOf(
-            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.25f, 0.5f),
-            Point(0.65f, 0.5f), Point(0.75f, 0.7f), Point(0.65f, 0.9f), Point(0.25f, 0.9f)
+        // b - tall stem + bottom loop
+        addTemplate('b', listOf(
+            Point(0.25f, 0.05f), Point(0.25f, 0.90f), Point(0.25f, 0.50f),
+            Point(0.65f, 0.50f), Point(0.75f, 0.70f), Point(0.65f, 0.90f), Point(0.25f, 0.90f)
+        ), isTall = true)
+
+        // c - smooth open curve
+        addTemplate('c', listOf(
+            Point(0.75f, 0.32f), Point(0.45f, 0.22f), Point(0.25f, 0.50f),
+            Point(0.45f, 0.82f), Point(0.75f, 0.72f)
         ))
 
-        // c
-        createTemplate('c', listOf(
-            Point(0.75f, 0.3f), Point(0.5f, 0.2f), Point(0.25f, 0.5f),
-            Point(0.5f, 0.8f), Point(0.75f, 0.7f)
+        // d - bowl + tall stem
+        addTemplate('d', listOf(
+            Point(0.75f, 0.50f), Point(0.35f, 0.50f), Point(0.25f, 0.70f),
+            Point(0.35f, 0.90f), Point(0.75f, 0.90f), Point(0.75f, 0.05f), Point(0.75f, 0.90f)
+        ), isTall = true)
+
+        // e - horizontal crossbar into curve
+        addTemplate('e', listOf(
+            Point(0.25f, 0.55f), Point(0.75f, 0.55f), Point(0.50f, 0.25f),
+            Point(0.25f, 0.55f), Point(0.40f, 0.85f), Point(0.75f, 0.80f)
         ))
 
-        // d
-        createTemplate('d', listOf(
-            Point(0.75f, 0.5f), Point(0.35f, 0.5f), Point(0.25f, 0.7f),
-            Point(0.35f, 0.9f), Point(0.75f, 0.9f), Point(0.75f, 0.1f), Point(0.75f, 0.9f)
-        ))
-
-        // e
-        createTemplate('e', listOf(
-            Point(0.25f, 0.55f), Point(0.75f, 0.55f), Point(0.5f, 0.25f),
-            Point(0.25f, 0.55f), Point(0.4f, 0.85f), Point(0.75f, 0.8f)
-        ))
-
-        // f
-        createTemplate('f', listOf(
-            Point(0.7f, 0.2f), Point(0.5f, 0.1f), Point(0.45f, 0.9f),
+        // f - top hook + stem + crossbar
+        addTemplate('f', listOf(
+            Point(0.70f, 0.15f), Point(0.50f, 0.05f), Point(0.45f, 0.90f),
             Point(0.25f, 0.45f), Point(0.65f, 0.45f)
+        ), isTall = true, expectedStrokes = 2)
+
+        // f - single stroke cursive loop
+        addTemplate('f', listOf(
+            Point(0.65f, 0.15f), Point(0.45f, 0.05f), Point(0.45f, 0.90f),
+            Point(0.30f, 0.50f), Point(0.60f, 0.50f)
+        ), isTall = true, expectedStrokes = 1)
+
+        // g - bowl + descender hook
+        addTemplate('g', listOf(
+            Point(0.70f, 0.35f), Point(0.35f, 0.35f), Point(0.25f, 0.60f),
+            Point(0.70f, 0.60f), Point(0.70f, 0.35f), Point(0.70f, 0.95f), Point(0.35f, 0.95f)
         ))
 
-        // g
-        createTemplate('g', listOf(
-            Point(0.7f, 0.35f), Point(0.35f, 0.35f), Point(0.3f, 0.6f),
-            Point(0.7f, 0.6f), Point(0.7f, 0.35f), Point(0.7f, 0.95f), Point(0.35f, 0.95f)
+        // h - stem + arch
+        addTemplate('h', listOf(
+            Point(0.25f, 0.05f), Point(0.25f, 0.90f), Point(0.25f, 0.50f),
+            Point(0.50f, 0.35f), Point(0.75f, 0.55f), Point(0.75f, 0.90f)
+        ), isTall = true)
+
+        // i - short stem
+        addTemplate('i', listOf(
+            Point(0.50f, 0.30f), Point(0.50f, 0.90f)
+        ), isTall = true)
+
+        // i - stem + dot
+        addTemplate('i', listOf(
+            Point(0.50f, 0.35f), Point(0.50f, 0.90f), Point(0.50f, 0.15f), Point(0.52f, 0.18f)
+        ), isTall = true, expectedStrokes = 2)
+
+        // j - hook descender
+        addTemplate('j', listOf(
+            Point(0.60f, 0.35f), Point(0.60f, 0.90f), Point(0.35f, 0.95f)
+        ), isTall = true)
+
+        // k - stem + angled branches
+        addTemplate('k', listOf(
+            Point(0.30f, 0.05f), Point(0.30f, 0.90f), Point(0.70f, 0.35f),
+            Point(0.30f, 0.60f), Point(0.70f, 0.90f)
+        ), isTall = true, expectedStrokes = 2)
+
+        // l - single vertical line
+        addTemplate('l', listOf(
+            Point(0.50f, 0.05f), Point(0.50f, 0.50f), Point(0.50f, 0.95f)
+        ), isTall = true)
+
+        // m - double arch
+        addTemplate('m', listOf(
+            Point(0.15f, 0.90f), Point(0.15f, 0.35f), Point(0.35f, 0.30f), Point(0.50f, 0.55f),
+            Point(0.50f, 0.90f), Point(0.50f, 0.35f), Point(0.70f, 0.30f), Point(0.85f, 0.90f)
+        ), isWide = true)
+
+        // n - single arch
+        addTemplate('n', listOf(
+            Point(0.25f, 0.90f), Point(0.25f, 0.35f), Point(0.50f, 0.30f),
+            Point(0.75f, 0.55f), Point(0.75f, 0.90f)
         ))
 
-        // h
-        createTemplate('h', listOf(
-            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.25f, 0.5f),
-            Point(0.5f, 0.4f), Point(0.75f, 0.55f), Point(0.75f, 0.9f)
+        // o - closed circle
+        addTemplate('o', circlePoints(0.32, 0.32), isClosed = true, weight = 0.88f)
+
+        // p - descender stem + upper loop
+        addTemplate('p', listOf(
+            Point(0.25f, 0.30f), Point(0.25f, 0.95f), Point(0.25f, 0.30f),
+            Point(0.65f, 0.30f), Point(0.75f, 0.50f), Point(0.65f, 0.70f), Point(0.25f, 0.70f)
+        ), isTall = true)
+
+        // q - bowl + descender stem
+        addTemplate('q', listOf(
+            Point(0.70f, 0.35f), Point(0.35f, 0.35f), Point(0.25f, 0.55f),
+            Point(0.70f, 0.70f), Point(0.70f, 0.35f), Point(0.70f, 0.95f)
+        ), isTall = true)
+
+        // r - stem + shoulder curve
+        addTemplate('r', listOf(
+            Point(0.30f, 0.90f), Point(0.30f, 0.35f), Point(0.30f, 0.50f),
+            Point(0.55f, 0.35f), Point(0.75f, 0.42f)
         ))
 
-        // i
-        createTemplate('i', listOf(
-            Point(0.5f, 0.35f), Point(0.5f, 0.9f), Point(0.5f, 0.18f), Point(0.52f, 0.22f)
-        ))
-
-        // j
-        createTemplate('j', listOf(
-            Point(0.6f, 0.35f), Point(0.6f, 0.9f), Point(0.35f, 0.95f),
-            Point(0.6f, 0.18f), Point(0.62f, 0.22f)
-        ))
-
-        // k
-        createTemplate('k', listOf(
-            Point(0.3f, 0.1f), Point(0.3f, 0.9f), Point(0.7f, 0.35f),
-            Point(0.3f, 0.6f), Point(0.7f, 0.9f)
-        ))
-
-        // l
-        createTemplate('l', listOf(
-            Point(0.5f, 0.1f), Point(0.5f, 0.5f), Point(0.5f, 0.9f)
-        ))
-
-        // m
-        createTemplate('m', listOf(
-            Point(0.15f, 0.9f), Point(0.15f, 0.4f), Point(0.35f, 0.35f), Point(0.5f, 0.6f),
-            Point(0.5f, 0.9f), Point(0.5f, 0.4f), Point(0.75f, 0.35f), Point(0.85f, 0.9f)
-        ))
-
-        // n
-        createTemplate('n', listOf(
-            Point(0.25f, 0.9f), Point(0.25f, 0.4f), Point(0.5f, 0.35f),
-            Point(0.75f, 0.55f), Point(0.75f, 0.9f)
-        ))
-
-        // o
-        createTemplate('o', (0..16).map { i ->
-            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
-            Point((0.5 + 0.35 * Math.cos(angle)).toFloat(), (0.5 + 0.35 * Math.sin(angle)).toFloat())
-        })
-
-        // p
-        createTemplate('p', listOf(
-            Point(0.25f, 0.35f), Point(0.25f, 0.95f), Point(0.25f, 0.35f),
-            Point(0.65f, 0.35f), Point(0.75f, 0.55f), Point(0.65f, 0.7f), Point(0.25f, 0.7f)
-        ))
-
-        // q
-        createTemplate('q', listOf(
-            Point(0.7f, 0.35f), Point(0.35f, 0.35f), Point(0.3f, 0.55f),
-            Point(0.7f, 0.7f), Point(0.7f, 0.35f), Point(0.7f, 0.95f)
-        ))
-
-        // r
-        createTemplate('r', listOf(
-            Point(0.3f, 0.4f), Point(0.3f, 0.9f), Point(0.3f, 0.55f),
-            Point(0.55f, 0.4f), Point(0.75f, 0.45f)
-        ))
-
-        // s
-        createTemplate('s', listOf(
-            Point(0.75f, 0.35f), Point(0.45f, 0.25f), Point(0.3f, 0.45f),
+        // s - serpentine curve
+        addTemplate('s', listOf(
+            Point(0.75f, 0.32f), Point(0.45f, 0.22f), Point(0.30f, 0.45f),
             Point(0.65f, 0.65f), Point(0.55f, 0.85f), Point(0.25f, 0.75f)
         ))
 
-        // t
-        createTemplate('t', listOf(
-            Point(0.5f, 0.15f), Point(0.5f, 0.85f), Point(0.65f, 0.85f),
-            Point(0.25f, 0.4f), Point(0.75f, 0.4f)
+        // t - stem with bottom hook + crossbar
+        addTemplate('t', listOf(
+            Point(0.50f, 0.10f), Point(0.50f, 0.85f), Point(0.65f, 0.85f),
+            Point(0.25f, 0.35f), Point(0.75f, 0.35f)
+        ), isTall = true, expectedStrokes = 2)
+
+        // t - single stroke hook
+        addTemplate('t', listOf(
+            Point(0.48f, 0.08f), Point(0.48f, 0.88f), Point(0.70f, 0.88f)
+        ), isTall = true, expectedStrokes = 1)
+
+        // u - cup curve
+        addTemplate('u', listOf(
+            Point(0.25f, 0.30f), Point(0.25f, 0.75f), Point(0.50f, 0.85f),
+            Point(0.75f, 0.75f), Point(0.75f, 0.30f), Point(0.75f, 0.90f)
         ))
 
-        // u
-        createTemplate('u', listOf(
-            Point(0.25f, 0.35f), Point(0.25f, 0.75f), Point(0.5f, 0.85f),
-            Point(0.75f, 0.75f), Point(0.75f, 0.35f), Point(0.75f, 0.9f)
+        // v - angle wedge
+        addTemplate('v', listOf(
+            Point(0.20f, 0.30f), Point(0.50f, 0.88f), Point(0.80f, 0.30f)
         ))
 
-        // v
-        createTemplate('v', listOf(
-            Point(0.2f, 0.3f), Point(0.5f, 0.85f), Point(0.8f, 0.3f)
-        ))
+        // w - double V
+        addTemplate('w', listOf(
+            Point(0.15f, 0.30f), Point(0.35f, 0.88f), Point(0.50f, 0.50f),
+            Point(0.65f, 0.88f), Point(0.85f, 0.30f)
+        ), isWide = true)
 
-        // w
-        createTemplate('w', listOf(
-            Point(0.15f, 0.3f), Point(0.35f, 0.85f), Point(0.5f, 0.5f),
-            Point(0.65f, 0.85f), Point(0.85f, 0.3f)
-        ))
-
-        // x
-        createTemplate('x', listOf(
+        // x - diagonal cross
+        addTemplate('x', listOf(
             Point(0.25f, 0.25f), Point(0.75f, 0.85f),
             Point(0.75f, 0.25f), Point(0.25f, 0.85f)
+        ), expectedStrokes = 2)
+
+        // x - single stroke cursive loop
+        addTemplate('x', listOf(
+            Point(0.30f, 0.25f), Point(0.70f, 0.85f), Point(0.50f, 0.55f),
+            Point(0.70f, 0.25f), Point(0.30f, 0.85f)
+        ), expectedStrokes = 1)
+
+        // y - V into descender
+        addTemplate('y', listOf(
+            Point(0.25f, 0.30f), Point(0.50f, 0.65f), Point(0.75f, 0.30f),
+            Point(0.50f, 0.65f), Point(0.30f, 0.95f)
         ))
 
-        // y
-        createTemplate('y', listOf(
-            Point(0.25f, 0.35f), Point(0.5f, 0.65f), Point(0.75f, 0.35f),
-            Point(0.5f, 0.65f), Point(0.3f, 0.95f)
+        // z - zigzag
+        addTemplate('z', listOf(
+            Point(0.25f, 0.30f), Point(0.75f, 0.30f), Point(0.25f, 0.85f), Point(0.75f, 0.85f)
         ))
 
-        // z
-        createTemplate('z', listOf(
-            Point(0.25f, 0.35f), Point(0.75f, 0.35f), Point(0.25f, 0.85f), Point(0.75f, 0.85f)
+        // ==========================================
+        // UPPERCASE LETTERS ('A'..'Z')
+        // ==========================================
+
+        // A - standard apex with crossbar
+        addTemplate('A', listOf(
+            Point(0.15f, 0.95f), Point(0.50f, 0.05f), Point(0.85f, 0.95f),
+            Point(0.30f, 0.60f), Point(0.70f, 0.60f)
+        ), isTall = true, expectedStrokes = 2)
+
+        // A - single stroke loop
+        addTemplate('A', listOf(
+            Point(0.15f, 0.95f), Point(0.50f, 0.05f), Point(0.85f, 0.95f),
+            Point(0.65f, 0.55f), Point(0.35f, 0.55f)
+        ), isTall = true, expectedStrokes = 1)
+
+        // B - vertical stem + double loop
+        addTemplate('B', listOf(
+            Point(0.20f, 0.95f), Point(0.20f, 0.05f), Point(0.65f, 0.05f),
+            Point(0.75f, 0.27f), Point(0.35f, 0.50f), Point(0.80f, 0.73f),
+            Point(0.65f, 0.95f), Point(0.20f, 0.95f)
+        ), isTall = true)
+
+        // C - large open curve
+        addTemplate('C', listOf(
+            Point(0.80f, 0.20f), Point(0.45f, 0.05f), Point(0.20f, 0.50f),
+            Point(0.45f, 0.95f), Point(0.80f, 0.80f)
         ))
 
-        // Uppercase templates
-        createTemplate('A', listOf(
-            Point(0.15f, 0.9f), Point(0.5f, 0.1f), Point(0.85f, 0.9f),
-            Point(0.3f, 0.6f), Point(0.7f, 0.6f)
-        ))
-        createTemplate('B', listOf(
-            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.65f, 0.3f),
-            Point(0.35f, 0.5f), Point(0.7f, 0.7f), Point(0.25f, 0.9f)
-        ))
-        createTemplate('C', listOf(
-            Point(0.8f, 0.25f), Point(0.45f, 0.15f), Point(0.2f, 0.5f),
-            Point(0.45f, 0.85f), Point(0.8f, 0.75f)
-        ))
-        createTemplate('D', listOf(
-            Point(0.25f, 0.1f), Point(0.25f, 0.9f), Point(0.3f, 0.1f),
-            Point(0.75f, 0.5f), Point(0.3f, 0.9f)
-        ))
-        createTemplate('E', listOf(
-            Point(0.75f, 0.15f), Point(0.25f, 0.15f), Point(0.25f, 0.85f),
-            Point(0.75f, 0.85f), Point(0.25f, 0.5f), Point(0.65f, 0.5f)
-        ))
-        createTemplate('H', listOf(
-            Point(0.25f, 0.1f), Point(0.25f, 0.9f),
-            Point(0.25f, 0.5f), Point(0.75f, 0.5f),
-            Point(0.75f, 0.1f), Point(0.75f, 0.9f)
-        ))
-        createTemplate('I', listOf(
-            Point(0.3f, 0.15f), Point(0.7f, 0.15f),
-            Point(0.5f, 0.15f), Point(0.5f, 0.85f),
-            Point(0.3f, 0.85f), Point(0.7f, 0.85f)
-        ))
-        createTemplate('O', (0..16).map { i ->
-            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
-            Point((0.5 + 0.38 * Math.cos(angle)).toFloat(), (0.5 + 0.42 * Math.sin(angle)).toFloat())
-        })
-        createTemplate('S', listOf(
-            Point(0.75f, 0.25f), Point(0.45f, 0.15f), Point(0.25f, 0.35f),
-            Point(0.65f, 0.55f), Point(0.55f, 0.85f), Point(0.25f, 0.75f)
-        ))
-        createTemplate('T', listOf(
-            Point(0.15f, 0.15f), Point(0.85f, 0.15f),
-            Point(0.5f, 0.15f), Point(0.5f, 0.9f)
+        // D - vertical stem + large loop
+        addTemplate('D', listOf(
+            Point(0.25f, 0.95f), Point(0.25f, 0.05f), Point(0.55f, 0.05f),
+            Point(0.80f, 0.50f), Point(0.55f, 0.95f), Point(0.25f, 0.95f)
+        ), isTall = true)
+
+        // E - vertical + 3 arms
+        addTemplate('E', listOf(
+            Point(0.80f, 0.05f), Point(0.25f, 0.05f), Point(0.25f, 0.50f),
+            Point(0.65f, 0.50f), Point(0.25f, 0.50f), Point(0.25f, 0.95f), Point(0.80f, 0.95f)
+        ), isTall = true)
+
+        // F - vertical + 2 arms
+        addTemplate('F', listOf(
+            Point(0.80f, 0.05f), Point(0.25f, 0.05f), Point(0.25f, 0.50f),
+            Point(0.65f, 0.50f), Point(0.25f, 0.50f), Point(0.25f, 0.95f)
+        ), isTall = true)
+
+        // G - C shape with shelf
+        addTemplate('G', listOf(
+            Point(0.80f, 0.20f), Point(0.45f, 0.05f), Point(0.20f, 0.50f),
+            Point(0.45f, 0.95f), Point(0.80f, 0.95f), Point(0.80f, 0.55f), Point(0.55f, 0.55f)
         ))
 
-        // Numbers 0-9
-        createTemplate('0', (0..16).map { i ->
-            val angle = (i.toDouble() / 16.0) * 2.0 * Math.PI
-            Point((0.5 + 0.3 * Math.cos(angle)).toFloat(), (0.5 + 0.42 * Math.sin(angle)).toFloat())
-        })
-        createTemplate('1', listOf(
-            Point(0.35f, 0.25f), Point(0.5f, 0.15f), Point(0.5f, 0.9f),
-            Point(0.3f, 0.9f), Point(0.7f, 0.9f)
+        // H - 2 uprights + crossbar
+        addTemplate('H', listOf(
+            Point(0.25f, 0.05f), Point(0.25f, 0.95f), Point(0.25f, 0.50f),
+            Point(0.75f, 0.50f), Point(0.75f, 0.05f), Point(0.75f, 0.95f)
+        ), isTall = true)
+
+        // I - vertical line
+        addTemplate('I', listOf(
+            Point(0.50f, 0.05f), Point(0.50f, 0.95f)
+        ), isTall = true)
+
+        // I - serif top and bottom
+        addTemplate('I', listOf(
+            Point(0.30f, 0.05f), Point(0.70f, 0.05f), Point(0.50f, 0.05f),
+            Point(0.50f, 0.95f), Point(0.30f, 0.95f), Point(0.70f, 0.95f)
+        ), isTall = true)
+
+        // J - top bar + hook
+        addTemplate('J', listOf(
+            Point(0.70f, 0.05f), Point(0.70f, 0.80f), Point(0.50f, 0.95f), Point(0.30f, 0.80f)
+        ), isTall = true)
+
+        // K - vertical + angled diagonal arms
+        addTemplate('K', listOf(
+            Point(0.25f, 0.05f), Point(0.25f, 0.95f), Point(0.25f, 0.50f),
+            Point(0.75f, 0.05f), Point(0.25f, 0.50f), Point(0.75f, 0.95f)
+        ), isTall = true)
+
+        // L - vertical + bottom base
+        addTemplate('L', listOf(
+            Point(0.25f, 0.05f), Point(0.25f, 0.95f), Point(0.75f, 0.95f)
+        ), isTall = true)
+
+        // M - 4-point zigzag
+        addTemplate('M', listOf(
+            Point(0.15f, 0.95f), Point(0.15f, 0.05f), Point(0.50f, 0.65f),
+            Point(0.85f, 0.05f), Point(0.85f, 0.95f)
+        ), isWide = true)
+
+        // N - diagonal connector
+        addTemplate('N', listOf(
+            Point(0.20f, 0.95f), Point(0.20f, 0.05f), Point(0.80f, 0.95f), Point(0.80f, 0.05f)
+        ), isTall = true)
+
+        // O - large closed circle
+        addTemplate('O', circlePoints(0.38, 0.42), isClosed = true, weight = 0.94f)
+
+        // P - stem + upper round bowl
+        addTemplate('P', listOf(
+            Point(0.25f, 0.95f), Point(0.25f, 0.05f), Point(0.70f, 0.05f),
+            Point(0.80f, 0.28f), Point(0.70f, 0.50f), Point(0.25f, 0.50f)
+        ), isTall = true)
+
+        // Q - large circle + bottom diagonal tail
+        addTemplate('Q', circlePoints(0.36, 0.40) + listOf(Point(0.60f, 0.65f), Point(0.85f, 0.95f)), isClosed = true)
+
+        // R - stem + upper bowl + diagonal leg
+        addTemplate('R', listOf(
+            Point(0.25f, 0.95f), Point(0.25f, 0.05f), Point(0.70f, 0.05f),
+            Point(0.80f, 0.28f), Point(0.70f, 0.50f), Point(0.25f, 0.50f),
+            Point(0.50f, 0.50f), Point(0.80f, 0.95f)
+        ), isTall = true)
+
+        // S - large serpentine
+        addTemplate('S', listOf(
+            Point(0.75f, 0.20f), Point(0.50f, 0.05f), Point(0.25f, 0.25f),
+            Point(0.75f, 0.70f), Point(0.50f, 0.95f), Point(0.25f, 0.80f)
         ))
-        createTemplate('2', listOf(
-            Point(0.3f, 0.3f), Point(0.5f, 0.15f), Point(0.75f, 0.3f),
-            Point(0.25f, 0.85f), Point(0.8f, 0.85f)
+
+        // T - top crossbar + vertical stem
+        addTemplate('T', listOf(
+            Point(0.15f, 0.05f), Point(0.85f, 0.05f), Point(0.50f, 0.05f), Point(0.50f, 0.95f)
+        ), isTall = true)
+
+        // U - large cup
+        addTemplate('U', listOf(
+            Point(0.20f, 0.05f), Point(0.20f, 0.75f), Point(0.50f, 0.95f),
+            Point(0.80f, 0.75f), Point(0.80f, 0.05f)
+        ), isTall = true)
+
+        // V - sharp wedge
+        addTemplate('V', listOf(
+            Point(0.15f, 0.05f), Point(0.50f, 0.95f), Point(0.85f, 0.05f)
+        ), isTall = true)
+
+        // W - wide double wedge
+        addTemplate('W', listOf(
+            Point(0.15f, 0.05f), Point(0.35f, 0.95f), Point(0.50f, 0.45f),
+            Point(0.65f, 0.95f), Point(0.85f, 0.05f)
+        ), isWide = true)
+
+        // X - large cross
+        addTemplate('X', listOf(
+            Point(0.20f, 0.05f), Point(0.80f, 0.95f), Point(0.80f, 0.05f), Point(0.20f, 0.95f)
         ))
-        createTemplate('3', listOf(
-            Point(0.25f, 0.2f), Point(0.75f, 0.2f), Point(0.45f, 0.5f),
-            Point(0.75f, 0.65f), Point(0.3f, 0.85f)
+
+        // Y - diagonal arms meeting central stem
+        addTemplate('Y', listOf(
+            Point(0.15f, 0.05f), Point(0.50f, 0.55f), Point(0.85f, 0.05f),
+            Point(0.50f, 0.55f), Point(0.50f, 0.95f)
+        ), isTall = true)
+
+        // Z - large zigzag
+        addTemplate('Z', listOf(
+            Point(0.20f, 0.05f), Point(0.80f, 0.05f), Point(0.20f, 0.95f), Point(0.80f, 0.95f)
         ))
-        createTemplate('4', listOf(
-            Point(0.7f, 0.85f), Point(0.7f, 0.15f),
+
+        // ==========================================
+        // DIGITS ('0'..'9')
+        // ==========================================
+
+        addTemplate('0', circlePoints(0.30, 0.42), isClosed = true, weight = 1.08f)
+
+        addTemplate('1', listOf(
+            Point(0.35f, 0.25f), Point(0.50f, 0.10f), Point(0.50f, 0.95f),
+            Point(0.30f, 0.95f), Point(0.70f, 0.95f)
+        ), isTall = true)
+
+        addTemplate('2', listOf(
+            Point(0.25f, 0.25f), Point(0.50f, 0.10f), Point(0.75f, 0.25f),
+            Point(0.25f, 0.85f), Point(0.80f, 0.85f)
+        ))
+
+        addTemplate('3', listOf(
+            Point(0.25f, 0.15f), Point(0.75f, 0.15f), Point(0.45f, 0.50f),
+            Point(0.75f, 0.65f), Point(0.30f, 0.85f)
+        ))
+
+        addTemplate('4', listOf(
+            Point(0.70f, 0.85f), Point(0.70f, 0.15f),
             Point(0.25f, 0.65f), Point(0.85f, 0.65f)
-        ))
-        createTemplate('5', listOf(
-            Point(0.75f, 0.15f), Point(0.3f, 0.15f), Point(0.3f, 0.5f),
-            Point(0.75f, 0.6f), Point(0.3f, 0.85f)
-        ))
-        createTemplate('7', listOf(
-            Point(0.25f, 0.15f), Point(0.75f, 0.15f), Point(0.45f, 0.9f)
-        ))
-        createTemplate('8', listOf(
-            Point(0.5f, 0.5f), Point(0.3f, 0.3f), Point(0.5f, 0.15f),
-            Point(0.7f, 0.3f), Point(0.5f, 0.5f), Point(0.3f, 0.7f),
-            Point(0.5f, 0.85f), Point(0.7f, 0.7f), Point(0.5f, 0.5f)
+        ), expectedStrokes = 2)
+
+        addTemplate('5', listOf(
+            Point(0.75f, 0.15f), Point(0.30f, 0.15f), Point(0.30f, 0.50f),
+            Point(0.75f, 0.60f), Point(0.30f, 0.85f)
         ))
 
-        return map
+        addTemplate('6', listOf(
+            Point(0.70f, 0.15f), Point(0.30f, 0.50f), Point(0.30f, 0.85f),
+            Point(0.70f, 0.85f), Point(0.70f, 0.55f), Point(0.30f, 0.55f)
+        ), isClosed = true)
+
+        addTemplate('7', listOf(
+            Point(0.20f, 0.15f), Point(0.80f, 0.15f), Point(0.45f, 0.90f)
+        ))
+
+        addTemplate('8', listOf(
+            Point(0.50f, 0.50f), Point(0.30f, 0.30f), Point(0.50f, 0.15f),
+            Point(0.70f, 0.30f), Point(0.50f, 0.50f), Point(0.30f, 0.70f),
+            Point(0.50f, 0.85f), Point(0.70f, 0.70f), Point(0.50f, 0.50f)
+        ), isClosed = true)
+
+        addTemplate('9', listOf(
+            Point(0.70f, 0.50f), Point(0.30f, 0.50f), Point(0.30f, 0.15f),
+            Point(0.70f, 0.15f), Point(0.70f, 0.90f), Point(0.35f, 0.90f)
+        ), isClosed = true)
+
+        return list
     }
 }

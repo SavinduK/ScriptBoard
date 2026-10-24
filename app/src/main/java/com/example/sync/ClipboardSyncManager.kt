@@ -176,7 +176,7 @@ class ClipboardSyncManager private constructor(private val context: Context) {
             clipboardListenerRegistration = db.collection("users").document(uid)
                 .collection("clipboard_items")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
-                .limit(40)
+                .limit(50)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         Log.e("FirebaseSync", "Clipboard listen error: ${error.message}")
@@ -184,9 +184,19 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                     }
                     if (snapshot != null) {
                         for (change in snapshot.documentChanges) {
-                            if (change.type == DocumentChange.Type.ADDED) {
-                                val doc = change.document
-                                handleIncomingRemoteClip(doc.id, doc.data)
+                            val doc = change.document
+                            when (change.type) {
+                                DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                                    handleIncomingRemoteClip(doc.id, doc.data)
+                                }
+                                DocumentChange.Type.REMOVED -> {
+                                    scope.launch {
+                                        val local = database.snippetDao().findBySyncId(doc.id)
+                                        if (local != null) {
+                                            database.snippetDao().deleteSnippet(local.id)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -195,10 +205,40 @@ class ClipboardSyncManager private constructor(private val context: Context) {
             Log.e("FirebaseSync", "Failed to attach clipboard listener", e)
         }
 
+        // 4. Initial pinned sync: Fetch all pinned snippets from Firebase cloud
+        try {
+            db.collection("users").document(uid)
+                .collection("clipboard_items")
+                .whereEqualTo("isPinned", true)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    if (snapshot != null && !snapshot.isEmpty) {
+                        scope.launch {
+                            for (doc in snapshot.documents) {
+                                val data = doc.data ?: continue
+                                handleIncomingRemoteClip(doc.id, data)
+                            }
+                        }
+                    }
+                    // Also upload any local pinned snippets that may not be on the server yet
+                    scope.launch {
+                        val localPinned = database.snippetDao().getPinnedList()
+                        for (local in localPinned) {
+                            broadcastSnippet(local)
+                        }
+                    }
+                    // Clean up server entries older than 24 hours
+                    purgeServerEntriesOlderThan24h()
+                }
+                .addOnFailureListener { e ->
+                    Log.w("FirebaseSync", "Initial pinned fetch notice: ${e.message}")
+                }
+        } catch (_: Exception) {}
+
         logEvent(
             SyncActivityEvent(
                 title = "Firebase Cloud Sync Active",
-                description = "Connected with account ${user.email ?: user.uid}",
+                description = "Connected with account ${user.email ?: user.uid} (Pinned & History synced)",
                 isOutgoing = false,
                 transport = "Firebase Cloud"
             )
@@ -238,6 +278,30 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         _syncActivityLog.value = current.take(50)
     }
 
+    // Cache of recently received synced text to prevent cyclic reflection from primaryClipChangedListener
+    private val recentSyncedContents = Collections.synchronizedSet(LinkedHashSet<String>())
+
+    fun markContentSynced(content: String) {
+        val trimmed = content.trim()
+        if (trimmed.isBlank()) return
+        synchronized(recentSyncedContents) {
+            if (recentSyncedContents.size > 200) {
+                val it = recentSyncedContents.iterator()
+                if (it.hasNext()) {
+                    it.next()
+                    it.remove()
+                }
+            }
+            recentSyncedContents.add(trimmed)
+        }
+    }
+
+    fun isContentRecentlySynced(content: String): Boolean {
+        val trimmed = content.trim()
+        if (trimmed.isBlank()) return false
+        return recentSyncedContents.contains(trimmed)
+    }
+
     /**
      * Handles incoming broadcast clip from Firestore snapshot stream.
      */
@@ -262,6 +326,10 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         val isPinned = (data["isPinned"] as? Boolean) ?: false
         val category = data["category"] as? String ?: "Synced"
         val mimeType = data["mimeType"] as? String ?: if (isImage) "image/png" else "text/plain"
+
+        if (content.isNotBlank()) {
+            markContentSynced(content)
+        }
 
         scope.launch {
             var localImageUri: String? = null
@@ -319,8 +387,9 @@ class ClipboardSyncManager private constructor(private val context: Context) {
 
     /**
      * Broadcasts a snippet to Firestore.
-     * Firebase real-time listeners on other devices signed in with the same email
-     * receive the broadcast instantly.
+     * Prevents cyclic sharing: checks if an entry with the exact content already exists on the server.
+     * If duplicates exist on the server, deletes duplicate copies and only updates pin/category if needed.
+     * Only broadcasts if the entry is unique.
      */
     fun broadcastSnippet(snippet: SnippetEntity, customImageBytes: ByteArray? = null) {
         if (!preferences.clipboardSyncEnabled.value) return
@@ -356,41 +425,136 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                 }
             }
 
-            val payload = hashMapOf<String, Any>(
-                "userId" to uid,
-                "originDeviceId" to localDeviceId,
-                "title" to snippet.title.take(200),
-                "content" to payloadContent.take(500000),
-                "isPinned" to snippet.isPinned,
-                "category" to snippet.category.take(50),
-                "isImage" to snippet.isImage,
-                "mimeType" to (snippet.mimeType ?: if (snippet.isImage) "image/png" else "text/plain").take(100),
-                "createdAt" to FieldValue.serverTimestamp(),
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
+            // Check old entries on the server: query for matching content to prevent duplicate broadcasting and cyclic sharing
+            db.collection("users").document(uid)
+                .collection("clipboard_items")
+                .whereEqualTo("content", payloadContent)
+                .get()
+                .addOnSuccessListener { querySnapshot ->
+                    scope.launch {
+                        if (querySnapshot != null && !querySnapshot.isEmpty) {
+                            val docs = querySnapshot.documents
+                            // Delete any duplicate copies found on the server
+                            if (docs.size > 1) {
+                                for (i in 1 until docs.size) {
+                                    docs[i].reference.delete()
+                                }
+                            }
 
+                            val primaryDoc = docs.first()
+                            val remotePinned = primaryDoc.getBoolean("isPinned") ?: false
+                            val remoteCategory = primaryDoc.getString("category") ?: ""
+                            val remoteTitle = primaryDoc.getString("title") ?: ""
+
+                            if (remotePinned != snippet.isPinned || remoteCategory != snippet.category || remoteTitle != snippet.title) {
+                                primaryDoc.reference.update(
+                                    mapOf(
+                                        "title" to snippet.title.take(200),
+                                        "isPinned" to snippet.isPinned,
+                                        "category" to snippet.category.take(50),
+                                        "updatedAt" to FieldValue.serverTimestamp()
+                                    )
+                                )
+                            }
+                            // Existing document on server handled; do not create duplicate document
+                            return@launch
+                        }
+
+                        // Unique entry: broadcast new document to server
+                        val payload = hashMapOf<String, Any>(
+                            "userId" to uid,
+                            "originDeviceId" to localDeviceId,
+                            "title" to snippet.title.take(200),
+                            "content" to payloadContent.take(500000),
+                            "isPinned" to snippet.isPinned,
+                            "category" to snippet.category.take(50),
+                            "isImage" to snippet.isImage,
+                            "mimeType" to (snippet.mimeType ?: if (snippet.isImage) "image/png" else "text/plain").take(100),
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+
+                        try {
+                            db.collection("users").document(uid)
+                                .collection("clipboard_items").document(syncId)
+                                .set(payload)
+                                .addOnSuccessListener {
+                                    logEvent(
+                                        SyncActivityEvent(
+                                            title = if (snippet.isImage) "Synced Image (Cloud)" else "Synced Text (Cloud)",
+                                            description = "Broadcasted to account ${user.email ?: uid}",
+                                            isOutgoing = true,
+                                            isImage = snippet.isImage,
+                                            transport = "Firebase Cloud"
+                                        )
+                                    )
+                                    // Trigger 24h cleanup on server
+                                    purgeServerEntriesOlderThan24h()
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("FirebaseSync", "Failed to broadcast to Firestore: ${e.message}", e)
+                                }
+                        } catch (e: Exception) {
+                            Log.e("FirebaseSync", "Exception broadcasting to Firestore", e)
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.w("FirebaseSync", "Server duplicate check error: ${e.message}")
+                }
+        }
+    }
+
+    /**
+     * Purges server entries older than 24 hours.
+     * Pinned items are protected and preserved.
+     */
+    fun purgeServerEntriesOlderThan24h() {
+        val user = getAuthSafe()?.currentUser ?: return
+        val db = getFirestoreSafe() ?: return
+        val uid = user.uid
+        val cutoff24h = System.currentTimeMillis() - (24L * 60L * 60L * 1000L)
+
+        scope.launch {
             try {
                 db.collection("users").document(uid)
-                    .collection("clipboard_items").document(syncId)
-                    .set(payload)
-                    .addOnSuccessListener {
-                        logEvent(
-                            SyncActivityEvent(
-                                title = if (snippet.isImage) "Synced Image (Cloud)" else "Synced Text (Cloud)",
-                                description = "Broadcasted to account ${user.email ?: uid}",
-                                isOutgoing = true,
-                                isImage = snippet.isImage,
-                                transport = "Firebase Cloud"
-                            )
-                        )
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("FirebaseSync", "Failed to broadcast to Firestore: ${e.message}", e)
+                    .collection("clipboard_items")
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        if (snapshot == null || snapshot.isEmpty) return@addOnSuccessListener
+                        scope.launch {
+                            var deletedCount = 0
+                            for (doc in snapshot.documents) {
+                                val isPinned = doc.getBoolean("isPinned") ?: false
+                                if (!isPinned) {
+                                    val createdAt = doc.getTimestamp("createdAt")
+                                    val createdTime = createdAt?.toDate()?.time ?: 0L
+                                    if (createdTime > 0L && createdTime < cutoff24h) {
+                                        doc.reference.delete()
+                                        deletedCount++
+                                    }
+                                }
+                            }
+                            if (deletedCount > 0) {
+                                Log.d("FirebaseSync", "Purged $deletedCount expired entries (>24h) from server")
+                            }
+                        }
                     }
             } catch (e: Exception) {
-                Log.e("FirebaseSync", "Exception broadcasting to Firestore", e)
+                Log.w("FirebaseSync", "Failed to purge 24h server entries: ${e.message}")
             }
         }
+    }
+
+    fun deleteRemoteSnippet(syncId: String) {
+        if (syncId.isBlank()) return
+        val user = getAuthSafe()?.currentUser ?: return
+        val db = getFirestoreSafe() ?: return
+        try {
+            db.collection("users").document(user.uid)
+                .collection("clipboard_items").document(syncId)
+                .delete()
+        } catch (_: Exception) {}
     }
 
     private fun readImageBytes(uriString: String?): ByteArray? {

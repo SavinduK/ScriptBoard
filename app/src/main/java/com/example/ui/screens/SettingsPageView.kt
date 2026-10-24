@@ -77,11 +77,13 @@ fun SettingsPageView(
     isHoldForSymbolsEnabled: Boolean,
     isAutoSuggestEnabled: Boolean = true,
     keyFontSize: Float = 24f,
+    altKeyFontSize: Float = 14f,
     tabletKeyboardScale: Float = 1.0f,
     isHideOnPhysicalKeyboardEnabled: Boolean = true,
     onBack: () -> Unit,
     onThemeSelected: (KeyboardThemeType) -> Unit,
     onKeyFontSizeChanged: (Float) -> Unit = {},
+    onAltKeyFontSizeChanged: (Float) -> Unit = {},
     onTabletKeyboardScaleChanged: (Float) -> Unit = {},
     onToggleSound: (Boolean) -> Unit,
     onToggleHaptic: (Boolean) -> Unit,
@@ -364,11 +366,109 @@ fun SettingsPageView(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    // Live Keycap Preview Box
+                    // Subsection: Alt Symbol Size (Corner symbols)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TextFields,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Alt Symbol Size",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Size of corner alternate symbols (~, @, #, $, %)",
+                                    color = colors.letterKeySecondaryTextColor,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.enterKeyBackground)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${altKeyFontSize.toInt()} sp",
+                                color = colors.enterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Alt symbol preset buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "Small\n(11sp)" to 11f,
+                            "Normal\n(14sp)" to 14f,
+                            "Large\n(17sp)" to 17f,
+                            "X-Large\n(20sp)" to 20f
+                        ).forEach { (label, size) ->
+                            val isSelected = altKeyFontSize.toInt() == size.toInt()
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                    .clickable { onAltKeyFontSizeChanged(size) }
+                                    .padding(vertical = 8.dp)
+                                    .testTag("btn_alt_font_size_${size.toInt()}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Slider(
+                        value = altKeyFontSize,
+                        onValueChange = { onAltKeyFontSizeChanged(it) },
+                        valueRange = 9f..22f,
+                        steps = 12,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("page_slider_alt_font_size"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.enterKeyBackground,
+                            activeTrackColor = colors.enterKeyBackground,
+                            inactiveTrackColor = colors.background
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Live Keycap Preview Box showing both main text and alt corner symbol
                     Text(
-                        text = "LIVE KEYCAP PREVIEW",
+                        text = "LIVE KEYCAP PREVIEW (TEXT + ALT SYMBOL)",
                         color = colors.letterKeySecondaryTextColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -385,17 +485,26 @@ fun SettingsPageView(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("Q", "W", "E", "R", "T").forEach { letter ->
+                        listOf("1" to "~", "2" to "@", "3" to "#", "4" to "$", "5" to "%").forEach { (primary, alt) ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(44.dp)
+                                    .height(48.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(colors.letterKeyBackground),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = letter,
+                                    text = alt,
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = altKeyFontSize.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(end = 4.dp, top = 2.dp)
+                                )
+                                Text(
+                                    text = primary,
                                     color = colors.letterKeyTextColor,
                                     fontSize = keyFontSize.sp,
                                     fontWeight = FontWeight.Normal

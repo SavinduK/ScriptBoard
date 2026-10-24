@@ -127,6 +127,7 @@ fun RowScope.KeyCap(
     colors: KeyboardColors,
     heightDp: Int = 54,
     characterFontSize: Float = 24f,
+    altCharacterFontSize: Float = 14f,
     horizontalPaddingDp: Float = 3.5f,
     verticalPaddingDp: Float = 4.0f,
     cornerRadiusDp: Int = 10,
@@ -228,7 +229,7 @@ fun RowScope.KeyCap(
             Text(
                 text = key.secondaryText,
                 color = textColor,
-                fontSize = if (heightDp >= 58) 16.5.sp else 14.sp,
+                fontSize = altCharacterFontSize.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.TopEnd)

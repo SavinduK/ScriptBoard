@@ -102,6 +102,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
     val isAutoSuggestEnabled by viewModel.isAutoSuggestEnabled.collectAsState()
     val keyFontSize by viewModel.keyFontSize.collectAsState()
+    val altKeyFontSize by viewModel.altKeyFontSize.collectAsState()
     val lastActionStatus by viewModel.lastActionStatus.collectAsState()
 
     val colors = viewModel.currentColors
@@ -401,11 +402,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
                         isAutoSuggestEnabled = isAutoSuggestEnabled,
                         keyFontSize = keyFontSize,
+                        altKeyFontSize = altKeyFontSize,
                         tabletKeyboardScale = tabletScale,
                         isHideOnPhysicalKeyboardEnabled = hideOnPhysicalKeyboard,
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
                         onKeyFontSizeChanged = { viewModel.setKeyFontSize(it) },
+                        onAltKeyFontSizeChanged = { viewModel.setAltKeyFontSize(it) },
                         onTabletKeyboardScaleChanged = { viewModel.setTabletKeyboardScale(it) },
                         onToggleSound = { viewModel.setSoundEnabled(it) },
                         onToggleHaptic = { viewModel.setHapticEnabled(it) },
@@ -422,12 +425,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 MainScreenSection.CLIPBOARD_HISTORY -> {
                     val autoDeleteEnabled by viewModel.autoDeleteClipboardEnabled.collectAsState()
                     val retentionDays by viewModel.clipboardRetentionDays.collectAsState()
+                    val customCategories by viewModel.customCategories.collectAsState()
                     ClipboardHistoryPageView(
                         pinnedSnippets = pinnedSnippets,
                         historySnippets = historySnippets,
                         colors = colors,
                         autoDeleteEnabled = autoDeleteEnabled,
                         retentionDays = retentionDays,
+                        customCategories = customCategories,
                         onToggleAutoDelete = { viewModel.setAutoDeleteClipboard(it) },
                         onChangeRetentionDays = { viewModel.setClipboardRetention(it) },
                         onPurgeExpiredNow = {
@@ -438,12 +443,21 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onNavigateToConnectedDevices = { currentSection = MainScreenSection.CONNECTED_DEVICES },
                         onBack = { currentSection = MainScreenSection.HUB },
                         onTogglePin = { viewModel.toggleSnippetPin(it) },
+                        onPinWithCategory = { snippet, category -> viewModel.pinSnippetWithCategory(snippet, category) },
+                        onUnpin = { snippet -> viewModel.unpinSnippet(snippet) },
+                        onAddCustomCategory = { category -> viewModel.addCustomCategory(category) },
                         onDeleteSnippet = { viewModel.deleteSnippet(it) },
                         onSaveSnippet = { title, content, isPinned, category, shortcut ->
                             viewModel.insertSnippet(title, content, isPinned, category, shortcut)
                         },
                         onSaveImage = { uri ->
                             viewModel.saveImageSnippet(uri)
+                        },
+                        onRemoveDuplicates = {
+                            viewModel.removeDuplicateHistoryNow { count ->
+                                val msg = if (count > 0) "Removed $count duplicate copies" else "No duplicate copies found"
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onClearHistory = { viewModel.clearUnpinnedHistory() }
                     )

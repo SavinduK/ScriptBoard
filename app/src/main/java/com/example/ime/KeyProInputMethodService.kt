@@ -219,13 +219,32 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     openSessionTrigger = sessionTrigger,
                     onAction = { action -> handleImeAction(action, pinnedSnippets) },
                     onTogglePin = { snippet ->
-                        serviceScope.launch { repository.togglePin(snippet.id, snippet.isPinned) }
+                        serviceScope.launch {
+                            val newPinned = repository.togglePin(snippet.id, snippet.isPinned)
+                            val syncManager = com.example.sync.ClipboardSyncManager.getInstance(this@KeyProInputMethodService)
+                            syncManager.broadcastSnippet(snippet.copy(isPinned = newPinned))
+                        }
                     },
                     onDeleteSnippet = { id ->
                         serviceScope.launch { repository.deleteSnippet(id) }
                     },
                     onSaveSnippet = { title, content, isPinned, category, shortcut ->
-                        serviceScope.launch { repository.insertSnippet(title, content, isPinned, category, shortcut) }
+                        serviceScope.launch {
+                            val id = repository.insertSnippet(title, content, isPinned, category, shortcut)
+                            if (isPinned) {
+                                val entity = com.example.data.SnippetEntity(
+                                    id = id,
+                                    title = title,
+                                    content = content,
+                                    isPinned = true,
+                                    category = category,
+                                    shortcut = shortcut,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                val syncManager = com.example.sync.ClipboardSyncManager.getInstance(this@KeyProInputMethodService)
+                                syncManager.broadcastSnippet(entity)
+                            }
+                        }
                     },
                     onClearHistory = {
                         serviceScope.launch { repository.clearUnpinned() }

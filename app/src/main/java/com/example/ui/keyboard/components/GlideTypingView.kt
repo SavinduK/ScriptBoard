@@ -100,6 +100,7 @@ fun GlideTypingView(
     var recognizedWord by remember { mutableStateOf("") }
     var suggestedWords by remember { mutableStateOf<List<String>>(emptyList()) }
     var recognizedLetters by remember { mutableStateOf<List<Char>>(emptyList()) }
+    var candidateLetters by remember { mutableStateOf<List<HandwritingRecognizer.LetterCandidate>>(emptyList()) }
 
     var recognitionJob by remember { mutableStateOf<Job?>(null) }
 
@@ -126,12 +127,13 @@ fun GlideTypingView(
         recognitionJob?.cancel()
         recognitionJob = coroutineScope.launch {
             // Fast responsive debounce after lifting finger/stylus
-            delay(180)
+            delay(170)
             if (completedStrokes.isNotEmpty()) {
                 val result = HandwritingRecognizer.recognize(completedStrokes, commonVocabulary)
-                if (result.primaryWord.isNotBlank()) {
+                if (result.primaryWord.isNotBlank() || result.candidateLetters.isNotEmpty()) {
                     recognizedWord = result.primaryWord
                     recognizedLetters = result.recognizedLetters
+                    candidateLetters = result.candidateLetters
 
                     // Query word completion manager for expanded words
                     val moreSuggestions = wordSuggestionManager.getSuggestions(result.primaryWord, "en")
@@ -151,6 +153,7 @@ fun GlideTypingView(
         recognizedWord = ""
         suggestedWords = emptyList()
         recognizedLetters = emptyList()
+        candidateLetters = emptyList()
     }
 
     Column(
@@ -172,12 +175,14 @@ fun GlideTypingView(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (recognizedWord.isNotBlank()) {
-                    // Highlighted primary recognized word button
+                if (recognizedWord.isNotBlank() || candidateLetters.isNotEmpty()) {
+                    // Highlighted primary recognized word/letter button
+                    val displayWord = if (recognizedWord.isNotBlank()) recognizedWord else candidateLetters.firstOrNull()?.char?.toString() ?: ""
                     Button(
                         onClick = {
-                            onInsertText("$recognizedWord ")
-                            coroutineScope.launch { wordSuggestionManager.recordWordUsed(recognizedWord) }
+                            val insertText = if (displayWord.length == 1) displayWord else "$displayWord "
+                            onInsertText(insertText)
+                            coroutineScope.launch { wordSuggestionManager.recordWordUsed(displayWord) }
                             clearPad()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -196,7 +201,7 @@ fun GlideTypingView(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = recognizedWord,
+                            text = displayWord,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -204,7 +209,7 @@ fun GlideTypingView(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Horizontal scrollable list of alternative suggestion chips
+                    // Horizontal scrollable list of alternative letter & word suggestion chips
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -212,6 +217,30 @@ fun GlideTypingView(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Letter candidate chips for direct single-letter tap insertion
+                        candidateLetters.take(4).forEach { candidate ->
+                            AssistChip(
+                                onClick = {
+                                    onInsertText(candidate.char.toString())
+                                    clearPad()
+                                },
+                                label = {
+                                    Text(
+                                        text = "${candidate.char}",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.letterKeyTextColor
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = colors.letterKeyBackground
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("chip_letter_${candidate.char}")
+                            )
+                        }
+
+                        // Word suggestions
                         suggestedWords.forEach { candidate ->
                             AssistChip(
                                 onClick = {

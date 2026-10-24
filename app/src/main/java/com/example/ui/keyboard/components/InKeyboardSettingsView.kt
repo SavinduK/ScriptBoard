@@ -77,6 +77,7 @@ fun InKeyboardSettingsView(
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val autoSuggestEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
+    val altKeyFontSize by keyboardPrefs.altKeyFontSize.collectAsState()
     val hideOnPhysicalKeyboard by keyboardPrefs.hideOnPhysicalKeyboard.collectAsState()
 
     var showRgbThemeDialog by remember { mutableStateOf(false) }
@@ -312,6 +313,64 @@ fun InKeyboardSettingsView(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isSelected) colors.enterKeyBackground else colors.functionKeyBackground)
                                     .clickable { keyboardPrefs.setKeyFontSize(size) }
+                                    .padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TextFields,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Alt Symbol Size",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "${altKeyFontSize.toInt()} sp",
+                            color = colors.enterKeyBackground,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Small (11sp)" to 11f, "Normal (14sp)" to 14f, "Large (17sp)" to 17f, "XL (20sp)" to 20f).forEach { (label, size) ->
+                            val isSelected = altKeyFontSize.toInt() == size.toInt()
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) colors.enterKeyBackground else colors.functionKeyBackground)
+                                    .clickable { keyboardPrefs.setAltKeyFontSize(size) }
                                     .padding(vertical = 5.dp),
                                 contentAlignment = Alignment.Center
                             ) {

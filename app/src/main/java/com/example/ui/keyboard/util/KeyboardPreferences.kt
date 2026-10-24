@@ -36,6 +36,9 @@ class KeyboardPreferences(context: Context) {
     private val _keyFontSize = MutableStateFlow(prefs.getFloat(KEY_KEY_FONT_SIZE, 24f))
     val keyFontSize: StateFlow<Float> = _keyFontSize.asStateFlow()
 
+    private val _altKeyFontSize = MutableStateFlow(prefs.getFloat(KEY_ALT_KEY_FONT_SIZE, 14f))
+    val altKeyFontSize: StateFlow<Float> = _altKeyFontSize.asStateFlow()
+
     private val _themeType = MutableStateFlow(
         try {
             KeyboardThemeType.valueOf(prefs.getString(KEY_THEME_TYPE, KeyboardThemeType.GBOARD_DARK.name) ?: KeyboardThemeType.GBOARD_DARK.name)
@@ -119,6 +122,27 @@ class KeyboardPreferences(context: Context) {
             ?: (android.os.Build.MODEL ?: "Android Device")
     )
     val localDeviceName: StateFlow<String> = _localDeviceName.asStateFlow()
+
+    // Customizable Pinned Categories (e.g. Work, Personal, Travel, Study)
+    private val _customCategories = MutableStateFlow(loadCustomCategories())
+    val customCategories: StateFlow<Set<String>> = _customCategories.asStateFlow()
+
+    private fun loadCustomCategories(): Set<String> {
+        val defaultCategories = linkedSetOf("Work", "Personal", "Travel", "Study")
+        val saved = prefs.getStringSet(KEY_CUSTOM_CATEGORIES, null)
+        if (!saved.isNullOrEmpty()) {
+            defaultCategories.addAll(saved)
+        }
+        return defaultCategories
+    }
+
+    fun addCustomCategory(category: String) {
+        val trimmed = category.trim().take(30)
+        if (trimmed.isBlank()) return
+        val updated = _customCategories.value + trimmed
+        _customCategories.value = updated
+        prefs.edit().putStringSet(KEY_CUSTOM_CATEGORIES, updated).apply()
+    }
 
     fun getLocalDeviceId(): String {
         var id = prefs.getString(KEY_LOCAL_DEVICE_ID, null)
@@ -352,6 +376,12 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putFloat(KEY_KEY_FONT_SIZE, size).apply()
     }
 
+    fun setAltKeyFontSize(size: Float) {
+        val clamped = size.coerceIn(9f, 24f)
+        _altKeyFontSize.value = clamped
+        prefs.edit().putFloat(KEY_ALT_KEY_FONT_SIZE, clamped).apply()
+    }
+
     fun setThemeType(type: KeyboardThemeType) {
         _themeType.value = type
         prefs.edit().putString(KEY_THEME_TYPE, type.name).apply()
@@ -387,6 +417,7 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_AUTO_SUGGEST_ENABLED = "auto_suggest_enabled"
         private const val KEY_RECENT_EMOJIS = "recent_emojis"
         private const val KEY_KEY_FONT_SIZE = "key_character_font_size"
+        private const val KEY_ALT_KEY_FONT_SIZE = "alt_key_font_size"
         private const val KEY_THEME_TYPE = "theme_type"
         private const val KEY_CUSTOM_BG = "custom_bg"
         private const val KEY_CUSTOM_KEY_BG = "custom_key_bg"
@@ -412,6 +443,7 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_HIDE_ON_PHYSICAL_KEYBOARD = "hide_on_physical_keyboard"
         private const val KEY_BLUETOOTH_SYNC_ENABLED = "bluetooth_sync_enabled"
         private const val KEY_WIFI_SYNC_ENABLED = "wifi_sync_enabled"
+        private const val KEY_CUSTOM_CATEGORIES = "custom_pinned_categories"
 
         const val DEFAULT_REPO_OWNER = "SavinduK"
         const val DEFAULT_REPO_NAME = "ScriptBoard"
