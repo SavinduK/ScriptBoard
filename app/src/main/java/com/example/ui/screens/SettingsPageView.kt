@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,10 +27,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardCapslock
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
@@ -51,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,10 +71,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.AppDatabase
+import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.components.RgbCustomThemeDialog
 import com.example.ui.keyboard.model.KeyboardColors
 import com.example.ui.keyboard.model.KeyboardThemeType
 import com.example.ui.keyboard.model.KeyboardThemes
+import kotlinx.coroutines.launch
+
+private enum class SettingsSubScreen {
+    THEMES_AND_CUSTOMIZATION
+}
 
 @Composable
 fun SettingsPageView(
@@ -76,6 +93,8 @@ fun SettingsPageView(
     isLaptopBarEnabled: Boolean,
     isHoldForSymbolsEnabled: Boolean,
     isAutoSuggestEnabled: Boolean = true,
+    isHandwritingEnabled: Boolean = true,
+    isAutoCapitalizationEnabled: Boolean = true,
     keyFontSize: Float = 24f,
     altKeyFontSize: Float = 14f,
     tabletKeyboardScale: Float = 1.0f,
@@ -90,11 +109,22 @@ fun SettingsPageView(
     onToggleLaptopBar: (Boolean) -> Unit,
     onToggleHoldForSymbols: (Boolean) -> Unit,
     onToggleAutoSuggest: (Boolean) -> Unit = {},
+    onToggleHandwriting: (Boolean) -> Unit = {},
+    onToggleAutoCapitalization: (Boolean) -> Unit = {},
     onToggleHideOnPhysicalKeyboard: (Boolean) -> Unit = {},
+    currentUserEmail: String? = null,
+    onSaveSettingsToCloud: () -> Unit = {},
+    onLoadSettingsFromCloud: () -> Unit = {},
+    onSignInWithGoogle: () -> Unit = {},
     onCustomColorsChanged: (bg: Int, keyBg: Int, text: Int, accent: Int) -> Unit
 ) {
     val context = LocalContext.current
     var showRgbThemeDialog by remember { mutableStateOf(false) }
+    var currentSubScreen by remember { mutableStateOf<SettingsSubScreen?>(null) }
+
+    BackHandler(enabled = currentSubScreen != null) {
+        currentSubScreen = null
+    }
 
     Column(
         modifier = Modifier
@@ -111,12 +141,18 @@ fun SettingsPageView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = {
+                    if (currentSubScreen != null) {
+                        currentSubScreen = null
+                    } else {
+                        onBack()
+                    }
+                },
                 modifier = Modifier.testTag("btn_back_from_settings")
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to Home",
+                    contentDescription = if (currentSubScreen != null) "Back to Settings" else "Back to Home",
                     tint = colors.letterKeyTextColor
                 )
             }
@@ -125,157 +161,156 @@ fun SettingsPageView(
 
             Column {
                 Text(
-                    text = "Keyboard Settings",
+                    text = if (currentSubScreen == SettingsSubScreen.THEMES_AND_CUSTOMIZATION) "Themes and Customization" else "Keyboard Settings",
                     color = colors.letterKeyTextColor,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Preferences, audio, and visual themes",
+                    text = if (currentSubScreen == SettingsSubScreen.THEMES_AND_CUSTOMIZATION) "Colors, RGB palette studio, font sizes & display" else "Preferences, feedback, language and display",
                     color = colors.letterKeySecondaryTextColor,
                     fontSize = 11.sp
                 )
             }
         }
 
-        // Settings Content
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Section 1: Themes
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
-                shape = RoundedCornerShape(12.dp)
+        // Sub-screen: Themes and Customization
+        if (currentSubScreen == SettingsSubScreen.THEMES_AND_CUSTOMIZATION) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Palette,
-                                contentDescription = null,
-                                tint = colors.enterKeyBackground,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Keyboard Theme",
-                                color = colors.letterKeyTextColor,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Button(
-                            onClick = { showRgbThemeDialog = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.enterKeyBackground,
-                                contentColor = colors.enterKeyTextColor
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("btn_page_custom_rgb_palette")
+                // Section: Keyboard Theme
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("RGB Studio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = null,
+                                    tint = colors.enterKeyBackground,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Keyboard Theme",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(210.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(KeyboardThemeType.values()) { theme ->
-                            val isSelected = theme == currentThemeType
-                            val themeColors = if (theme == KeyboardThemeType.CUSTOM) customColors else KeyboardThemes.getTheme(theme)
-
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        onThemeSelected(theme)
-                                        if (theme == KeyboardThemeType.CUSTOM && isSelected) {
-                                            showRgbThemeDialog = true
-                                        }
-                                    }
-                                    .testTag("theme_card_${theme.name}"),
-                                colors = CardDefaults.cardColors(containerColor = themeColors.background),
-                                border = if (isSelected) BorderStroke(2.5.dp, colors.enterKeyBackground) else BorderStroke(1.dp, themeColors.letterKeyBackground),
-                                shape = RoundedCornerShape(10.dp)
+                            Button(
+                                onClick = { showRgbThemeDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.enterKeyBackground,
+                                    contentColor = colors.enterKeyTextColor
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("btn_page_custom_rgb_palette")
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.padding(bottom = 6.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(themeColors.letterKeyBackground)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(themeColors.enterKeyBackground),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Selected",
-                                                    tint = themeColors.enterKeyTextColor,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
+                                Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("RGB Studio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(210.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(KeyboardThemeType.values()) { theme ->
+                                val isSelected = theme == currentThemeType
+                                val themeColors = if (theme == KeyboardThemeType.CUSTOM) customColors else KeyboardThemes.getTheme(theme)
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            onThemeSelected(theme)
+                                            if (theme == KeyboardThemeType.CUSTOM && isSelected) {
+                                                showRgbThemeDialog = true
                                             }
                                         }
+                                        .testTag("theme_card_${theme.name}"),
+                                    colors = CardDefaults.cardColors(containerColor = themeColors.background),
+                                    border = if (isSelected) BorderStroke(2.5.dp, colors.enterKeyBackground) else BorderStroke(1.dp, themeColors.letterKeyBackground),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(themeColors.letterKeyBackground)
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(themeColors.enterKeyBackground),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Selected",
+                                                        tint = themeColors.enterKeyTextColor,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = theme.displayName,
+                                            color = themeColors.letterKeyTextColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
                                     }
-                                    Text(
-                                        text = theme.displayName,
-                                        color = themeColors.letterKeyTextColor,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Section: Key Character Font Size (Request #2)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                // Section: Key Character Font Size (label showing size removed from title)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.TextFields,
                                 contentDescription = null,
@@ -298,83 +333,66 @@ fun SettingsPageView(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.enterKeyBackground)
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Preset buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "${keyFontSize.toInt()} sp",
-                                color = colors.enterKeyTextColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Preset buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "Small\n(20sp)" to 20f,
-                            "Normal\n(24sp)" to 24f,
-                            "Large\n(27sp)" to 27f,
-                            "X-Large\n(30sp)" to 30f
-                        ).forEach { (label, size) ->
-                            val isSelected = keyFontSize.toInt() == size.toInt()
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
-                                    .clickable { onKeyFontSizeChanged(size) }
-                                    .padding(vertical = 8.dp)
-                                    .testTag("btn_font_size_${size.toInt()}"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
+                            listOf(
+                                "Small" to 20f,
+                                "Normal" to 24f,
+                                "Large" to 27f,
+                                "X-Large" to 30f
+                            ).forEach { (label, size) ->
+                                val isSelected = keyFontSize.toInt() == size.toInt()
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                        .clickable { onKeyFontSizeChanged(size) }
+                                        .padding(vertical = 8.dp)
+                                        .testTag("btn_font_size_${size.toInt()}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    // Fine-tuning Slider
-                    Slider(
-                        value = keyFontSize,
-                        onValueChange = { onKeyFontSizeChanged(it) },
-                        valueRange = 18f..32f,
-                        steps = 13,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("page_slider_key_font_size"),
-                        colors = SliderDefaults.colors(
-                            thumbColor = colors.enterKeyBackground,
-                            activeTrackColor = colors.enterKeyBackground,
-                            inactiveTrackColor = colors.background
+                        // Fine-tuning Slider
+                        Slider(
+                            value = keyFontSize,
+                            onValueChange = { onKeyFontSizeChanged(it) },
+                            valueRange = 18f..32f,
+                            steps = 13,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("page_slider_key_font_size"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.background
+                            )
                         )
-                    )
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
-                    // Subsection: Alt Symbol Size (Corner symbols)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Subsection: Alt Symbol Size (label showing size removed from title)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.TextFields,
                                 contentDescription = null,
@@ -397,137 +415,123 @@ fun SettingsPageView(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.enterKeyBackground)
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Alt symbol preset buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "${altKeyFontSize.toInt()} sp",
-                                color = colors.enterKeyTextColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Alt symbol preset buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "Small\n(11sp)" to 11f,
-                            "Normal\n(14sp)" to 14f,
-                            "Large\n(17sp)" to 17f,
-                            "X-Large\n(20sp)" to 20f
-                        ).forEach { (label, size) ->
-                            val isSelected = altKeyFontSize.toInt() == size.toInt()
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
-                                    .clickable { onAltKeyFontSizeChanged(size) }
-                                    .padding(vertical = 8.dp)
-                                    .testTag("btn_alt_font_size_${size.toInt()}"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
+                            listOf(
+                                "Small" to 11f,
+                                "Normal" to 14f,
+                                "Large" to 17f,
+                                "X-Large" to 20f
+                            ).forEach { (label, size) ->
+                                val isSelected = altKeyFontSize.toInt() == size.toInt()
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                        .clickable { onAltKeyFontSizeChanged(size) }
+                                        .padding(vertical = 8.dp)
+                                        .testTag("btn_alt_font_size_${size.toInt()}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Slider(
-                        value = altKeyFontSize,
-                        onValueChange = { onAltKeyFontSizeChanged(it) },
-                        valueRange = 9f..22f,
-                        steps = 12,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("page_slider_alt_font_size"),
-                        colors = SliderDefaults.colors(
-                            thumbColor = colors.enterKeyBackground,
-                            activeTrackColor = colors.enterKeyBackground,
-                            inactiveTrackColor = colors.background
+                        Slider(
+                            value = altKeyFontSize,
+                            onValueChange = { onAltKeyFontSizeChanged(it) },
+                            valueRange = 9f..22f,
+                            steps = 12,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("page_slider_alt_font_size"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.background
+                            )
                         )
-                    )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    // Live Keycap Preview Box showing both main text and alt corner symbol
-                    Text(
-                        text = "LIVE KEYCAP PREVIEW (TEXT + ALT SYMBOL)",
-                        color = colors.letterKeySecondaryTextColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
+                        // Live Keycap Preview Box showing alt symbol at top-right and main text at bottom-left
+                        Text(
+                            text = "LIVE KEYCAP PREVIEW (ALT TOP-RIGHT, MAIN BOTTOM-LEFT)",
+                            color = colors.letterKeySecondaryTextColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.background)
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf("1" to "~", "2" to "@", "3" to "#", "4" to "$", "5" to "%").forEach { (primary, alt) ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(colors.letterKeyBackground),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = alt,
-                                    color = colors.letterKeyTextColor,
-                                    fontSize = altKeyFontSize.sp,
-                                    fontWeight = FontWeight.Bold,
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.background)
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf("1" to "~", "2" to "@", "3" to "#", "4" to "$", "5" to "%").forEach { (primary, alt) ->
+                                Box(
                                     modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(end = 4.dp, top = 2.dp)
-                                )
-                                Text(
-                                    text = primary,
-                                    color = colors.letterKeyTextColor,
-                                    fontSize = keyFontSize.sp,
-                                    fontWeight = FontWeight.Normal
-                                )
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(colors.letterKeyBackground),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = alt,
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = altKeyFontSize.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(end = 4.dp, top = 2.dp)
+                                    )
+                                    Text(
+                                        text = primary,
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = keyFontSize.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(start = 5.dp, bottom = 3.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // Section: Tablet & Large Screen Keyboard Size
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                // Section: Tablet & Large Screen Keyboard Size
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Devices,
                                 contentDescription = null,
@@ -550,207 +554,467 @@ fun SettingsPageView(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.enterKeyBackground)
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Preset buttons (clean without percentage / sp labels)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "${(tabletKeyboardScale * 100).toInt()}%",
-                                color = colors.enterKeyTextColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            listOf(
+                                "Compact" to 0.85f,
+                                "Standard" to 1.0f,
+                                "Comfort" to 1.15f,
+                                "Expanded" to 1.30f
+                            ).forEach { (label, scale) ->
+                                val isSelected = kotlin.math.abs(tabletKeyboardScale - scale) < 0.05f
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.enterKeyBackground else colors.background)
+                                        .clickable { onTabletKeyboardScaleChanged(scale) }
+                                        .padding(vertical = 8.dp)
+                                        .testTag("btn_tablet_scale_${(scale * 100).toInt()}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            }
                         }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Slider(
+                            value = tabletKeyboardScale,
+                            onValueChange = { onTabletKeyboardScaleChanged(it) },
+                            valueRange = 0.75f..1.40f,
+                            steps = 12,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_tablet_keyboard_scale"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.background
+                            )
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Preset buttons
+                }
+            }
+        } else {
+            // Main Settings View
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Section 1: Themes and Customization - Separate card that directs to sub-screen
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { currentSubScreen = SettingsSubScreen.THEMES_AND_CUSTOMIZATION }
+                        .testTag("card_themes_and_customization_page"),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.85f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf(
-                            "Compact\n(85%)" to 0.85f,
-                            "Standard\n(100%)" to 1.0f,
-                            "Comfort\n(115%)" to 1.15f,
-                            "Expanded\n(130%)" to 1.30f
-                        ).forEach { (label, scale) ->
-                            val isSelected = kotlin.math.abs(tabletKeyboardScale - scale) < 0.05f
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) colors.enterKeyBackground else colors.background)
-                                    .clickable { onTabletKeyboardScaleChanged(scale) }
-                                    .padding(vertical = 8.dp)
-                                    .testTag("btn_tablet_scale_${(scale * 100).toInt()}"),
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.enterKeyBackground.copy(alpha = 0.15f)),
                                 contentAlignment = Alignment.Center
                             ) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = null,
+                                    tint = colors.enterKeyBackground,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
                                 Text(
-                                    text = label,
-                                    color = if (isSelected) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    text = "Themes and Customization",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Select keyboard theme, RGB studio, font sizes & display",
+                                    color = colors.letterKeySecondaryTextColor,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Open Themes and Customization",
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                // Section 2: Feedback & Actions (other settings sections keep unchanged)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Feedback & Actions",
+                            color = colors.letterKeyTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+
+                        // Hold Key for Symbols
+                        SettingsPageToggle(
+                            icon = Icons.Default.TextFields,
+                            title = "Hold Key for Symbols",
+                            subtitle = "Long press keys for numbers, symbols & toggleable alternates",
+                            checked = isHoldForSymbolsEnabled,
+                            onCheckedChange = onToggleHoldForSymbols,
+                            colors = colors,
+                            testTag = "page_switch_hold_symbols"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Auto-suggest Words
+                        SettingsPageToggle(
+                            icon = Icons.Default.AutoFixHigh,
+                            title = "Auto-suggest Words",
+                            subtitle = "Show 3 suggested word completions above the keyboard",
+                            checked = isAutoSuggestEnabled,
+                            onCheckedChange = onToggleAutoSuggest,
+                            colors = colors,
+                            testTag = "page_switch_auto_suggest"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Handwritten text toggle (Request: in feedback and actions add a toggle to turn on and off handwritten text)
+                        SettingsPageToggle(
+                            icon = Icons.Default.Draw,
+                            title = "Handwritten Text",
+                            subtitle = "Enable ML Kit handwriting recognition canvas on keyboard toolbar",
+                            checked = isHandwritingEnabled,
+                            onCheckedChange = onToggleHandwriting,
+                            colors = colors,
+                            testTag = "page_switch_handwriting"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        SettingsPageToggle(
+                            icon = Icons.Default.VolumeUp,
+                            title = "Keypress Sound",
+                            subtitle = "Audio feedback when typing keys",
+                            checked = isSoundEnabled,
+                            onCheckedChange = onToggleSound,
+                            colors = colors,
+                            testTag = "page_switch_sound"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        SettingsPageToggle(
+                            icon = Icons.Default.Vibration,
+                            title = "Haptic Vibration",
+                            subtitle = "Vibration response on key tap",
+                            checked = isHapticEnabled,
+                            onCheckedChange = onToggleHaptic,
+                            colors = colors,
+                            testTag = "page_switch_haptic"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        SettingsPageToggle(
+                            icon = Icons.Default.Laptop,
+                            title = "Laptop Keys Bar",
+                            subtitle = "Quick Esc, Tab, Ctrl, Alt, and Arrows bar",
+                            checked = isLaptopBarEnabled,
+                            onCheckedChange = onToggleLaptopBar,
+                            colors = colors,
+                            testTag = "page_switch_laptop_bar"
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        SettingsPageToggle(
+                            icon = Icons.Default.Keyboard,
+                            title = "Hide on Physical Keyboard",
+                            subtitle = "Suppress on-screen keys when USB or Bluetooth keyboard is connected",
+                            checked = isHideOnPhysicalKeyboardEnabled,
+                            onCheckedChange = onToggleHideOnPhysicalKeyboard,
+                            colors = colors,
+                            testTag = "page_switch_hide_physical_keyboard"
+                        )
+                    }
+                }
+
+                // Section 3: Language Section (Separate section: Auto-capitalization & Clear Learned Words)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Language",
+                            color = colors.letterKeyTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+
+                        // Auto-capitalization toggle
+                        SettingsPageToggle(
+                            icon = Icons.Default.KeyboardCapslock,
+                            title = "Auto-capitalization",
+                            subtitle = "Automatically capitalize the first word of each sentence",
+                            checked = isAutoCapitalizationEnabled,
+                            onCheckedChange = onToggleAutoCapitalization,
+                            colors = colors,
+                            testTag = "page_switch_auto_capitalization"
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Clear Learned Words & History (moved into this separate language section)
+                        val coroutineScope = rememberCoroutineScope()
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    coroutineScope.launch {
+                                        val db = AppDatabase.getDatabase(context)
+                                        val mgr = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
+                                        mgr.clearLearnedWords()
+                                        android.widget.Toast.makeText(context, "Learned words and prediction history cleared", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .testTag("btn_clear_learned_words_page"),
+                            colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = colors.enterKeyBackground,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Clear Learned Words",
+                                            color = colors.letterKeyTextColor,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Erase user typing history, word frequencies, and bigram predictions",
+                                            color = colors.letterKeySecondaryTextColor,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section 4: Cloud Settings Backup (Firebase)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("card_cloud_settings_backup"),
+                    colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Cloud Settings Backup",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (currentUserEmail != null) "Connected: $currentUserEmail" else "Sign in with Google to save & restore settings",
+                                    color = colors.letterKeySecondaryTextColor,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (currentUserEmail != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = onSaveSettingsToCloud,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("btn_save_settings_cloud"),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.enterKeyBackground,
+                                        contentColor = colors.enterKeyTextColor
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDone,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Save",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+
+                                Button(
+                                    onClick = onLoadSettingsFromCloud,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("btn_load_settings_cloud"),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.letterKeyBackground,
+                                        contentColor = colors.letterKeyTextColor
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Load",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = onSignInWithGoogle,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("btn_settings_sign_in_google"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.enterKeyBackground,
+                                    contentColor = colors.enterKeyTextColor
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "Sign in with Google",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
                                 )
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Slider(
-                        value = tabletKeyboardScale,
-                        onValueChange = { onTabletKeyboardScaleChanged(it) },
-                        valueRange = 0.75f..1.40f,
-                        steps = 12,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("slider_tablet_keyboard_scale"),
-                        colors = SliderDefaults.colors(
-                            thumbColor = colors.enterKeyBackground,
-                            activeTrackColor = colors.enterKeyBackground,
-                            inactiveTrackColor = colors.background
-                        )
-                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Section 2: Typing Feedback
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = colors.letterKeyBackground.copy(alpha = 0.7f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Feedback & Actions",
-                        color = colors.letterKeyTextColor,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-
-                    // Hold Key for Symbols
-                    SettingsPageToggle(
-                        icon = Icons.Default.TextFields,
-                        title = "Hold Key for Symbols",
-                        subtitle = "Long press keys for numbers, symbols & toggleable alternates",
-                        checked = isHoldForSymbolsEnabled,
-                        onCheckedChange = onToggleHoldForSymbols,
-                        colors = colors,
-                        testTag = "page_switch_hold_symbols"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Auto-suggest Words
-                    SettingsPageToggle(
-                        icon = Icons.Default.AutoFixHigh,
-                        title = "Auto-suggest Words",
-                        subtitle = "Show 3 suggested word completions above the keyboard",
-                        checked = isAutoSuggestEnabled,
-                        onCheckedChange = onToggleAutoSuggest,
-                        colors = colors,
-                        testTag = "page_switch_auto_suggest"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    SettingsPageToggle(
-                        icon = Icons.Default.VolumeUp,
-                        title = "Keypress Sound",
-                        subtitle = "Audio feedback when typing keys",
-                        checked = isSoundEnabled,
-                        onCheckedChange = onToggleSound,
-                        colors = colors,
-                        testTag = "page_switch_sound"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    SettingsPageToggle(
-                        icon = Icons.Default.Vibration,
-                        title = "Haptic Vibration",
-                        subtitle = "Vibration response on key tap",
-                        checked = isHapticEnabled,
-                        onCheckedChange = onToggleHaptic,
-                        colors = colors,
-                        testTag = "page_switch_haptic"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    SettingsPageToggle(
-                        icon = Icons.Default.Laptop,
-                        title = "Laptop Keys Bar",
-                        subtitle = "Quick Esc, Tab, Ctrl, Alt, and Arrows bar",
-                        checked = isLaptopBarEnabled,
-                        onCheckedChange = onToggleLaptopBar,
-                        colors = colors,
-                        testTag = "page_switch_laptop_bar"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    SettingsPageToggle(
-                        icon = Icons.Default.Keyboard,
-                        title = "Hide on Physical Keyboard",
-                        subtitle = "Suppress on-screen keys when USB or Bluetooth keyboard is connected",
-                        checked = isHideOnPhysicalKeyboardEnabled,
-                        onCheckedChange = onToggleHideOnPhysicalKeyboard,
-                        colors = colors,
-                        testTag = "page_switch_hide_physical_keyboard"
-                    )
-                }
-            }
-
-            // Section 3: Android OS Keyboard Settings
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        try {
-                            val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
-                        } catch (_: Exception) {}
-                    }
-                    .testTag("btn_page_open_android_settings"),
-                colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
+                // Section 5: Android OS Keyboard Settings
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .clickable {
+                            try {
+                                val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
+                        }
+                        .testTag("btn_page_open_android_settings"),
+                    colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Android System Keyboard Settings",
-                            color = colors.letterKeyTextColor,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Manage system default inputs & languages",
-                            color = colors.letterKeySecondaryTextColor,
-                            fontSize = 11.sp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Android System Keyboard Settings",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Manage system default inputs & languages",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "Open System Settings",
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Icon(
-                        imageVector = Icons.Default.OpenInNew,
-                        contentDescription = "Open System Settings",
-                        tint = colors.enterKeyBackground,
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
         }

@@ -38,6 +38,7 @@ fun KeyboardToolbar(
     isEmojiActive: Boolean = false,
     isVoiceTypeActive: Boolean = false,
     isGlideTypingActive: Boolean = false,
+    isHandwritingEnabled: Boolean = true,
     currentLanguage: String = "en",
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
@@ -57,22 +58,24 @@ fun KeyboardToolbar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Laptop top shortcut bar switch button
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isLaptopBarVisible) colors.laptopKeyActiveBackground else Color.Transparent)
-                .clickable(onClick = onToggleLaptopBar)
-                .testTag("btn_trigger_laptop_keys"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Keyboard,
-                contentDescription = "Toggle Laptop Keys Bar",
-                tint = if (isLaptopBarVisible) colors.laptopKeyActiveTextColor else colors.toolbarIconActiveTint,
-                modifier = Modifier.size(20.dp)
-            )
+        // 1. Laptop top shortcut bar switch button (when toggled off, do not show its icon)
+        if (isLaptopBarVisible) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.laptopKeyActiveBackground)
+                    .clickable(onClick = onToggleLaptopBar)
+                    .testTag("btn_trigger_laptop_keys"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Keyboard,
+                    contentDescription = "Toggle Laptop Keys Bar",
+                    tint = colors.laptopKeyActiveTextColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         // 2. Complete Laptop Keyboard button (left of copy button)
@@ -123,8 +126,8 @@ fun KeyboardToolbar(
             )
         }
 
-        // 5. Glide typing (Pen icon) for English keyboard, or Emoji for other languages
-        if (currentLanguage == "en") {
+        // 5. Handwriting recognition (Pen icon - visible only when enabled in settings)
+        if (isHandwritingEnabled) {
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -136,22 +139,8 @@ fun KeyboardToolbar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Draw,
-                    contentDescription = "Glide Typing Handwriting",
+                    contentDescription = "Handwriting",
                     tint = if (isGlideTypingActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        } else {
-            IconButton(
-                onClick = onOpenEmoji,
-                modifier = Modifier
-                    .size(38.dp)
-                    .testTag("btn_toolbar_emoji")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SentimentSatisfiedAlt,
-                    contentDescription = "Emoji & Stickers",
-                    tint = if (isEmojiActive) colors.enterKeyBackground else colors.toolbarIconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }

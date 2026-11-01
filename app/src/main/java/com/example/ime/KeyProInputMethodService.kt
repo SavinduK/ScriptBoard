@@ -13,7 +13,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -29,12 +28,15 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.data.AppDatabase
 import com.example.data.SnippetRepository
+import com.example.data.WordSuggestionManager
+import com.example.data.cleanup.WordPruneWorker
 import com.example.ui.keyboard.KeyProKeyboardView
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyboardThemes
 import com.example.ui.keyboard.util.KeyboardPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -58,7 +60,18 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
 
-    private val openSessionTrigger = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    private val openSessionTrigger = MutableStateFlow(0L)
+
+    // Composing buffer state and previous word tracking for bigrams
+    private val composingBufferFlow = MutableStateFlow("")
+    private val prevWordFlow = MutableStateFlow("")
+    private var currentComposingBuffer: String = ""
+    private var currentPrevWord: String? = null
+
+    // Anti-typo learning: staged word committed on space/enter
+    private var pendingLearnedWord: String? = null
+    private var pendingPrevWord: String? = null
+    private var pendingCommitTimestamp: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -69,10 +82,12 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         repository = SnippetRepository(db.snippetDao())
         keyboardPrefs = KeyboardPreferences.getInstance(this)
 
+        // Schedule weekly WorkManager prune for 6+ month stale low-frequency words (Part 2, D)
+        WordPruneWorker.scheduleWeeklyPrune(this)
+
         // Clipboard history auto-save and cross-device sync listener
         try {
             val syncManager = com.example.sync.ClipboardSyncManager.getInstance(this)
-            // Auto-purge old history if enabled
             if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
                 serviceScope.launch(Dispatchers.IO) {
                     repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
@@ -91,7 +106,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                                 serviceScope.launch(Dispatchers.IO) {
                                     val persistentPath = com.example.data.ClipboardImageHelper.persistImageLocally(this@KeyProInputMethodService, uri.toString())
                                     val id = repository.saveImageToClipboard(persistentPath)
-                                    // Broadcast image snippet to paired devices
                                     val entity = com.example.data.SnippetEntity(
                                         id = id,
                                         title = "Image Clip",
@@ -122,7 +136,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             cm?.addPrimaryClipChangedListener(clipboardListener)
         } catch (_: Exception) {}
 
-        // Listen for hardware/physical keyboard connections (USB OTG, dock, Bluetooth)
+        // Listen for hardware/physical keyboard connections
         try {
             val im = getSystemService(Context.INPUT_SERVICE) as? InputManager
             val listener = object : InputManager.InputDeviceListener {
@@ -130,9 +144,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     checkAndHideIfPhysicalKeyboardConnected()
                 }
 
-                override fun onInputDeviceRemoved(deviceId: Int) {
-                    // Physical keyboard removed
-                }
+                override fun onInputDeviceRemoved(deviceId: Int) {}
 
                 override fun onInputDeviceChanged(deviceId: Int) {
                     checkAndHideIfPhysicalKeyboardConnected()
@@ -141,6 +153,58 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             inputDeviceListener = listener
             im?.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Privacy check: detects passwords, emails, URIs, and IME_FLAG_NO_PERSONALIZED_LEARNING.
+     */
+    private fun isSensitiveInput(info: EditorInfo?): Boolean {
+        if (info == null) return false
+        val inputType = info.inputType
+        val variation = inputType and EditorInfo.TYPE_MASK_VARIATION
+        val isPassword = variation == EditorInfo.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == EditorInfo.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                (inputType and EditorInfo.TYPE_MASK_CLASS == EditorInfo.TYPE_CLASS_NUMBER &&
+                        variation == EditorInfo.TYPE_NUMBER_VARIATION_PASSWORD)
+        val isEmail = variation == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+                variation == EditorInfo.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+        val isUri = variation == EditorInfo.TYPE_TEXT_VARIATION_URI
+        val noPersonalizedLearning = (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
+
+        return isPassword || isEmail || isUri || noPersonalizedLearning
+    }
+
+    /**
+     * Anti-typo learning: commit staged word if user did not immediately backspace into it.
+     */
+    private fun commitPendingWordIfAny() {
+        val word = pendingLearnedWord ?: return
+        val prev = pendingPrevWord
+        pendingLearnedWord = null
+        pendingPrevWord = null
+
+        val sensitive = isSensitiveInput(currentInputEditorInfo)
+        if (!sensitive && !WordSuggestionManager.isInvalidToLearn(word)) {
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    val db = AppDatabase.getDatabase(this@KeyProInputMethodService)
+                    val manager = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
+                    manager.recordWordUsed(word, prev, isPrivateOrSensitive = false)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
+     * If user hits backspace within 2.5s of typing space/enter, discard pending word so typo is NOT learned.
+     */
+    private fun discardPendingWordOnBackspace() {
+        val now = System.currentTimeMillis()
+        if (pendingLearnedWord != null && (now - pendingCommitTimestamp) < 2500L) {
+            pendingLearnedWord = null
+            pendingPrevWord = null
+        }
     }
 
     fun isPhysicalKeyboardConnected(): Boolean {
@@ -201,6 +265,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 val themeType by keyboardPrefs.themeType.collectAsState()
                 val laptopBarVisible by keyboardPrefs.laptopBarVisible.collectAsState()
                 val sessionTrigger by openSessionTrigger.collectAsState()
+                val syncedComposingBuffer by composingBufferFlow.collectAsState()
+                val syncedPrevWord by prevWordFlow.collectAsState()
 
                 val colors = if (themeType == com.example.ui.keyboard.model.KeyboardThemeType.CUSTOM) {
                     keyboardPrefs.getCustomKeyboardColors()
@@ -217,6 +283,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     isHapticEnabled = hapticEnabled,
                     initialLaptopBarVisible = laptopBarVisible,
                     openSessionTrigger = sessionTrigger,
+                    syncedWordBuffer = syncedComposingBuffer,
+                    syncedPrevWord = syncedPrevWord,
                     onAction = { action -> handleImeAction(action, pinnedSnippets) },
                     onTogglePin = { snippet ->
                         serviceScope.launch {
@@ -249,9 +317,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     onClearHistory = {
                         serviceScope.launch { repository.clearUnpinned() }
                     },
-                    onOpenSettings = {
-                        // Handled in-keyboard without opening the app (Request #3)
-                    }
+                    onOpenSettings = {}
                 )
             }
         }
@@ -266,11 +332,46 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         }
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        // Reset keyboard position to English alphabet layout on opening (do not show last view e.g. emoji screen)
+
+        // Reset composing state
+        currentComposingBuffer = ""
+        composingBufferFlow.value = ""
+        pendingLearnedWord = null
+        pendingPrevWord = null
+
+        // Try reading word before cursor to set previous word for bigrams
+        currentInputConnection?.let { ic ->
+            val textBefore = ic.getTextBeforeCursor(30, 0)?.toString() ?: ""
+            val lastWord = textBefore.trim().split(Regex("\\s+")).lastOrNull() ?: ""
+            if (lastWord.isNotBlank() && !WordSuggestionManager.isInvalidToLearn(lastWord)) {
+                currentPrevWord = lastWord
+                prevWordFlow.value = lastWord
+            } else {
+                currentPrevWord = null
+                prevWordFlow.value = ""
+            }
+        }
+
         try {
             keyboardPrefs.setCurrentLanguage("en")
         } catch (_: Exception) {}
         openSessionTrigger.value++
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int,
+        newSelStart: Int, newSelEnd: Int,
+        candidatesStart: Int, candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        // Safe text replacement (Requirement I):
+        // Re-sync currentWordBuffer when cursor moves or app changes text externally
+        if (candidatesStart < 0 || candidatesEnd < 0 || (candidatesEnd in 0..newSelStart && newSelStart != candidatesEnd)) {
+            if (currentComposingBuffer.isNotEmpty()) {
+                currentComposingBuffer = ""
+                composingBufferFlow.value = ""
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -281,6 +382,9 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        commitPendingWordIfAny()
+        currentComposingBuffer = ""
+        composingBufferFlow.value = ""
         super.onFinishInputView(finishingInput)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
@@ -288,15 +392,40 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
     private fun handleImeAction(action: KeyAction, pinnedSnippets: List<com.example.data.SnippetEntity> = emptyList()) {
         val ic = currentInputConnection ?: return
+        val sensitive = isSensitiveInput(currentInputEditorInfo)
 
         when (action) {
             is KeyAction.InsertText -> {
-                ic.commitText(action.text, 1)
+                // If single letter/symbol typed during composing in non-sensitive field, use setComposingText
+                if (action.text.length == 1 && (action.text[0].isLetterOrDigit() || action.text in listOf("@", "/", "#", "_", "-", ".")) && !sensitive) {
+                    currentComposingBuffer += action.text
+                    ic.setComposingText(currentComposingBuffer, 1)
+                    composingBufferFlow.value = currentComposingBuffer
+                } else {
+                    if (currentComposingBuffer.isNotEmpty()) {
+                        ic.finishComposingText()
+                        currentComposingBuffer = ""
+                        composingBufferFlow.value = ""
+                    }
+                    ic.commitText(action.text, 1)
+                }
             }
             is KeyAction.Space -> {
-                // Check if the preceding word matches a pinned snippet's shortcut (Request #2)
-                val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
-                val lastWord = before.split(Regex("\\s+")).lastOrNull() ?: ""
+                val lastWord = if (currentComposingBuffer.isNotEmpty()) {
+                    currentComposingBuffer
+                } else {
+                    val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
+                    before.split(Regex("\\s+")).lastOrNull() ?: ""
+                }
+
+                // Finish composing before committing space
+                if (currentComposingBuffer.isNotEmpty()) {
+                    ic.finishComposingText()
+                    currentComposingBuffer = ""
+                    composingBufferFlow.value = ""
+                }
+
+                // Check shortcut expansion
                 val matched = if (lastWord.isNotBlank()) {
                     pinnedSnippets.firstOrNull { it.shortcut.isNotBlank() && it.shortcut.equals(lastWord, ignoreCase = true) }
                 } else null
@@ -306,17 +435,24 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     ic.commitText(matched.content + " ", 1)
                 } else {
                     ic.commitText(" ", 1)
-                    if (lastWord.isNotBlank()) {
-                        serviceScope.launch {
-                            try {
-                                val wordDao = com.example.data.AppDatabase.getDatabase(this@KeyProInputMethodService).wordFrequencyDao()
-                                com.example.data.WordSuggestionManager(wordDao).recordWordUsed(lastWord)
-                            } catch (_: Exception) {}
-                        }
-                    }
+                }
+
+                // Commit previous pending word, then stage current word (Requirement B)
+                commitPendingWordIfAny()
+                if (lastWord.isNotBlank()) {
+                    pendingLearnedWord = lastWord
+                    pendingPrevWord = currentPrevWord
+                    pendingCommitTimestamp = System.currentTimeMillis()
+                    currentPrevWord = lastWord
+                    prevWordFlow.value = lastWord
                 }
             }
             is KeyAction.ExpandShortcut -> {
+                if (currentComposingBuffer.isNotEmpty()) {
+                    ic.finishComposingText()
+                    currentComposingBuffer = ""
+                    composingBufferFlow.value = ""
+                }
                 if (action.shortcutText.isNotEmpty()) {
                     val before = ic.getTextBeforeCursor(action.shortcutText.length, 0)?.toString()
                     if (before == action.shortcutText) {
@@ -326,29 +462,54 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 ic.commitText(action.fullContent, 1)
             }
             is KeyAction.ApplySuggestion -> {
-                if (action.typedWord.isNotEmpty()) {
-                    val before = ic.getTextBeforeCursor(action.typedWord.length, 0)?.toString()
-                    if (before == action.typedWord) {
-                        ic.deleteSurroundingText(action.typedWord.length, 0)
-                    }
-                }
+                // Safe text replacement (Requirement I):
+                // Using commitText automatically finishes and replaces composing text cleanly!
                 ic.commitText(action.suggestedWord + " ", 1)
-                serviceScope.launch {
-                    try {
-                        val wordDao = com.example.data.AppDatabase.getDatabase(this@KeyProInputMethodService).wordFrequencyDao()
-                        com.example.data.WordSuggestionManager(wordDao).recordWordUsed(action.suggestedWord)
-                    } catch (_: Exception) {}
-                }
+                currentComposingBuffer = ""
+                composingBufferFlow.value = ""
+
+                commitPendingWordIfAny()
+                pendingLearnedWord = action.suggestedWord
+                pendingPrevWord = currentPrevWord
+                pendingCommitTimestamp = System.currentTimeMillis()
+                currentPrevWord = action.suggestedWord
+                prevWordFlow.value = action.suggestedWord
             }
             is KeyAction.Backspace -> {
-                ic.deleteSurroundingText(1, 0)
+                discardPendingWordOnBackspace()
+                if (currentComposingBuffer.isNotEmpty()) {
+                    currentComposingBuffer = currentComposingBuffer.dropLast(1)
+                    if (currentComposingBuffer.isEmpty()) {
+                        ic.commitText("", 1)
+                    } else {
+                        ic.setComposingText(currentComposingBuffer, 1)
+                    }
+                    composingBufferFlow.value = currentComposingBuffer
+                } else {
+                    ic.deleteSurroundingText(1, 0)
+                }
             }
             is KeyAction.DeleteForward -> {
                 ic.deleteSurroundingText(0, 1)
             }
             is KeyAction.Enter -> {
+                val lastWord = if (currentComposingBuffer.isNotEmpty()) currentComposingBuffer else ""
+                if (currentComposingBuffer.isNotEmpty()) {
+                    ic.finishComposingText()
+                    currentComposingBuffer = ""
+                    composingBufferFlow.value = ""
+                }
                 ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
                 ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+
+                commitPendingWordIfAny()
+                if (lastWord.isNotBlank()) {
+                    pendingLearnedWord = lastWord
+                    pendingPrevWord = currentPrevWord
+                    pendingCommitTimestamp = System.currentTimeMillis()
+                    currentPrevWord = lastWord
+                    prevWordFlow.value = lastWord
+                }
             }
             is KeyAction.Tab -> {
                 ic.commitText("\t", 1)
@@ -452,7 +613,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 }
             }
             is KeyAction.SwitchLanguage -> {
-                val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(this)
+                val prefs = KeyboardPreferences.getInstance(this)
                 val nextLang = prefs.cycleLanguage()
                 val langName = if (nextLang == "si") "සිංහල" else "English"
                 android.widget.Toast.makeText(this, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
@@ -462,8 +623,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     val file = java.io.File(action.filePath)
                     if (file.exists()) {
                         val editorInfo = currentInputEditorInfo
-                        // WhatsApp does not render pasted/committed WebP stickers as animated items unless sent as GIF.
-                        // StickerFormatHelper resolves to animated GIF if targeting WhatsApp or if WebP is unsupported.
                         val formatted = com.example.ui.keyboard.util.StickerFormatHelper.resolveStickerForTarget(
                             this,
                             file,
@@ -506,12 +665,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                             )
                         } else false
 
-                        // Also copy to clipboard for apps that support clipboard paste
                         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val clip = android.content.ClipData.newUri(contentResolver, action.name, contentUri)
                         cm?.setPrimaryClip(clip)
 
-                        // Explicitly grant read URI permission to target app
                         editorInfo?.packageName?.let { targetPkg ->
                             try {
                                 grantUriPermission(
@@ -544,6 +701,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     }
 
     override fun onDestroy() {
+        commitPendingWordIfAny()
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             clipboardListener?.let { cm?.removePrimaryClipChangedListener(it) }

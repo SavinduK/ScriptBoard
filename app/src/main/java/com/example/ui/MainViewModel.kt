@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.example.R
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -57,6 +61,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val persistentSyncServiceEnabled = keyboardPrefs.persistentSyncServiceEnabled
     val localDeviceName = keyboardPrefs.localDeviceName
     val hideOnPhysicalKeyboard = keyboardPrefs.hideOnPhysicalKeyboard
+    val handwritingEnabled = keyboardPrefs.handwritingEnabled
+    val autoCapitalizationEnabled = keyboardPrefs.autoCapitalizationEnabled
     val customCategories: StateFlow<Set<String>> = keyboardPrefs.customCategories
 
     init {
@@ -704,6 +710,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _lastActionStatus.value = if (enabled) "Hide on physical keyboard: ON" else "Hide on physical keyboard: OFF"
     }
 
+    fun setHandwritingEnabled(enabled: Boolean) {
+        keyboardPrefs.setHandwritingEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Handwriting recognition: ON" else "Handwriting recognition: OFF"
+    }
+
+    fun setAutoCapitalizationEnabled(enabled: Boolean) {
+        keyboardPrefs.setAutoCapitalizationEnabled(enabled)
+        _lastActionStatus.value = if (enabled) "Auto-capitalization: ON" else "Auto-capitalization: OFF"
+    }
+
     fun signInWithGoogle(
         activity: android.app.Activity,
         onSuccess: () -> Unit = {},
@@ -753,5 +769,82 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         syncManager.broadcastSnippet(snippet)
         _lastActionStatus.value = "Broadcasted clip to Firebase Cloud"
+    }
+
+    fun saveSettingsToCloud(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val user = authManager.currentUser.value
+        if (user == null) {
+            val err = "Please sign in with your Google account first."
+            _lastActionStatus.value = err
+            onError(err)
+            return
+        }
+        val app = getApplication<Application>()
+        val dbId = try {
+            app.getString(R.string.firestore_database_id)
+        } catch (_: Exception) {
+            ""
+        }
+        val db = if (dbId.isNotBlank()) FirebaseFirestore.getInstance(dbId) else FirebaseFirestore.getInstance()
+        val data = HashMap(keyboardPrefs.exportSettingsMap())
+        data["userId"] = user.uid
+        data["updatedAt"] = FieldValue.serverTimestamp()
+
+        db.collection("users").document(user.uid)
+            .collection("settings").document("current")
+            .set(data, SetOptions.merge())
+            .addOnSuccessListener {
+                _lastActionStatus.value = "Settings backed up to Google Cloud!"
+                onSuccess()
+            }
+            .addOnFailureListener { e ->
+                val err = e.message ?: "Failed to save settings to cloud"
+                _lastActionStatus.value = "Cloud save failed: $err"
+                onError(err)
+            }
+    }
+
+    fun loadSettingsFromCloud(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val user = authManager.currentUser.value
+        if (user == null) {
+            val err = "Please sign in with your Google account first."
+            _lastActionStatus.value = err
+            onError(err)
+            return
+        }
+        val app = getApplication<Application>()
+        val dbId = try {
+            app.getString(R.string.firestore_database_id)
+        } catch (_: Exception) {
+            ""
+        }
+        val db = if (dbId.isNotBlank()) FirebaseFirestore.getInstance(dbId) else FirebaseFirestore.getInstance()
+
+        db.collection("users").document(user.uid)
+            .collection("settings").document("current")
+            .get()
+            .addOnSuccessListener { doc ->
+                val data = doc.data
+                if (doc.exists() && data != null) {
+                    keyboardPrefs.importSettingsMap(data)
+                    _lastActionStatus.value = "Settings restored from Google Cloud!"
+                    onSuccess()
+                } else {
+                    val err = "No saved settings found in cloud for this account."
+                    _lastActionStatus.value = err
+                    onError(err)
+                }
+            }
+            .addOnFailureListener { e ->
+                val err = e.message ?: "Failed to load settings from cloud"
+                _lastActionStatus.value = "Cloud restore failed: $err"
+                onError(err)
+            }
     }
 }

@@ -8,5 +8,6 @@ data class WordFrequencyEntity(
     @PrimaryKey
     val word: String,
     val frequency: Int = 1,
-    val lastUsed: Long = System.currentTimeMillis()
+    val lastUsed: Long = System.currentTimeMillis(),
+    val originalCase: String = word
 )

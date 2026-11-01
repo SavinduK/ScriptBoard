@@ -198,6 +198,7 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
         content: String,
         isPinned: Boolean,
         category: String,
+        shortcut: String = "",
         timestamp: Long,
         imageUri: String?,
         isImage: Boolean,
@@ -205,28 +206,40 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
         syncId: String,
         originDeviceId: String
     ): SnippetEntity {
+        // Shortcuts synced within devices should go to the shortcuts section, not to the pinned section
+        val effectiveShortcut = shortcut.trim()
+        val isShortcut = effectiveShortcut.isNotBlank() || category.equals("Shortcuts", ignoreCase = true)
+        val finalShortcut = if (effectiveShortcut.isNotBlank()) effectiveShortcut else if (category.equals("Shortcuts", ignoreCase = true)) title.trim() else ""
+        val effectivePinned = if (isShortcut) true else isPinned
+        val effectiveCategory = if (isShortcut && (category.isBlank() || category == "Synced")) "Shortcuts" else category
+
         // Prevent duplicate insert if already present by syncId
         if (syncId.isNotBlank()) {
             val existing = snippetDao.findBySyncId(syncId)
             if (existing != null) {
-                val shouldBePinned = isPinned || existing.isPinned
-                if (shouldBePinned != existing.isPinned) {
-                    val updated = existing.copy(isPinned = shouldBePinned)
-                    snippetDao.updateSnippet(updated)
-                    return updated
-                }
-                return existing
+                val shouldBePinned = effectivePinned || existing.isPinned
+                val shouldShortcut = if (finalShortcut.isNotBlank()) finalShortcut else existing.shortcut
+                val updated = existing.copy(
+                    isPinned = shouldBePinned,
+                    shortcut = shouldShortcut,
+                    category = if (shouldShortcut.isNotBlank() && (existing.category == "Quick Text" || existing.category == "Synced")) "Shortcuts" else existing.category
+                )
+                snippetDao.updateSnippet(updated)
+                return updated
             }
         }
 
         // Compare content to eliminate duplicate copies across devices
         val existingByContent = snippetDao.findByContent(content)
         if (existingByContent != null) {
-            val shouldBePinned = isPinned || existingByContent.isPinned
+            val shouldBePinned = effectivePinned || existingByContent.isPinned
+            val shouldShortcut = if (finalShortcut.isNotBlank()) finalShortcut else existingByContent.shortcut
             val updated = existingByContent.copy(
                 isPinned = shouldBePinned,
+                shortcut = shouldShortcut,
                 timestamp = maxOf(timestamp, existingByContent.timestamp),
-                syncId = if (syncId.isNotBlank()) syncId else existingByContent.syncId
+                syncId = if (syncId.isNotBlank()) syncId else existingByContent.syncId,
+                category = if (shouldShortcut.isNotBlank() && (existingByContent.category == "Quick Text" || existingByContent.category == "Synced")) "Shortcuts" else existingByContent.category
             )
             snippetDao.updateSnippet(updated)
             return updated
@@ -235,8 +248,9 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
         val entity = SnippetEntity(
             title = title,
             content = content,
-            isPinned = isPinned,
-            category = category,
+            isPinned = effectivePinned,
+            category = effectiveCategory,
+            shortcut = finalShortcut,
             timestamp = timestamp,
             imageUri = imageUri,
             isImage = isImage,

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
@@ -38,12 +39,15 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,9 +76,19 @@ import com.example.data.AppDatabase
 import com.example.data.WordSuggestionManager
 import com.example.ui.keyboard.glide.HandwritingRecognizer
 import com.example.ui.keyboard.model.KeyboardColors
+import com.example.ui.keyboard.util.KeyboardPreferences
+import com.google.mlkit.vision.digitalink.Ink
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class HandwritingStrokePoint(
+    val x: Float,
+    val y: Float,
+    val timestamp: Long
+)
 
 @Composable
 fun GlideTypingView(
@@ -83,70 +97,125 @@ fun GlideTypingView(
     onBackspace: () -> Unit,
     onEnter: () -> Unit,
     onSpace: () -> Unit,
-    onBackToLetters: () -> Unit
+    onBackToLetters: () -> Unit,
+    languageOverride: String? = null,
+    preContext: String = ""
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val keyboardPrefs = remember { KeyboardPreferences.getInstance(context) }
+    val currentLangPref by keyboardPrefs.currentLanguage.collectAsState()
+    val activeLanguage = languageOverride ?: currentLangPref
+
     val wordSuggestionManager = remember {
-        WordSuggestionManager(AppDatabase.getDatabase(context).wordFrequencyDao())
+        WordSuggestionManager(
+            AppDatabase.getDatabase(context).wordFrequencyDao(),
+            AppDatabase.getDatabase(context).bigramFrequencyDao()
+        )
     }
 
-    // List of completed strokes: each stroke is a list of Offset points
-    val completedStrokes = remember { mutableStateListOf<List<Offset>>() }
-    var currentStrokePoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    // Completed strokes: each stroke is a list of timestamped points
+    val completedStrokes = remember { mutableStateListOf<List<HandwritingStrokePoint>>() }
+    var currentStrokePoints by remember { mutableStateOf<List<HandwritingStrokePoint>>(emptyList()) }
     var activeTouchPoint by remember { mutableStateOf<Offset?>(null) }
 
-    // Recognition results
+    // Recognition state
     var recognizedWord by remember { mutableStateOf("") }
     var suggestedWords by remember { mutableStateOf<List<String>>(emptyList()) }
     var recognizedLetters by remember { mutableStateOf<List<Char>>(emptyList()) }
     var candidateLetters by remember { mutableStateOf<List<HandwritingRecognizer.LetterCandidate>>(emptyList()) }
+    var rawTopMlKitWord by remember { mutableStateOf("") }
+
+    // Model download state
+    var modelStatus by remember { mutableStateOf<HandwritingRecognizer.ModelDownloadState>(HandwritingRecognizer.ModelDownloadState.NotDownloaded) }
+    var isCheckingModel by remember { mutableStateOf(true) }
 
     var recognitionJob by remember { mutableStateOf<Job?>(null) }
+    var padWidthPx by remember { mutableStateOf(800f) }
+    var padHeightPx by remember { mutableStateOf(400f) }
 
-    // Core English vocabulary for dictionary ranking
-    val commonVocabulary = remember {
-        listOf(
-            "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not",
-            "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from",
-            "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would",
-            "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which",
-            "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know",
-            "take", "people", "into", "year", "your", "good", "some", "could", "them", "see",
-            "other", "than", "then", "now", "look", "only", "come", "its", "over", "think",
-            "also", "back", "after", "use", "two", "how", "our", "work", "first", "well",
-            "way", "even", "new", "want", "because", "any", "these", "give", "day", "most",
-            "us", "hello", "thanks", "thank", "please", "yes", "yeah", "ok", "okay", "hi",
-            "cat", "dog", "sun", "car", "run", "fast", "love", "help", "hope", "fine",
-            "great", "cool", "nice", "call", "send", "chat", "type", "pen", "write", "note",
-            "today", "tomorrow", "night", "morning", "home", "friend", "happy", "smile"
-        )
+    // Check model download status whenever the active language changes
+    LaunchedEffect(activeLanguage) {
+        isCheckingModel = true
+        val downloaded = HandwritingRecognizer.checkModelDownloaded(activeLanguage)
+        modelStatus = if (downloaded) {
+            HandwritingRecognizer.ModelDownloadState.Downloaded
+        } else {
+            HandwritingRecognizer.ModelDownloadState.NotDownloaded
+        }
+        isCheckingModel = false
+    }
+
+    // Proper disposal of recognizer on unmount
+    DisposableEffect(Unit) {
+        onDispose {
+            recognitionJob?.cancel()
+            HandwritingRecognizer.close()
+        }
     }
 
     fun triggerRecognition() {
         recognitionJob?.cancel()
         recognitionJob = coroutineScope.launch {
-            // Fast responsive debounce after lifting finger/stylus
-            delay(170)
+            // Debounce: run recognition ~400 ms after the finger lifts
+            delay(400)
             if (completedStrokes.isNotEmpty()) {
-                val result = HandwritingRecognizer.recognize(completedStrokes, commonVocabulary)
+                val inkBuilder = Ink.builder()
+                for (stroke in completedStrokes) {
+                    if (stroke.isEmpty()) continue
+                    val strokeBuilder = Ink.Stroke.builder()
+                    for (pt in stroke) {
+                        strokeBuilder.addPoint(Ink.Point.create(pt.x, pt.y, pt.timestamp))
+                    }
+                    inkBuilder.addStroke(strokeBuilder.build())
+                }
+                val ink = inkBuilder.build()
+
+                // Fetch user words for ranking
+                val userWords = try {
+                    withContext(Dispatchers.IO) {
+                        AppDatabase.getDatabase(context).wordFrequencyDao().getTopWords(limit = 30).map { it.word }
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                val result = HandwritingRecognizer.recognizeInk(
+                    ink = ink,
+                    language = activeLanguage,
+                    writingWidth = padWidthPx,
+                    writingHeight = padHeightPx,
+                    preContext = preContext,
+                    userHistoryWords = userWords
+                )
+
                 if (result.primaryWord.isNotBlank() || result.candidateLetters.isNotEmpty()) {
                     recognizedWord = result.primaryWord
                     recognizedLetters = result.recognizedLetters
                     candidateLetters = result.candidateLetters
+                    rawTopMlKitWord = result.rawCandidates.firstOrNull() ?: result.primaryWord
 
-                    // Query word completion manager for expanded words
-                    val moreSuggestions = wordSuggestionManager.getSuggestions(result.primaryWord, "en")
+                    // Combine ML Kit alternative candidates and word suggestions
                     val combined = mutableListOf<String>()
                     result.suggestions.forEach { if (!combined.contains(it)) combined.add(it) }
-                    moreSuggestions.forEach { if (!combined.contains(it) && !it.equals(recognizedWord, ignoreCase = true)) combined.add(it) }
-                    suggestedWords = combined.take(6)
+
+                    // Also fetch word completions if single word
+                    if (result.primaryWord.length >= 2) {
+                        val moreSuggestions = wordSuggestionManager.getSuggestions(result.primaryWord, activeLanguage)
+                        moreSuggestions.forEach {
+                            if (!combined.contains(it) && !it.equals(recognizedWord, ignoreCase = true)) {
+                                combined.add(it)
+                            }
+                        }
+                    }
+                    suggestedWords = combined.take(8)
                 }
             }
         }
     }
 
     fun clearPad() {
+        recognitionJob?.cancel()
         completedStrokes.clear()
         currentStrokePoints = emptyList()
         activeTouchPoint = null
@@ -154,6 +223,15 @@ fun GlideTypingView(
         suggestedWords = emptyList()
         recognizedLetters = emptyList()
         candidateLetters = emptyList()
+        rawTopMlKitWord = ""
+    }
+
+    fun startModelDownload() {
+        coroutineScope.launch {
+            HandwritingRecognizer.downloadModel(activeLanguage) { state ->
+                modelStatus = state
+            }
+        }
     }
 
     Column(
@@ -161,7 +239,7 @@ fun GlideTypingView(
             .fillMaxWidth()
             .background(colors.background)
     ) {
-        // 1. TOP RECOGNIZED WORD & CANDIDATES BAR (User requirement: show word on top, click to insert)
+        // 1. TOP BAR: Display primary recognized word + suggestion chips + model status
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -175,14 +253,72 @@ fun GlideTypingView(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (recognizedWord.isNotBlank() || candidateLetters.isNotEmpty()) {
-                    // Highlighted primary recognized word/letter button
+                // If model is currently downloading or not downloaded, show banner/button
+                if (modelStatus is HandwritingRecognizer.ModelDownloadState.Downloading) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = colors.enterKeyBackground,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Downloading ${if (activeLanguage == "si") "Sinhala" else "English"} handwriting model...",
+                            fontSize = 12.sp,
+                            color = colors.letterKeySecondaryTextColor
+                        )
+                    }
+                } else if (modelStatus is HandwritingRecognizer.ModelDownloadState.NotDownloaded) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "${if (activeLanguage == "si") "Sinhala" else "English"} Model:",
+                            fontSize = 12.sp,
+                            color = colors.letterKeySecondaryTextColor
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AssistChip(
+                            onClick = { startModelDownload() },
+                            label = {
+                                Text(
+                                    text = "Download Model (Offline ML Kit)",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.enterKeyTextColor
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = colors.enterKeyBackground
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(30.dp)
+                        )
+                    }
+                } else if (recognizedWord.isNotBlank() || candidateLetters.isNotEmpty()) {
+                    // Highlighted primary recognized word button
                     val displayWord = if (recognizedWord.isNotBlank()) recognizedWord else candidateLetters.firstOrNull()?.char?.toString() ?: ""
                     Button(
                         onClick = {
-                            val insertText = if (displayWord.length == 1) displayWord else "$displayWord "
+                            // Single character inserts without trailing space; multi-character inserts with space
+                            val insertText = if (displayWord.length <= 1) displayWord else "$displayWord "
                             onInsertText(insertText)
-                            coroutineScope.launch { wordSuggestionManager.recordWordUsed(displayWord) }
+                            coroutineScope.launch {
+                                wordSuggestionManager.recordWordUsed(displayWord)
+                            }
                             clearPad()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -209,7 +345,7 @@ fun GlideTypingView(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Horizontal scrollable list of alternative letter & word suggestion chips
+                    // Horizontal alternative candidate chips
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -217,11 +353,14 @@ fun GlideTypingView(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Letter candidate chips for direct single-letter tap insertion
-                        candidateLetters.take(4).forEach { candidate ->
+                        // Candidate letter chips
+                        candidateLetters.take(3).forEach { candidate ->
                             AssistChip(
                                 onClick = {
-                                    onInsertText(candidate.char.toString())
+                                    val charStr = candidate.char.toString()
+                                    onInsertText(charStr)
+                                    // Personalization: record picked candidate
+                                    HandwritingRecognizer.recordCandidatePicked(charStr)
                                     clearPad()
                                 },
                                 label = {
@@ -240,12 +379,19 @@ fun GlideTypingView(
                             )
                         }
 
-                        // Word suggestions
+                        // Word suggestions / candidates
                         suggestedWords.forEach { candidate ->
                             AssistChip(
                                 onClick = {
-                                    onInsertText("$candidate ")
-                                    coroutineScope.launch { wordSuggestionManager.recordWordUsed(candidate) }
+                                    val insertText = if (candidate.length <= 1) candidate else "$candidate "
+                                    onInsertText(insertText)
+                                    // Personalization boost if user picked a non-top candidate
+                                    if (!candidate.equals(rawTopMlKitWord, ignoreCase = true)) {
+                                        HandwritingRecognizer.recordCandidatePicked(candidate)
+                                    }
+                                    coroutineScope.launch {
+                                        wordSuggestionManager.recordWordUsed(candidate)
+                                    }
                                     clearPad()
                                 },
                                 label = {
@@ -265,7 +411,7 @@ fun GlideTypingView(
                         }
                     }
 
-                    // Quick Clear Button on Top Right
+                    // Top right clear button
                     IconButton(
                         onClick = { clearPad() },
                         modifier = Modifier
@@ -280,7 +426,7 @@ fun GlideTypingView(
                         )
                     }
                 } else {
-                    // Empty state instruction with pen icon
+                    // Empty state instruction
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -295,15 +441,21 @@ fun GlideTypingView(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Write with finger or stylus to recognize words",
+                            text = "Handwriting Recognition (${if (activeLanguage == "si") "සිංහල" else "English"})",
                             fontSize = 12.5.sp,
-                            color = colors.letterKeySecondaryTextColor
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.letterKeyTextColor
                         )
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Quick starter word chips
-                        listOf("Hello", "Thanks", "Yes", "The", "I").forEach { starter ->
+                        val quickStarters = if (activeLanguage == "si") {
+                            listOf("ආයුබෝවන්", "ස්තූතියි", "ඔව්", "මම")
+                        } else {
+                            listOf("Hello", "Thanks", "Yes", "The", "I")
+                        }
+
+                        quickStarters.forEach { starter ->
                             AssistChip(
                                 onClick = {
                                     onInsertText("$starter ")
@@ -333,22 +485,27 @@ fun GlideTypingView(
         val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
         val canvasHeight = if (isTablet) 340.dp else 265.dp
 
-        // 2. MAIN WRITING CANVAS AREA (Expanded touch & writing surface)
+        // 2. MAIN HANDWRITING CANVAS AREA
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(canvasHeight)
                 .background(colors.background)
                 .pointerInput(Unit) {
+                    padWidthPx = size.width.toFloat()
+                    padHeightPx = size.height.toFloat()
                     detectDragGestures(
                         onDragStart = { offset ->
+                            recognitionJob?.cancel() // Cancel pending recognition when new stroke starts
+                            val now = System.currentTimeMillis()
                             activeTouchPoint = offset
-                            currentStrokePoints = listOf(offset)
+                            currentStrokePoints = listOf(HandwritingStrokePoint(offset.x, offset.y, now))
                         },
                         onDrag = { change, _ ->
                             change.consume()
+                            val now = System.currentTimeMillis()
                             activeTouchPoint = change.position
-                            currentStrokePoints = currentStrokePoints + change.position
+                            currentStrokePoints = currentStrokePoints + HandwritingStrokePoint(change.position.x, change.position.y, now)
                         },
                         onDragEnd = {
                             activeTouchPoint = null
@@ -370,10 +527,9 @@ fun GlideTypingView(
                 val canvasWidth = size.width
                 val canvasHeight = size.height
 
-                // Draw ruled guidelines for neat handwriting (waistline at 38%, baseline at 68%)
+                // Ruled guidelines
                 val waistlineY = canvasHeight * 0.38f
                 val baselineY = canvasHeight * 0.68f
-
                 val dashedEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f), 0f)
 
                 drawLine(
@@ -391,7 +547,7 @@ fun GlideTypingView(
                     strokeWidth = 2f
                 )
 
-                // Render completed strokes with smooth Bézier curves
+                // Smooth Bezier rendering of completed strokes
                 val strokeColor = colors.enterKeyBackground
                 val strokePaint = Stroke(
                     width = 6.dp.toPx(),
@@ -460,9 +616,9 @@ fun GlideTypingView(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Glide with finger or stylus here",
+                            text = "Write words or letters with finger or stylus",
                             fontSize = 13.sp,
-                            color = colors.letterKeySecondaryTextColor.copy(alpha = 0.5f)
+                            color = colors.letterKeySecondaryTextColor.copy(alpha = 0.6f)
                         )
                     }
                 }
@@ -500,7 +656,7 @@ fun GlideTypingView(
                     )
                 }
 
-                // Undo last stroke
+                // Undo last stroke button
                 IconButton(
                     onClick = {
                         if (completedStrokes.isNotEmpty()) {
@@ -509,6 +665,7 @@ fun GlideTypingView(
                                 recognizedWord = ""
                                 suggestedWords = emptyList()
                                 recognizedLetters = emptyList()
+                                candidateLetters = emptyList()
                             } else {
                                 triggerRecognition()
                             }
@@ -521,13 +678,13 @@ fun GlideTypingView(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo Stroke",
+                        contentDescription = "Undo Last Stroke",
                         tint = if (completedStrokes.isNotEmpty()) colors.toolbarIconTint else colors.letterKeySecondaryTextColor.copy(alpha = 0.4f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
 
-                // Clear Pad
+                // Clear Pad button
                 IconButton(
                     onClick = { clearPad() },
                     enabled = completedStrokes.isNotEmpty(),
@@ -537,7 +694,7 @@ fun GlideTypingView(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Clear Canvas",
+                        contentDescription = "Clear Handwriting Canvas",
                         tint = if (completedStrokes.isNotEmpty()) colors.toolbarIconTint else colors.letterKeySecondaryTextColor.copy(alpha = 0.4f),
                         modifier = Modifier.size(20.dp)
                     )

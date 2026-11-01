@@ -325,6 +325,7 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         val isImage = (data["isImage"] as? Boolean) ?: false
         val isPinned = (data["isPinned"] as? Boolean) ?: false
         val category = data["category"] as? String ?: "Synced"
+        val shortcut = data["shortcut"] as? String ?: (if (category.equals("Shortcuts", ignoreCase = true) || title.startsWith("Shortcut:")) title.removePrefix("Shortcut:").trim() else "")
         val mimeType = data["mimeType"] as? String ?: if (isImage) "image/png" else "text/plain"
 
         if (content.isNotBlank()) {
@@ -346,12 +347,13 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                 } catch (_: Exception) {}
             }
 
-            // Save to keyboard Room database
+            // Save to keyboard Room database (shortcuts routed directly to shortcuts section)
             snippetRepository.saveSyncedSnippet(
                 title = title,
                 content = if (isImage && localImageUri != null) localImageUri else content,
-                isPinned = isPinned,
-                category = category,
+                isPinned = if (shortcut.isNotBlank()) true else isPinned,
+                category = if (shortcut.isNotBlank() && (category.isBlank() || category == "Synced")) "Shortcuts" else category,
+                shortcut = shortcut,
                 timestamp = System.currentTimeMillis(),
                 imageUri = localImageUri,
                 isImage = isImage,
@@ -444,17 +446,20 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                             val primaryDoc = docs.first()
                             val remotePinned = primaryDoc.getBoolean("isPinned") ?: false
                             val remoteCategory = primaryDoc.getString("category") ?: ""
+                            val remoteShortcut = primaryDoc.getString("shortcut") ?: ""
                             val remoteTitle = primaryDoc.getString("title") ?: ""
 
-                            if (remotePinned != snippet.isPinned || remoteCategory != snippet.category || remoteTitle != snippet.title) {
-                                primaryDoc.reference.update(
-                                    mapOf(
-                                        "title" to snippet.title.take(200),
-                                        "isPinned" to snippet.isPinned,
-                                        "category" to snippet.category.take(50),
-                                        "updatedAt" to FieldValue.serverTimestamp()
-                                    )
+                            if (remotePinned != snippet.isPinned || remoteCategory != snippet.category || remoteShortcut != snippet.shortcut || remoteTitle != snippet.title) {
+                                val updates = mutableMapOf<String, Any>(
+                                    "title" to snippet.title.take(200),
+                                    "isPinned" to snippet.isPinned,
+                                    "category" to snippet.category.take(50),
+                                    "updatedAt" to FieldValue.serverTimestamp()
                                 )
+                                if (snippet.shortcut.isNotBlank()) {
+                                    updates["shortcut"] = snippet.shortcut.take(50)
+                                }
+                                primaryDoc.reference.update(updates)
                             }
                             // Existing document on server handled; do not create duplicate document
                             return@launch
@@ -473,6 +478,9 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                             "createdAt" to FieldValue.serverTimestamp(),
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
+                        if (snippet.shortcut.isNotBlank()) {
+                            payload["shortcut"] = snippet.shortcut.take(50)
+                        }
 
                         try {
                             db.collection("users").document(uid)

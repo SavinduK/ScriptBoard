@@ -82,6 +82,8 @@ fun KeyProKeyboardView(
     isHapticEnabled: Boolean = true,
     initialLaptopBarVisible: Boolean = true,
     openSessionTrigger: Long = 0L,
+    syncedWordBuffer: String? = null,
+    syncedPrevWord: String? = null,
     onAction: (KeyAction) -> Unit,
     onTogglePin: (SnippetEntity) -> Unit = {},
     onDeleteSnippet: (Long) -> Unit = {},
@@ -100,13 +102,18 @@ fun KeyProKeyboardView(
     val currentLanguage by keyboardPrefs.currentLanguage.collectAsState()
     val installedLanguages by keyboardPrefs.installedLanguages.collectAsState()
     val numberRowEnabled by keyboardPrefs.numberRowEnabled.collectAsState()
+    val handwritingEnabled by keyboardPrefs.handwritingEnabled.collectAsState()
+    val autoCapitalizationEnabled by keyboardPrefs.autoCapitalizationEnabled.collectAsState()
 
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
     val localStickers by stickerRepo.allStickers.collectAsState(initial = emptyList())
     val displayStickers = if (stickers.isNotEmpty()) stickers else localStickers
 
     val wordSuggestionManager = remember {
-        WordSuggestionManager(AppDatabase.getDatabase(context).wordFrequencyDao())
+        WordSuggestionManager(
+            AppDatabase.getDatabase(context).wordFrequencyDao(),
+            AppDatabase.getDatabase(context).bigramFrequencyDao()
+        )
     }
 
     DisposableEffect(isSoundEnabled) {
@@ -121,6 +128,9 @@ fun KeyProKeyboardView(
     var isCtrlActive by remember { mutableStateOf(false) }
     var isAltActive by remember { mutableStateOf(false) }
     var currentWordBuffer by remember { mutableStateOf("") }
+    var internalPrevWord by remember { mutableStateOf<String?>(null) }
+    val effectivePrevWord = syncedPrevWord ?: internalPrevWord
+
     var suggestedWords by remember(currentLanguage) {
         mutableStateOf(
             if (currentLanguage == "si") listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද") else listOf("I", "The", "Thanks")
@@ -128,22 +138,34 @@ fun KeyProKeyboardView(
     }
     var selectedSinhalaLetter by remember { mutableStateOf("ව") }
 
+    // Sync buffer from IME service when updated
+    LaunchedEffect(syncedWordBuffer) {
+        if (syncedWordBuffer != null) {
+            currentWordBuffer = syncedWordBuffer
+        }
+    }
+
     // Reset keyboard position to English alphabet layout whenever the keyboard is opened in an app
     LaunchedEffect(openSessionTrigger) {
         if (openSessionTrigger > 0L) {
             layoutMode = KeyboardLayoutMode.TEXT
-            shiftState = ShiftState.OFF
+            shiftState = if (autoCapitalizationEnabled) ShiftState.ONCE else ShiftState.OFF
             currentWordBuffer = ""
             isCtrlActive = false
             isAltActive = false
             selectedSinhalaLetter = "ව"
+            internalPrevWord = null
         }
     }
 
-    // Update 3 word suggestions dynamically as user types in the selected keyboard language
-    LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled, currentLanguage) {
+    // Update 3 word suggestions dynamically with bigram context and typo handling
+    LaunchedEffect(currentWordBuffer, autoSuggestWordsEnabled, currentLanguage, effectivePrevWord) {
         if (autoSuggestWordsEnabled) {
-            val suggestions = wordSuggestionManager.getSuggestions(currentWordBuffer, currentLanguage)
+            val suggestions = wordSuggestionManager.getSuggestions(
+                prefix = currentWordBuffer,
+                language = currentLanguage,
+                prevWord = effectivePrevWord
+            )
             suggestedWords = suggestions
         } else {
             suggestedWords = emptyList()
@@ -302,6 +324,9 @@ fun KeyProKeyboardView(
             is KeyAction.Enter -> {
                 selectedSinhalaLetter = "ව"
                 onAction(action)
+                if (autoCapitalizationEnabled) {
+                    shiftState = ShiftState.ONCE
+                }
             }
             else -> onAction(action)
         }
@@ -380,6 +405,7 @@ fun KeyProKeyboardView(
                 isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
                 isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
                 isGlideTypingActive = layoutMode == KeyboardLayoutMode.GLIDE_TYPING,
+                isHandwritingEnabled = handwritingEnabled,
                 currentLanguage = currentLanguage,
                 onToggleLaptopBar = {
                     val next = !isLaptopBarVisible
@@ -652,7 +678,8 @@ fun KeyProKeyboardView(
                     onBackspace = { handleKeyAction(KeyAction.Backspace) },
                     onEnter = { handleKeyAction(KeyAction.Enter) },
                     onSpace = { handleKeyAction(KeyAction.Space) },
-                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
+                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT },
+                    languageOverride = currentLanguage
                 )
             }
             else -> {

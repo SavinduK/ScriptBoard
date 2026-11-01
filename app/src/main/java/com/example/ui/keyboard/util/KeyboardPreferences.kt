@@ -30,6 +30,12 @@ class KeyboardPreferences(context: Context) {
     private val _autoSuggestEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SUGGEST_ENABLED, true))
     val autoSuggestEnabled: StateFlow<Boolean> = _autoSuggestEnabled.asStateFlow()
 
+    private val _handwritingEnabled = MutableStateFlow(prefs.getBoolean(KEY_HANDWRITING_ENABLED, true))
+    val handwritingEnabled: StateFlow<Boolean> = _handwritingEnabled.asStateFlow()
+
+    private val _autoCapitalizationEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, true))
+    val autoCapitalizationEnabled: StateFlow<Boolean> = _autoCapitalizationEnabled.asStateFlow()
+
     private val _recentEmojis = MutableStateFlow(loadRecentEmojis())
     val recentEmojis: StateFlow<List<String>> = _recentEmojis.asStateFlow()
 
@@ -275,6 +281,16 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_SUGGEST_ENABLED, enabled).apply()
     }
 
+    fun setHandwritingEnabled(enabled: Boolean) {
+        _handwritingEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_HANDWRITING_ENABLED, enabled).apply()
+    }
+
+    fun setAutoCapitalizationEnabled(enabled: Boolean) {
+        _autoCapitalizationEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, enabled).apply()
+    }
+
     private fun loadRecentEmojis(): List<String> {
         val saved = prefs.getString(KEY_RECENT_EMOJIS, null)
         return if (!saved.isNullOrBlank()) {
@@ -409,12 +425,146 @@ class KeyboardPreferences(context: Context) {
         )
     }
 
+    /**
+     * Exports all user-selected keyboard settings as a serializable Map for Firebase cloud storage.
+     */
+    fun exportSettingsMap(): Map<String, Any> {
+        val map = mutableMapOf<String, Any>()
+        map["themeType"] = _themeType.value.name
+        map["customBgColor"] = _customBgColor.value
+        map["customKeyBgColor"] = _customKeyBgColor.value
+        map["customTextColor"] = _customTextColor.value
+        map["customAccentColor"] = _customAccentColor.value
+        map["soundEnabled"] = _soundEnabled.value
+        map["hapticEnabled"] = _hapticEnabled.value
+        map["laptopBarVisible"] = _laptopBarVisible.value
+        map["holdForSymbolsEnabled"] = _holdForSymbolsEnabled.value
+        map["autoSuggestEnabled"] = _autoSuggestEnabled.value
+        map["handwritingEnabled"] = _handwritingEnabled.value
+        map["autoCapitalizationEnabled"] = _autoCapitalizationEnabled.value
+        map["keyFontSize"] = _keyFontSize.value.toDouble()
+        map["altKeyFontSize"] = _altKeyFontSize.value.toDouble()
+        map["tabletKeyboardScale"] = _tabletKeyboardScale.value.toDouble()
+        map["hideOnPhysicalKeyboard"] = _hideOnPhysicalKeyboard.value
+        map["currentLanguage"] = _currentLanguage.value
+        map["numberRowEnabled"] = _numberRowEnabled.value
+        map["autoDeleteClipboardEnabled"] = _autoDeleteClipboardEnabled.value
+        map["clipboardRetentionDays"] = _clipboardRetentionDays.value
+        map["clipboardSyncEnabled"] = _clipboardSyncEnabled.value
+        map["clipboardSyncImages"] = _clipboardSyncImages.value
+        return map
+    }
+
+    /**
+     * Imports cloud settings from Firebase and updates StateFlows and SharedPreferences.
+     */
+    fun importSettingsMap(map: Map<String, Any?>) {
+        val editor = prefs.edit()
+        (map["themeType"] as? String)?.let { themeName ->
+            try {
+                val type = KeyboardThemeType.valueOf(themeName)
+                _themeType.value = type
+                editor.putString(KEY_THEME_TYPE, type.name)
+            } catch (_: Exception) {}
+        }
+        (map["customBgColor"] as? Number)?.let {
+            _customBgColor.value = it.toInt()
+            editor.putInt(KEY_CUSTOM_BG, it.toInt())
+        }
+        (map["customKeyBgColor"] as? Number)?.let {
+            _customKeyBgColor.value = it.toInt()
+            editor.putInt(KEY_CUSTOM_KEY_BG, it.toInt())
+        }
+        (map["customTextColor"] as? Number)?.let {
+            _customTextColor.value = it.toInt()
+            editor.putInt(KEY_CUSTOM_TEXT, it.toInt())
+        }
+        (map["customAccentColor"] as? Number)?.let {
+            _customAccentColor.value = it.toInt()
+            editor.putInt(KEY_CUSTOM_ACCENT, it.toInt())
+        }
+        (map["soundEnabled"] as? Boolean)?.let {
+            _soundEnabled.value = it
+            editor.putBoolean(KEY_SOUND_ENABLED, it)
+        }
+        (map["hapticEnabled"] as? Boolean)?.let {
+            _hapticEnabled.value = it
+            editor.putBoolean(KEY_HAPTIC_ENABLED, it)
+        }
+        (map["laptopBarVisible"] as? Boolean)?.let {
+            _laptopBarVisible.value = it
+            editor.putBoolean(KEY_LAPTOP_BAR_VISIBLE, it)
+        }
+        (map["holdForSymbolsEnabled"] as? Boolean)?.let {
+            _holdForSymbolsEnabled.value = it
+            editor.putBoolean(KEY_HOLD_FOR_SYMBOLS, it)
+        }
+        (map["autoSuggestEnabled"] as? Boolean)?.let {
+            _autoSuggestEnabled.value = it
+            editor.putBoolean(KEY_AUTO_SUGGEST_ENABLED, it)
+        }
+        (map["handwritingEnabled"] as? Boolean)?.let {
+            _handwritingEnabled.value = it
+            editor.putBoolean(KEY_HANDWRITING_ENABLED, it)
+        }
+        (map["autoCapitalizationEnabled"] as? Boolean)?.let {
+            _autoCapitalizationEnabled.value = it
+            editor.putBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, it)
+        }
+        (map["keyFontSize"] as? Number)?.let {
+            val f = it.toFloat()
+            _keyFontSize.value = f
+            editor.putFloat(KEY_KEY_FONT_SIZE, f)
+        }
+        (map["altKeyFontSize"] as? Number)?.let {
+            val f = it.toFloat().coerceIn(9f, 24f)
+            _altKeyFontSize.value = f
+            editor.putFloat(KEY_ALT_KEY_FONT_SIZE, f)
+        }
+        (map["tabletKeyboardScale"] as? Number)?.let {
+            val f = it.toFloat()
+            _tabletKeyboardScale.value = f
+            editor.putFloat(KEY_TABLET_KEYBOARD_SCALE, f)
+        }
+        (map["hideOnPhysicalKeyboard"] as? Boolean)?.let {
+            _hideOnPhysicalKeyboard.value = it
+            editor.putBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, it)
+        }
+        (map["currentLanguage"] as? String)?.let {
+            _currentLanguage.value = it
+            editor.putString(KEY_CURRENT_LANGUAGE, it)
+        }
+        (map["numberRowEnabled"] as? Boolean)?.let {
+            _numberRowEnabled.value = it
+            editor.putBoolean(KEY_NUMBER_ROW_ENABLED, it)
+        }
+        (map["autoDeleteClipboardEnabled"] as? Boolean)?.let {
+            _autoDeleteClipboardEnabled.value = it
+            editor.putBoolean(KEY_AUTO_DELETE_CLIPBOARD, it)
+        }
+        (map["clipboardRetentionDays"] as? Number)?.let {
+            _clipboardRetentionDays.value = it.toInt()
+            editor.putInt(KEY_CLIPBOARD_RETENTION_DAYS, it.toInt())
+        }
+        (map["clipboardSyncEnabled"] as? Boolean)?.let {
+            _clipboardSyncEnabled.value = it
+            editor.putBoolean(KEY_CLIPBOARD_SYNC_ENABLED, it)
+        }
+        (map["clipboardSyncImages"] as? Boolean)?.let {
+            _clipboardSyncImages.value = it
+            editor.putBoolean(KEY_CLIPBOARD_SYNC_IMAGES, it)
+        }
+        editor.apply()
+    }
+
     companion object {
         private const val KEY_SOUND_ENABLED = "sound_enabled"
         private const val KEY_HAPTIC_ENABLED = "haptic_enabled"
         private const val KEY_LAPTOP_BAR_VISIBLE = "laptop_bar_visible"
         private const val KEY_HOLD_FOR_SYMBOLS = "hold_for_symbols"
         private const val KEY_AUTO_SUGGEST_ENABLED = "auto_suggest_enabled"
+        private const val KEY_HANDWRITING_ENABLED = "handwriting_enabled"
+        private const val KEY_AUTO_CAPITALIZATION_ENABLED = "auto_capitalization_enabled"
         private const val KEY_RECENT_EMOJIS = "recent_emojis"
         private const val KEY_KEY_FONT_SIZE = "key_character_font_size"
         private const val KEY_ALT_KEY_FONT_SIZE = "alt_key_font_size"

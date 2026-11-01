@@ -224,7 +224,7 @@ fun RowScope.KeyCap(
             .testTag(key.testTag),
         contentAlignment = Alignment.Center
     ) {
-        // Optional secondary superscript symbol/digit
+        // Optional secondary superscript symbol/digit (alt symbol: top right)
         if (key.secondaryText != null) {
             Text(
                 text = key.secondaryText,
@@ -233,7 +233,7 @@ fun RowScope.KeyCap(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = (horizontalPaddingDp + 1.5f).dp, top = 2.dp)
+                    .padding(end = 4.dp, top = 2.dp)
             )
         }
 
@@ -246,9 +246,10 @@ fun RowScope.KeyCap(
                 modifier = Modifier.size(iconSize)
             )
         } else {
-            // Primary text
+            // Primary text: placed at bottom-left when secondary alt symbol is present to maximize distance and eliminate overlap
             val isFunctionKey = key.action is KeyAction.FunctionKey || key.primaryText.matches(Regex("F\\d+"))
             val isSinhalaChar = key.primaryText.any { it in '\u0D80'..'\u0DFF' }
+            val hasAlt = key.secondaryText != null
 
             Text(
                 text = key.primaryText,
@@ -266,8 +267,15 @@ fun RowScope.KeyCap(
                 },
                 fontWeight = if (key.isAccent || key.isFunctional || key.isActiveModifier) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default,
-                textAlign = TextAlign.Center,
-                lineHeight = if (key.primaryText == "12\n34") 12.sp else 19.sp
+                textAlign = if (hasAlt) TextAlign.Start else TextAlign.Center,
+                lineHeight = if (key.primaryText == "12\n34") 12.sp else 19.sp,
+                modifier = if (hasAlt) {
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 5.dp, bottom = 3.dp)
+                } else {
+                    Modifier.align(Alignment.Center)
+                }
             )
         }
 

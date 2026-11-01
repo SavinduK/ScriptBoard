@@ -3,8 +3,63 @@ package com.example.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.math.ln
+import kotlin.math.min
+import kotlin.math.pow
 
-class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
+/**
+ * Intelligent, privacy-preserving Word Suggestion and Next-Word Prediction Manager.
+ * Features:
+ * - Privacy protection: never learns numbers, emails, URLs, or from sensitive fields.
+ * - Anti-snowballing: blended scoring with user frequency, bigrams, dictionary, and prefix matches.
+ * - Recency decay: score * 0.5^(daysSinceLastUse / 30).
+ * - Minimum typing threshold: new words must be typed at least twice before appearing.
+ * - Bigram next-word prediction when buffer is empty.
+ * - Keyboard-adjacency fuzzy matching and typo tolerance.
+ * - Mixed-language & Singlish-to-Sinhala transliteration.
+ * - Preserves original casing (iPhone, McDonald's) with contextual titlecasing.
+ * - Confidence-based strip placement (center slot threshold).
+ */
+class WordSuggestionManager(
+    private val wordFrequencyDao: WordFrequencyDao,
+    private val bigramFrequencyDao: BigramFrequencyDao? = null
+) {
+
+    companion object {
+        // Tunable scoring weights
+        const val W_USER = 3.5f
+        const val W_BIGRAM = 4.0f
+        const val W_DICT = 2.0f
+        const val EXACT_PREFIX_BONUS = 5.0f
+        const val MAX_USER_FREQ_CAP = 50.0f
+        const val CONFIDENCE_THRESHOLD = 4.0f
+
+        fun isSinhalaWord(word: String): Boolean {
+            return word.any { it in '\u0D80'..'\u0DFF' }
+        }
+
+        fun isEnglishWord(word: String): Boolean {
+            return !isSinhalaWord(word)
+        }
+
+        /**
+         * Privacy filter: prevents storing numbers-only tokens, email addresses, and URLs.
+         */
+        fun isInvalidToLearn(word: String): Boolean {
+            val trimmed = word.trim()
+            if (trimmed.length < 2) return true
+            // Numbers only
+            if (trimmed.all { it.isDigit() }) return true
+            // Email address pattern
+            if (trimmed.contains("@") && trimmed.contains(".")) return true
+            // URL pattern
+            if (trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) ||
+                trimmed.startsWith("www.", ignoreCase = true)
+            ) return true
+            return false
+        }
+    }
 
     // Common starter words when nothing is typed yet (English)
     private val defaultEnglishStarterWords = listOf("I", "The", "Thanks", "Hello", "Yes", "Please", "How", "Good", "You")
@@ -12,7 +67,7 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
     // Common starter words when nothing is typed yet (Sinhala)
     private val defaultSinhalaStarterWords = listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද", "සුභ", "ඔව්", "හොඳයි", "මම", "ඔබ", "අපි")
 
-    // Common core English dictionary words for word completions
+    // Core English dictionary vocabulary (expanded high-frequency vocabulary)
     private val commonEnglishVocabulary = listOf(
         "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not",
         "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from",
@@ -28,14 +83,46 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
         "phone", "address", "where", "why", "let", "check", "send", "received", "nice",
         "happy", "awesome", "perfect", "help", "need", "love", "really", "very", "right",
         "sure", "tell", "much", "before", "while", "should", "going", "been", "being",
-        "doing", "having", "working", "trying", "looking", "welcome", "sounds", "good",
-        "fine", "talk", "later", "soon", "ready", "done", "start", "stop", "again",
-        "always", "never", "maybe", "yes", "yeah", "okay", "alright", "sorry", "excuse",
-        "welcome", "appreciate", "regards", "best", "cheers", "update", "project", "code",
-        "android", "keyboard", "mobile", "device", "quick", "fast", "speed", "test"
+        "doing", "having", "working", "trying", "looking", "welcome", "sounds", "fine",
+        "talk", "later", "soon", "ready", "done", "start", "stop", "again", "always",
+        "never", "maybe", "yes", "yeah", "okay", "alright", "sorry", "excuse", "appreciate",
+        "regards", "best", "cheers", "update", "project", "code", "android", "keyboard",
+        "mobile", "device", "quick", "fast", "speed", "test", "computer", "screen",
+        "application", "system", "network", "internet", "online", "offline", "account",
+        "profile", "password", "security", "privacy", "settings", "options", "change",
+        "select", "button", "click", "tap", "type", "text", "audio", "video", "photo",
+        "image", "camera", "music", "sound", "volume", "quiet", "silent", "important",
+        "urgent", "schedule", "calendar", "appointment", "reminder", "office", "home",
+        "family", "friend", "colleague", "manager", "team", "client", "customer", "support",
+        "service", "price", "cost", "payment", "bank", "card", "money", "free", "discount",
+        "order", "delivery", "shopping", "store", "market", "food", "dinner", "lunch",
+        "breakfast", "coffee", "tea", "drink", "water", "restaurant", "hotel", "travel",
+        "flight", "ticket", "train", "bus", "car", "drive", "ride", "walk", "city",
+        "country", "place", "location", "map", "directions", "road", "street", "weather",
+        "rain", "sun", "cloud", "temperature", "cold", "warm", "hot", "cool", "clean",
+        "clear", "dark", "light", "color", "red", "blue", "green", "black", "white",
+        "yellow", "orange", "purple", "brown", "gray", "big", "small", "huge", "tiny",
+        "short", "long", "tall", "wide", "deep", "heavy", "soft", "hard", "easy",
+        "simple", "difficult", "tough", "smart", "quick", "slow", "early", "late",
+        "young", "old", "different", "same", "similar", "special", "general", "public",
+        "private", "personal", "official", "standard", "normal", "usual", "common",
+        "rare", "possible", "impossible", "true", "false", "correct", "wrong", "safe",
+        "dangerous", "strong", "weak", "rich", "poor", "healthy", "sick", "tired",
+        "excited", "bored", "worried", "calm", "proud", "brave", "funny", "serious",
+        "friendly", "polite", "kind", "honest", "generous", "helpful", "careful",
+        "bring", "carry", "hold", "keep", "leave", "stay", "move", "stand", "sit",
+        "open", "close", "shut", "lock", "unlock", "push", "pull", "turn", "switch",
+        "watch", "listen", "hear", "smell", "taste", "touch", "feel", "enjoy", "prefer",
+        "choose", "decide", "agree", "disagree", "accept", "refuse", "allow", "prevent",
+        "create", "build", "design", "develop", "fix", "repair", "break", "destroy",
+        "explain", "describe", "discuss", "argue", "agree", "promise", "suggest",
+        "recommend", "advise", "warn", "inform", "notify", "announce", "share", "post",
+        "like", "comment", "subscribe", "follow", "download", "upload", "install",
+        "delete", "remove", "add", "insert", "copy", "paste", "cut", "undo", "redo",
+        "save", "load", "import", "export", "sync", "backup", "restore", "connect"
     )
 
-    // Common core Sinhala dictionary words for word completions
+    // Core Sinhala dictionary vocabulary (expanded high-frequency vocabulary)
     private val commonSinhalaVocabulary = listOf(
         "ආයුබෝවන්", "ස්තූතියි", "ඔව්", "නැහැ", "කොහොමද", "සුභ", "උදෑසනක්", "දවසක්", "හොඳයි", "මම",
         "ඔබ", "අපි", "ඔවුන්", "එන්න", "යන්න", "කරන්න", "දන්නවා", "ලස්සන", "ශ්‍රී", "ලංකා",
@@ -47,141 +134,116 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
         "හිරු", "දවල්", "රෑ", "හවස", "ඊයේ", "අද", "හෙට", "සතිය", "මාසය", "අවුරුද්ද",
         "මිතුරිය", "මල්ලී", "අයියා", "අක්කා", "නංගී", "අම්මා", "තාත්තා", "ගුරුවරයා", "වෛද්‍යවරයා",
         "කඩේ", "බස්", "කෝච්චිය", "කාර්", "පාපැදිය", "ගමන", "නිවාඩුව", "පාඩම", "විභාගය", "ප්‍රශ්නය",
-        "පිළිතුර", "සත්‍යය", "මල්", "ගස්", "නැවුම්", "රස", "බොන්න", "නිදාගන්න", "නැගිටින්න"
+        "පිළිතුර", "සත්‍යය", "මල්", "ගස්", "නැවුම්", "රස", "බොන්න", "නිදාගන්න", "නැගිටින්න",
+        "දුවන්න", "ඇවිදින්න", "නටන්න", "ගයන්න", "සෙල්ලම්", "ක්‍රීඩාව", "චිත්‍රය", "කතාව",
+        "ප්‍රවෘත්ති", "ගුවන්", "මුහුද", "නැව", "කන්ද", "ගඟ", "වැව", "වෙරළ", "සත්වයා", "බල්ලා",
+        "පූසා", "ඇතා", "කුරුල්ලා", "මාළුවා", "ගොවිතැන", "වෙළඳාම", "රාජකාරිය", "කාර්යාලය",
+        "පරිගණකය", "යතුරුපුවරුව", "ජංගම", "දුරකථන", "පණිවිඩ", "විද්‍යුත්", "තැපෑල", "අන්තර්ජාලය",
+        "සම්බන්ධතාවය", "සේවාව", "ගිණුම", "මුරපදය", "ආරක්ෂාව", "පෞද්ගලිකත්වය", "සැකසුම්",
+        "වෙනස්", "තෝරන්න", "බොත්තම", "ස්පර්ශ", "අකුරු", "ශබ්දය", "රූපය", "කැමරාව", "සංගීතය",
+        "වැදගත්", "හදිසි", "දිනදර්ශනය", "මතක්කිරීම", "කණ්ඩායම", "පාරිභෝගිකයා", "ගෙවීම",
+        "බැංකුව", "කාඩ්පත", "නොමිලේ", "වට්ටම්", "ඇණවුම", "බෙදාහැරීම", "මිලදී", "සාප්පුව",
+        "තේ", "කෝපි", "ආපනශාලාව", "හෝටලය", "ප්‍රවේශපත්‍රය", "නවාතැන", "පාර", "සිතියම",
+        "උණුසුම්", "සීතල", "පැහැදිලි", "අඳුරු", "පාට", "රතු", "නිල්", "කොළ", "කළු", "සුදු",
+        "කහ", "තැඹිලි", "දම්", "දුඹුරු", "අළු", "දිග", "කෙටි", "උස", "පළල", "ගැඹුරු", "බර",
+        "සැහැල්ලු", "මෘදු", "තද", "පහසු", "සරල", "අපහසු", "බුද්ධිමත්", "වේගවත්", "මන්දගාමී",
+        "කලින්", "ප්‍රමාද", "තරුණ", "වයස", "වෙනස්", "සමාන", "විශේෂ", "පොදු", "නිල", "සාමාන්‍ය",
+        "සැබෑ", "නිවැරදි", "වැරදි", "ආරක්ෂිත", "ශක්තිමත්", "නිරෝගී", "සතුටුදායක", "විශ්වාසය"
     )
 
-    companion object {
-        fun isSinhalaWord(word: String): Boolean {
-            return word.any { it in '\u0D80'..'\u0DFF' }
-        }
+    // Common Singlish-to-Sinhala phonetic transliteration dictionary
+    private val singlishToSinhalaMap = mapOf(
+        "mama" to "මම",
+        "oya" to "ඔයා",
+        "api" to "අපි",
+        "ow" to "ඔව්",
+        "ne" to "නෑ",
+        "nae" to "නෑ",
+        "subha" to "සුභ",
+        "sthuthi" to "ස්තූතියි",
+        "kohomada" to "කොහොමද",
+        "hondai" to "හොඳයි",
+        "hoda" to "හොඳ",
+        "hari" to "හරි",
+        "gedara" to "ගෙදර",
+        "kaema" to "කෑම",
+        "wathura" to "වතුර",
+        "mokakda" to "මොකක්ද",
+        "ai" to "ඇයි",
+        "koheda" to "කොහෙද",
+        "dan" to "දැන්",
+        "passe" to "පස්සේ",
+        "kamak" to "කමක්",
+        "ikmanin" to "ඉක්මනින්",
+        "kiyanna" to "කියන්න",
+        "ahanna" to "අහන්න",
+        "balanna" to "බලන්න",
+        "karanna" to "කරන්න",
+        "yanna" to "යන්න",
+        "enna" to "එන්න",
+        "yamu" to "යමු",
+        "dawasak" to "දවසක්",
+        "udasanak" to "උදෑසනක්",
+        "ada" to "අද",
+        "heta" to "හෙට",
+        "iye" to "ඊයේ",
+        "wada" to "වැඩ",
+        "office" to "කාර්යාලය",
+        "poth" to "පොත්",
+        "mal" to "මල්",
+        "sathutu" to "සතුටු",
+        "adaraya" to "ආදරය",
+        "sri" to "ශ්‍රී",
+        "lanka" to "ලංකා"
+    )
 
-        fun isEnglishWord(word: String): Boolean {
-            return !isSinhalaWord(word)
-        }
+    // Keyboard adjacency map for QWERTY
+    private val keyboardAdjacency: Map<Char, Set<Char>> = mapOf(
+        'q' to setOf('w', 'a', 's'),
+        'w' to setOf('q', 'e', 'a', 's', 'd'),
+        'e' to setOf('w', 'r', 's', 'd', 'f'),
+        'r' to setOf('e', 't', 'd', 'f', 'g'),
+        't' to setOf('r', 'y', 'f', 'g', 'h'),
+        'y' to setOf('t', 'u', 'g', 'h', 'j'),
+        'u' to setOf('y', 'i', 'h', 'j', 'k'),
+        'i' to setOf('u', 'o', 'j', 'k', 'l'),
+        'o' to setOf('i', 'p', 'k', 'l'),
+        'p' to setOf('o', 'l'),
+        'a' to setOf('q', 'w', 's', 'z'),
+        's' to setOf('w', 'e', 'a', 'd', 'z', 'x'),
+        'd' to setOf('e', 'r', 's', 'f', 'x', 'c'),
+        'f' to setOf('r', 't', 'd', 'g', 'c', 'v'),
+        'g' to setOf('t', 'y', 'f', 'h', 'v', 'b'),
+        'h' to setOf('y', 'u', 'g', 'j', 'b', 'n'),
+        'j' to setOf('u', 'i', 'h', 'k', 'n', 'm'),
+        'k' to setOf('i', 'o', 'j', 'l', 'm'),
+        'l' to setOf('o', 'p', 'k'),
+        'z' to setOf('a', 's', 'x'),
+        'x' to setOf('z', 's', 'd', 'c'),
+        'c' to setOf('x', 'd', 'f', 'v'),
+        'v' to setOf('c', 'f', 'g', 'b'),
+        'b' to setOf('v', 'g', 'h', 'n'),
+        'n' to setOf('b', 'h', 'j', 'm'),
+        'm' to setOf('n', 'j', 'k')
+    )
+
+    private fun computeRecencyDecay(lastUsedMillis: Long): Double {
+        val daysSince = (System.currentTimeMillis() - lastUsedMillis).coerceAtLeast(0L) / (1000.0 * 60 * 60 * 24)
+        return 0.5.pow(daysSince / 30.0)
     }
 
-    /**
-     * Returns exactly 3 suggested words matching the current typed prefix in the SELECTED language.
-     * When language == "si", only suggests Sinhala words.
-     * When language == "en", only suggests English words.
-     * Prioritizes user typing history based on frequency (same word used more -> suggest more).
-     */
-    suspend fun getSuggestions(prefix: String, language: String = "en"): List<String> = withContext(Dispatchers.IO) {
-        val cleanPrefix = prefix.trim()
-        val isSinhala = language == "si"
-
-        if (cleanPrefix.isEmpty()) {
-            val starterWords = if (isSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
-            // Suggest top 3 most used words from user typing history matching language
-            val topHistory = try {
-                wordFrequencyDao.getTopWords(limit = 20)
-                    .map { it.word }
-                    .filter { if (isSinhala) isSinhalaWord(it) else isEnglishWord(it) }
-                    .take(3)
-            } catch (_: Exception) {
-                emptyList()
-            }
-
-            val suggestions = topHistory.toMutableList()
-            for (defaultWord in starterWords) {
-                if (suggestions.size >= 3) break
-                if (!suggestions.any { it.equals(defaultWord, ignoreCase = true) }) {
-                    suggestions.add(defaultWord)
-                }
-            }
-            return@withContext suggestions.take(3)
-        }
-
-        val prefixCleaned = if (isSinhala) cleanPrefix else cleanPrefix.lowercase(Locale.ROOT)
-        val targetVocabulary = if (isSinhala) commonSinhalaVocabulary else commonEnglishVocabulary
-        val starterFallback = if (isSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
-
-        // 1. Fetch user words from history matching prefix
-        val userWords = try {
-            wordFrequencyDao.getSuggestionsForPrefix(prefixCleaned, limit = 20)
-                .filter { if (isSinhala) isSinhalaWord(it.word) else isEnglishWord(it.word) }
-        } catch (_: Exception) {
-            emptyList()
-        }
-
-        // 2. Score candidates: User words get heavy weighting based on frequency
-        val scoreMap = mutableMapOf<String, Int>()
-
-        for (item in userWords) {
-            val score = 1000 + (item.frequency * 50) + if (item.word == prefixCleaned) 200 else 0
-            scoreMap[item.word] = score
-        }
-
-        // 3. Match from common vocabulary of the selected language
-        for (vocab in targetVocabulary) {
-            if (vocab.startsWith(prefixCleaned, ignoreCase = !isSinhala)) {
-                if (!scoreMap.containsKey(vocab)) {
-                    scoreMap[vocab] = 100 + if (vocab.equals(prefixCleaned, ignoreCase = !isSinhala)) 50 else 0
-                }
-            }
-        }
-
-        // 4. Sort candidates by score descending
-        val sortedCandidates = scoreMap.entries
-            .sortedByDescending { it.value }
-            .map { it.key }
-            .toMutableList()
-
-        // 5. If fewer than 3, add fallback words starting with or containing prefix from the same language
-        if (sortedCandidates.size < 3) {
-            if (!sortedCandidates.contains(prefixCleaned)) {
-                sortedCandidates.add(prefixCleaned)
-            }
-            for (vocab in targetVocabulary) {
-                if (sortedCandidates.size >= 3) break
-                if (vocab.contains(prefixCleaned, ignoreCase = !isSinhala) && !sortedCandidates.contains(vocab)) {
-                    sortedCandidates.add(vocab)
-                }
-            }
-            for (fallback in starterFallback) {
-                if (sortedCandidates.size >= 3) break
-                if (!sortedCandidates.contains(fallback)) {
-                    sortedCandidates.add(fallback)
-                }
-            }
-        }
-
-        // 6. Adjust casing if English, or preserve as-is for Sinhala
-        val formatted = sortedCandidates.take(3).map { word ->
-            if (isSinhala) word else applyCasing(cleanPrefix, word)
-        }
-
-        formatted
+    private fun hasCustomCasing(str: String): Boolean {
+        if (str.length < 2) return false
+        val hasUpperAfterFirst = str.drop(1).any { it.isUpperCase() }
+        val hasLower = str.any { it.isLowerCase() }
+        val hasUpper = str.any { it.isUpperCase() }
+        return hasUpperAfterFirst || (hasUpper && hasLower && str.first().isLowerCase())
     }
 
-    /**
-     * Records a word used by the user in typing history to improve future suggestions.
-     * Increments the frequency count for this word.
-     */
-    suspend fun recordWordUsed(word: String) = withContext(Dispatchers.IO) {
-        val isSinhala = isSinhalaWord(word)
-        val clean = if (isSinhala) {
-            word.trim().trim { it.isWhitespace() || it in listOf('.', ',', '!', '?', ';', ':', '(', ')', '"', '\'') }
-        } else {
-            word.trim().trim { !it.isLetterOrDigit() }.lowercase(Locale.ROOT)
+    private fun applyCasing(typedPrefix: String, word: String, originalCase: String?): String {
+        if (!originalCase.isNullOrBlank() && hasCustomCasing(originalCase)) {
+            return originalCase
         }
-        if (clean.length < 2) return@withContext
-
-        try {
-            val updated = wordFrequencyDao.incrementFrequency(clean, System.currentTimeMillis())
-            if (updated == 0) {
-                wordFrequencyDao.insertOrUpdate(
-                    WordFrequencyEntity(
-                        word = clean,
-                        frequency = 1,
-                        lastUsed = System.currentTimeMillis()
-                    )
-                )
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun applyCasing(typedPrefix: String, word: String): String {
         return when {
             typedPrefix.length >= 2 && typedPrefix.all { it.isUpperCase() } -> {
                 word.uppercase(Locale.ROOT)
@@ -193,5 +255,379 @@ class WordSuggestionManager(private val wordFrequencyDao: WordFrequencyDao) {
                 word.lowercase(Locale.ROOT)
             }
         }
+    }
+
+    /**
+     * Returns 3 suggested words matching the current context and typed prefix.
+     * When prefix is empty:
+     * - Returns next-word predictions from bigram frequencies based on prevWord.
+     * - Falls back to top learned words and common starter words.
+     * When prefix is typed:
+     * - Blended score: w_user * log(1 + min(freq, 50)) + w_bigram * bigramScore + w_dict * dictScore + exactPrefixBonus
+     * - Recency weighting: score * 0.5^(daysSinceLastUse / 30).
+     * - Confidence threshold decides whether best candidate appears in the center slot or literal word appears.
+     */
+    suspend fun getSuggestions(
+        prefix: String,
+        language: String = "en",
+        prevWord: String? = null
+    ): List<String> = withContext(Dispatchers.IO) {
+        val cleanPrefix = prefix.trim()
+        val isSinhalaScript = cleanPrefix.isNotEmpty() && isSinhalaWord(cleanPrefix)
+        val isSinhalaLanguage = language == "si"
+        val preferSinhala = isSinhalaScript || isSinhalaLanguage
+
+        // 1. EMPTY BUFFER: Show next-word predictions from bigrams or starter words
+        if (cleanPrefix.isEmpty()) {
+            val suggestions = mutableListOf<String>()
+
+            // 1A. Try bigram next-word prediction
+            if (!prevWord.isNullOrBlank() && bigramFrequencyDao != null) {
+                try {
+                    val cleanPrev = prevWord.trim().lowercase(Locale.ROOT)
+                    val continuations = bigramFrequencyDao.getTopContinuations(cleanPrev, limit = 5)
+                    for (item in continuations) {
+                        if (suggestions.size >= 3) break
+                        if (!suggestions.contains(item.word)) {
+                            suggestions.add(item.word)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 1B. Top user history words matching the language script (must have frequency >= 2)
+            if (suggestions.size < 3) {
+                try {
+                    val topLearned = wordFrequencyDao.getTopLearnedWords(minFrequency = 2, limit = 15)
+                    for (entity in topLearned) {
+                        if (suggestions.size >= 3) break
+                        val matchesLang = if (preferSinhala) isSinhalaWord(entity.word) else isEnglishWord(entity.word)
+                        if (matchesLang && !suggestions.contains(entity.word)) {
+                            val text = if (hasCustomCasing(entity.originalCase)) entity.originalCase else entity.word
+                            suggestions.add(text)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 1C. Fallback to starter words
+            val starterWords = if (preferSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
+            for (defaultWord in starterWords) {
+                if (suggestions.size >= 3) break
+                if (!suggestions.any { it.equals(defaultWord, ignoreCase = true) }) {
+                    suggestions.add(defaultWord)
+                }
+            }
+
+            return@withContext suggestions.take(3)
+        }
+
+        val prefixLower = cleanPrefix.lowercase(Locale.ROOT)
+
+        // 2. FETCH CANDIDATES
+        data class CandidateInfo(
+            val word: String,
+            val originalCase: String?,
+            var userFrequency: Int = 0,
+            var lastUsed: Long = 0L,
+            var bigramCount: Int = 0,
+            var isDictionary: Boolean = false,
+            var isSinglish: Boolean = false,
+            var editDistance: Float = 0f
+        )
+
+        val candidateMap = mutableMapOf<String, CandidateInfo>()
+
+        // 2A. User learned words (Requirement A: typed at least 2 times)
+        try {
+            val learned = wordFrequencyDao.getLearnedSuggestions(prefixLower, minFrequency = 2, limit = 20)
+            for (item in learned) {
+                candidateMap[item.word.lowercase()] = CandidateInfo(
+                    word = item.word,
+                    originalCase = item.originalCase,
+                    userFrequency = item.frequency,
+                    lastUsed = item.lastUsed
+                )
+            }
+        } catch (_: Exception) {}
+
+        // 2B. Bigram context for the current word
+        if (!prevWord.isNullOrBlank() && bigramFrequencyDao != null) {
+            try {
+                val cleanPrev = prevWord.trim().lowercase(Locale.ROOT)
+                val continuations = bigramFrequencyDao.getTopContinuations(cleanPrev, limit = 10)
+                for (item in continuations) {
+                    val lower = item.word.lowercase()
+                    if (lower.startsWith(prefixLower)) {
+                        val existing = candidateMap[lower]
+                        if (existing != null) {
+                            existing.bigramCount = item.count
+                        } else {
+                            candidateMap[lower] = CandidateInfo(
+                                word = item.word,
+                                originalCase = item.word,
+                                bigramCount = item.count,
+                                lastUsed = item.lastUsed
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2C. Built-in dictionaries (English and Sinhala, preferring script)
+        val primaryVocab = if (preferSinhala) commonSinhalaVocabulary else commonEnglishVocabulary
+        val secondaryVocab = if (preferSinhala) commonEnglishVocabulary else commonSinhalaVocabulary
+
+        for (dictWord in primaryVocab) {
+            val lower = dictWord.lowercase()
+            if (lower.startsWith(prefixLower)) {
+                val existing = candidateMap[lower]
+                if (existing != null) {
+                    existing.isDictionary = true
+                } else {
+                    candidateMap[lower] = CandidateInfo(
+                        word = dictWord,
+                        originalCase = dictWord,
+                        isDictionary = true
+                    )
+                }
+            }
+        }
+
+        // Also search secondary vocabulary
+        for (dictWord in secondaryVocab) {
+            val lower = dictWord.lowercase()
+            if (lower.startsWith(prefixLower)) {
+                val existing = candidateMap[lower]
+                if (existing != null) {
+                    existing.isDictionary = true
+                } else {
+                    candidateMap[lower] = CandidateInfo(
+                        word = dictWord,
+                        originalCase = dictWord,
+                        isDictionary = true
+                    )
+                }
+            }
+        }
+
+        // 2D. Singlish-to-Sinhala suggestions (Requirement G)
+        if (!isSinhalaScript) {
+            val matchedSinhala = singlishToSinhalaMap[prefixLower]
+            if (matchedSinhala != null) {
+                candidateMap[matchedSinhala] = CandidateInfo(
+                    word = matchedSinhala,
+                    originalCase = matchedSinhala,
+                    isSinglish = true
+                )
+            }
+            // Prefix Singlish match
+            for ((key, value) in singlishToSinhalaMap) {
+                if (key.startsWith(prefixLower) && !candidateMap.containsKey(value)) {
+                    candidateMap[value] = CandidateInfo(
+                        word = value,
+                        originalCase = value,
+                        isSinglish = true
+                    )
+                    if (candidateMap.size > 25) break
+                }
+            }
+        }
+
+        // 2E. Typo / Fuzzy correction (Requirement F)
+        if (candidateMap.size < 3 && prefixLower.length >= 3 && !preferSinhala) {
+            for (dictWord in commonEnglishVocabulary) {
+                if (kotlin.math.abs(dictWord.length - prefixLower.length) <= 1) {
+                    val dist = calculateKeyboardAdjacencyDistance(prefixLower, dictWord)
+                    if (dist <= 1.5f && !candidateMap.containsKey(dictWord)) {
+                        candidateMap[dictWord] = CandidateInfo(
+                            word = dictWord,
+                            originalCase = dictWord,
+                            isDictionary = true,
+                            editDistance = dist
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. SCORE CANDIDATES (Requirement C & D)
+        // score = w_user * log(1 + min(freq, 50)) + w_bigram * bigramScore + w_dict * dictionaryScore + exactPrefixBonus
+        data class ScoredCandidate(val text: String, val score: Double)
+
+        val scored = candidateMap.values.map { info ->
+            val userScore = if (info.userFrequency > 0) {
+                W_USER * ln(1.0 + min(info.userFrequency.toFloat(), MAX_USER_FREQ_CAP))
+            } else 0.0
+
+            val bigramScore = if (info.bigramCount > 0) {
+                W_BIGRAM * ln(1.0 + min(info.bigramCount.toFloat(), 30.0f))
+            } else 0.0
+
+            val dictScore = if (info.isDictionary) W_DICT.toDouble() else 0.0
+            val singlishScore = if (info.isSinglish) 3.5 else 0.0
+            val exactBonus = if (info.word.equals(cleanPrefix, ignoreCase = true)) EXACT_PREFIX_BONUS.toDouble() else 0.0
+            val typoPenalty = if (info.editDistance > 0f) -(info.editDistance * 2.0) else 0.0
+
+            var rawScore = userScore + bigramScore + dictScore + singlishScore + exactBonus + typoPenalty
+
+            // Apply recency decay if lastUsed is available
+            if (info.lastUsed > 0L) {
+                val decay = computeRecencyDecay(info.lastUsed)
+                rawScore *= decay
+            }
+
+            // Script alignment bonus
+            if (preferSinhala && isSinhalaWord(info.word)) {
+                rawScore += 2.0
+            } else if (!preferSinhala && isEnglishWord(info.word)) {
+                rawScore += 1.0
+            }
+
+            val formattedText = if (isSinhalaWord(info.word)) {
+                info.word
+            } else {
+                applyCasing(cleanPrefix, info.word, info.originalCase)
+            }
+
+            ScoredCandidate(formattedText, rawScore)
+        }.sortedByDescending { it.score }
+
+        // 4. STRIP POSITIONING (Requirement J)
+        // Put the best candidate in the center slot only if it clears confidence threshold;
+        // otherwise show the literal typed word in the center slot.
+        val topCandidate = scored.firstOrNull()
+        val isConfident = topCandidate != null && topCandidate.score >= CONFIDENCE_THRESHOLD
+
+        val results = mutableListOf<String>()
+        val distinctCandidates = scored.map { it.text }.distinct()
+
+        if (isConfident) {
+            // Center slot is the top candidate
+            val best = distinctCandidates[0]
+            val second = distinctCandidates.getOrNull(1) ?: cleanPrefix
+            val third = distinctCandidates.getOrNull(2) ?: if (second != cleanPrefix) cleanPrefix else ""
+
+            // [Left: second, Center: best, Right: third]
+            results.add(second)
+            results.add(best)
+            results.add(third)
+        } else {
+            // Literal typed word in center
+            val left = distinctCandidates.firstOrNull() ?: cleanPrefix
+            val center = cleanPrefix
+            val right = distinctCandidates.drop(1).firstOrNull() ?: ""
+
+            // [Left: alternate, Center: literal, Right: alternate]
+            results.add(if (left != center) left else (distinctCandidates.getOrNull(1) ?: ""))
+            results.add(center)
+            results.add(if (right != center && right != left) right else (distinctCandidates.getOrNull(2) ?: ""))
+        }
+
+        // Ensure 3 slots are returned
+        while (results.size < 3) {
+            results.add("")
+        }
+
+        return@withContext results.take(3)
+    }
+
+    /**
+     * Calculates edit distance with keyboard-adjacency discount (0.5 for adjacent keys).
+     */
+    private fun calculateKeyboardAdjacencyDistance(s1: String, s2: String): Float {
+        val dp = Array(s1.length + 1) { FloatArray(s2.length + 1) }
+        for (i in 0..s1.length) dp[i][0] = i.toFloat()
+        for (j in 0..s2.length) dp[0][j] = j.toFloat()
+
+        for (i in 1..s1.length) {
+            for (j in 1..s2.length) {
+                val c1 = s1[i - 1].lowercaseChar()
+                val c2 = s2[j - 1].lowercaseChar()
+                val cost = when {
+                    c1 == c2 -> 0.0f
+                    keyboardAdjacency[c1]?.contains(c2) == true -> 0.5f
+                    else -> 1.0f
+                }
+                dp[i][j] = minOf(
+                    dp[i - 1][j] + 1.0f,
+                    dp[i][j - 1] + 1.0f,
+                    dp[i - 1][j - 1] + cost
+                )
+            }
+        }
+        return dp[s1.length][s2.length]
+    }
+
+    /**
+     * Records a word used by the user, respecting privacy constraints:
+     * - Discards if isPrivateOrSensitive is true (password, email, URI, or NO_PERSONALIZED_LEARNING).
+     * - Discards numbers-only tokens, email addresses, and URLs.
+     * - Updates bigrams if prevWord is provided.
+     * - Preserves original casing.
+     */
+    suspend fun recordWordUsed(
+        word: String,
+        prevWord: String? = null,
+        isPrivateOrSensitive: Boolean = false
+    ) = withContext(Dispatchers.IO) {
+        if (isPrivateOrSensitive) return@withContext
+
+        val trimmed = word.trim()
+        if (isInvalidToLearn(trimmed)) return@withContext
+
+        val clean = if (isSinhalaWord(trimmed)) {
+            trimmed.trim { it.isWhitespace() || it in listOf('.', ',', '!', '?', ';', ':', '(', ')', '"', '\'') }
+        } else {
+            trimmed.trim { !it.isLetterOrDigit() && it !in listOf('\'', '-') }
+        }
+
+        if (clean.length < 2) return@withContext
+
+        val lookupKey = clean.lowercase(Locale.ROOT)
+        val now = System.currentTimeMillis()
+
+        try {
+            val updated = wordFrequencyDao.incrementFrequencyWithCase(lookupKey, clean, now)
+            if (updated == 0) {
+                wordFrequencyDao.insertOrUpdate(
+                    WordFrequencyEntity(
+                        word = lookupKey,
+                        frequency = 1,
+                        lastUsed = now,
+                        originalCase = clean
+                    )
+                )
+            }
+
+            // Record bigram frequency if prevWord exists and is valid
+            if (!prevWord.isNullOrBlank() && bigramFrequencyDao != null) {
+                val cleanPrev = prevWord.trim().lowercase(Locale.ROOT)
+                if (!isInvalidToLearn(cleanPrev)) {
+                    val bigramUpdated = bigramFrequencyDao.incrementBigram(cleanPrev, lookupKey, now)
+                    if (bigramUpdated == 0) {
+                        bigramFrequencyDao.insertOrUpdate(
+                            BigramFrequencyEntity(
+                                prevWord = cleanPrev,
+                                word = lookupKey,
+                                count = 1,
+                                lastUsed = now
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Clears all learned words and bigram history (Privacy Requirement A).
+     */
+    suspend fun clearLearnedWords() = withContext(Dispatchers.IO) {
+        try {
+            wordFrequencyDao.clearAll()
+            bigramFrequencyDao?.clearAll()
+        } catch (_: Exception) {}
     }
 }

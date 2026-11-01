@@ -622,6 +622,75 @@ class ExampleRobolectricTest {
       lineResult.candidateLetters.any { it.char.lowercaseChar() in listOf('l', 'i', '1') }
     )
   }
+
+  @Test
+  fun `word suggestion manager privacy filter rejects numbers, emails, and urls`() {
+    assertTrue("Should reject numbers only", WordSuggestionManager.isInvalidToLearn("123456"))
+    assertTrue("Should reject email addresses", WordSuggestionManager.isInvalidToLearn("user@domain.com"))
+    assertTrue("Should reject URLs starting with http", WordSuggestionManager.isInvalidToLearn("http://example.com"))
+    assertTrue("Should reject URLs starting with https", WordSuggestionManager.isInvalidToLearn("https://mysite.org/path"))
+    assertTrue("Should reject URLs starting with www", WordSuggestionManager.isInvalidToLearn("www.google.com"))
+    assertTrue("Should not reject standard valid words", !WordSuggestionManager.isInvalidToLearn("keyboard"))
+  }
+
+  @Test
+  fun `word suggestion manager requires word to be typed at least twice before suggesting it`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val dao = db.wordFrequencyDao()
+    val bigramDao = db.bigramFrequencyDao()
+    val manager = WordSuggestionManager(dao, bigramDao)
+
+    val uniqueWord = "customnoveltok"
+    dao.deleteStaleWords(0L, 0)
+
+    // Type once
+    manager.recordWordUsed(uniqueWord)
+    val suggestionsAfterOnce = manager.getSuggestions(uniqueWord.take(6), language = "en")
+    assertTrue("A word typed only once must NOT appear in suggestions", !suggestionsAfterOnce.contains(uniqueWord))
+
+    // Type second time
+    manager.recordWordUsed(uniqueWord)
+    val suggestionsAfterTwice = manager.getSuggestions(uniqueWord.take(6), language = "en")
+    assertTrue("A word typed at least twice must appear in suggestions", suggestionsAfterTwice.contains(uniqueWord))
+  }
+
+  @Test
+  fun `word suggestion manager provides next-word bigram predictions on empty buffer`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val dao = db.wordFrequencyDao()
+    val bigramDao = db.bigramFrequencyDao()
+    val manager = WordSuggestionManager(dao, bigramDao)
+
+    val prevWord = "good"
+    val nextWord = "morning"
+
+    // Record bigram sequence
+    manager.recordWordUsed(nextWord, prevWord = prevWord)
+    manager.recordWordUsed(nextWord, prevWord = prevWord)
+
+    // Query with empty prefix but passing prevWord = "good"
+    val nextWordSuggestions = manager.getSuggestions("", language = "en", prevWord = prevWord)
+    assertTrue("Should predict 'morning' after 'good'", nextWordSuggestions.contains(nextWord))
+  }
+
+  @Test
+  fun `clear learned words wipes all user frequencies and bigrams`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val dao = db.wordFrequencyDao()
+    val bigramDao = db.bigramFrequencyDao()
+    val manager = WordSuggestionManager(dao, bigramDao)
+
+    manager.recordWordUsed("wipetestword", prevWord = "prev")
+    manager.recordWordUsed("wipetestword", prevWord = "prev")
+
+    manager.clearLearnedWords()
+
+    val topLearned = dao.getTopLearnedWords(minFrequency = 1, limit = 10)
+    assertTrue("Learned words table should be empty after clear", topLearned.isEmpty())
+  }
 }
 
 

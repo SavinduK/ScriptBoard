@@ -39,6 +39,7 @@ service cloud.firestore {
              data.isImage is bool &&
              (!('isPinned' in data) || data.isPinned is bool) &&
              (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
+             (!('shortcut' in data) || (data.shortcut is string && data.shortcut.size() <= 100)) &&
              (!('mimeType' in data) || (data.mimeType is string && data.mimeType.size() <= 100)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
@@ -104,7 +105,7 @@ service cloud.firestore {
                          isValidId(clipId) &&
                          incoming().userId == request.auth.uid &&
                          incoming().keys().hasAll(['userId', 'originDeviceId', 'title', 'content', 'isImage', 'createdAt']) &&
-                         incoming().keys().hasOnly(['userId', 'originDeviceId', 'title', 'content', 'isPinned', 'category', 'isImage', 'mimeType', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'originDeviceId', 'title', 'content', 'isPinned', 'category', 'shortcut', 'isImage', 'mimeType', 'createdAt', 'updatedAt']) &&
                          isValidClipboardItem(incoming());
 
         allow update: if isSignedIn() &&
@@ -114,9 +115,20 @@ service cloud.firestore {
                          incoming().createdAt == existing().createdAt &&
                          incoming().originDeviceId == existing().originDeviceId &&
                          isValidClipboardItem(incoming()) &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'isPinned', 'category', 'isImage', 'mimeType', 'updatedAt']);
+                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'isPinned', 'category', 'shortcut', 'isImage', 'mimeType', 'updatedAt']);
 
         allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(clipId);
+      }
+
+      match /settings/{settingId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create, update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(settingId) &&
+                         incoming().userId == request.auth.uid;
+
+        allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(settingId);
       }
     }
   }

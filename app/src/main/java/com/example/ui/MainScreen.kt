@@ -1,9 +1,11 @@
 package com.example.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -101,6 +103,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
     val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
     val isAutoSuggestEnabled by viewModel.isAutoSuggestEnabled.collectAsState()
+    val isHandwritingEnabled by viewModel.handwritingEnabled.collectAsState()
+    val isAutoCapitalizationEnabled by viewModel.autoCapitalizationEnabled.collectAsState()
     val keyFontSize by viewModel.keyFontSize.collectAsState()
     val altKeyFontSize by viewModel.altKeyFontSize.collectAsState()
     val lastActionStatus by viewModel.lastActionStatus.collectAsState()
@@ -392,6 +396,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 MainScreenSection.SETTINGS_PAGE -> {
                     val tabletScale by viewModel.tabletKeyboardScale.collectAsState()
                     val hideOnPhysicalKeyboard by viewModel.hideOnPhysicalKeyboard.collectAsState()
+                    val currentUser by viewModel.currentUser.collectAsState()
                     SettingsPageView(
                         colors = colors,
                         currentThemeType = currentThemeType,
@@ -401,10 +406,35 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isLaptopBarEnabled = isLaptopBarVisible,
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
                         isAutoSuggestEnabled = isAutoSuggestEnabled,
+                        isHandwritingEnabled = isHandwritingEnabled,
+                        isAutoCapitalizationEnabled = isAutoCapitalizationEnabled,
                         keyFontSize = keyFontSize,
                         altKeyFontSize = altKeyFontSize,
                         tabletKeyboardScale = tabletScale,
                         isHideOnPhysicalKeyboardEnabled = hideOnPhysicalKeyboard,
+                        currentUserEmail = currentUser?.email,
+                        onSaveSettingsToCloud = {
+                            viewModel.saveSettingsToCloud(
+                                onSuccess = { Toast.makeText(context, "Settings saved to cloud!", Toast.LENGTH_SHORT).show() },
+                                onError = { err -> Toast.makeText(context, "Save failed: $err", Toast.LENGTH_LONG).show() }
+                            )
+                        },
+                        onLoadSettingsFromCloud = {
+                            viewModel.loadSettingsFromCloud(
+                                onSuccess = { Toast.makeText(context, "Settings loaded from cloud!", Toast.LENGTH_SHORT).show() },
+                                onError = { err -> Toast.makeText(context, "Load failed: $err", Toast.LENGTH_LONG).show() }
+                            )
+                        },
+                        onSignInWithGoogle = {
+                            val activity = context as? Activity
+                            if (activity != null) {
+                                viewModel.signInWithGoogle(
+                                    activity = activity,
+                                    onSuccess = { Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show() },
+                                    onError = { err -> Toast.makeText(context, "Sign in failed: $err", Toast.LENGTH_LONG).show() }
+                                )
+                            }
+                        },
                         onBack = { currentSection = MainScreenSection.HUB },
                         onThemeSelected = { viewModel.setTheme(it) },
                         onKeyFontSizeChanged = { viewModel.setKeyFontSize(it) },
@@ -415,6 +445,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
                         onToggleHoldForSymbols = { viewModel.setHoldForSymbolsEnabled(it) },
                         onToggleAutoSuggest = { viewModel.setAutoSuggestEnabled(it) },
+                        onToggleHandwriting = { viewModel.setHandwritingEnabled(it) },
+                        onToggleAutoCapitalization = { viewModel.setAutoCapitalizationEnabled(it) },
                         onToggleHideOnPhysicalKeyboard = { viewModel.setHideOnPhysicalKeyboard(it) },
                         onCustomColorsChanged = { bg, keyBg, text, accent ->
                             viewModel.keyboardPrefs.setCustomThemeColors(bg, keyBg, text, accent)
