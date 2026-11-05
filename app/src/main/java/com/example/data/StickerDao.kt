@@ -34,6 +34,9 @@ interface StickerDao {
     @Query("SELECT COUNT(*) FROM stickers")
     suspend fun getStickerCount(): Int
 
+    @Query("SELECT * FROM stickers WHERE isAnimated = 1 AND (gifPath IS NULL OR staticPngPath IS NULL)")
+    suspend fun getAnimatedStickersMissingCompanions(): List<StickerEntity>
+
     @Query("DELETE FROM stickers")
     suspend fun clearAll()
 }

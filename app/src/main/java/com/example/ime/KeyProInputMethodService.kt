@@ -621,28 +621,42 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             is KeyAction.InsertSticker -> {
                 try {
                     val file = java.io.File(action.filePath)
-                    if (file.exists()) {
-                        val editorInfo = currentInputEditorInfo
-                        val formatted = com.example.ui.keyboard.util.StickerFormatHelper.resolveStickerForTarget(
-                            this,
-                            file,
-                            editorInfo
-                        )
-                        val targetFile = formatted.file
-                        val mimes = if (formatted.isGif) {
-                            arrayOf("image/gif", "image/*")
-                        } else {
-                            arrayOf("image/webp", "image/png", "image/*")
-                        }
+                    val editorInfo = currentInputEditorInfo
+                    val isAnim = action.isAnimated || com.example.ui.keyboard.util.WebpAnimationHelper.isAnimated(file)
 
-                        val contentUri = androidx.core.content.FileProvider.getUriForFile(
-                            this,
-                            "${packageName}.fileprovider",
-                            targetFile
-                        )
+                    val candidates = com.example.ui.keyboard.util.StickerFormatHelper.resolveCandidatesForTarget(
+                        context = this,
+                        stickerFile = file,
+                        gifPath = action.gifPath,
+                        staticPngPath = action.staticPngPath,
+                        isAnimatedSticker = isAnim,
+                        editorInfo = editorInfo
+                    )
+
+                    var committed = false
+                    var lastUri: android.net.Uri? = null
+                    val targetPkg = editorInfo?.packageName
+
+                    for (candidate in candidates) {
+                        val targetFile = candidate.file
+                        if (!targetFile.exists() || targetFile.length() == 0L) continue
+
+                        val contentUri = try {
+                            androidx.core.content.FileProvider.getUriForFile(
+                                this,
+                                "${packageName}.fileprovider",
+                                targetFile
+                            )
+                        } catch (_: Exception) {
+                            null
+                        } ?: continue
+
+                        lastUri = contentUri
+
+                        // EXACT single MIME type in ClipDescription
                         val description = android.content.ClipDescription(
                             action.name,
-                            mimes
+                            arrayOf(candidate.mimeType)
                         )
                         val inputContentInfo = androidx.core.view.inputmethod.InputContentInfoCompat(
                             contentUri,
@@ -655,21 +669,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                             flags = flags or androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
                         }
 
-                        val committed = if (editorInfo != null) {
-                            androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
-                                ic,
-                                editorInfo,
-                                inputContentInfo,
-                                flags,
-                                null
-                            )
-                        } else false
-
-                        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = android.content.ClipData.newUri(contentResolver, action.name, contentUri)
-                        cm?.setPrimaryClip(clip)
-
-                        editorInfo?.packageName?.let { targetPkg ->
+                        // On API 25 and below, also grant URI read permission manually
+                        if (targetPkg != null) {
                             try {
                                 grantUriPermission(
                                     targetPkg,
@@ -679,17 +680,56 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                             } catch (_: Exception) {}
                         }
 
-                        if (!committed) {
-                            val msg = if (formatted.isGif) {
-                                "Animated sticker (GIF) copied to clipboard! Paste it into your message."
-                            } else {
-                                "Sticker copied to clipboard! Paste it into your message."
+                        committed = if (editorInfo != null) {
+                            androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+                                ic,
+                                editorInfo,
+                                inputContentInfo,
+                                flags,
+                                null
+                            )
+                        } else false
+
+                        if (committed) {
+                            break
+                        } else {
+                            // If commitContent returned false on API 25 and below, revoke
+                            if (targetPkg != null && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N_MR1) {
+                                try {
+                                    revokeUriPermission(contentUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                } catch (_: Exception) {}
                             }
-                            android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
+
+                    if (!committed) {
+                        val fallbackFile = action.gifPath?.let { java.io.File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                            ?: file.takeIf { it.exists() && it.length() > 0 }
+
+                        val fallbackUri = lastUri ?: (fallbackFile?.let {
+                            try {
+                                androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", it)
+                            } catch (_: Exception) { null }
+                        })
+
+                        if (fallbackUri != null) {
+                            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clip = android.content.ClipData.newUri(contentResolver, action.name, fallbackUri)
+                            cm?.setPrimaryClip(clip)
+                            if (targetPkg != null) {
+                                try {
+                                    grantUriPermission(
+                                        targetPkg,
+                                        fallbackUri,
+                                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        android.widget.Toast.makeText(this, "Sticker copied. Paste it into your message.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                 } catch (_: Exception) {
-                    android.widget.Toast.makeText(this, "Could not send sticker", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this, "Sticker copied. Paste it into your message.", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
             else -> {}

@@ -22,7 +22,13 @@ enum class ShiftState {
 
 sealed class KeyAction {
     data class InsertText(val text: String) : KeyAction()
-    data class InsertSticker(val filePath: String, val name: String = "Sticker") : KeyAction()
+    data class InsertSticker(
+        val filePath: String,
+        val name: String = "Sticker",
+        val gifPath: String? = null,
+        val staticPngPath: String? = null,
+        val isAnimated: Boolean = false
+    ) : KeyAction()
     data class InsertSinhalaPillam(val baseWithPillam: String, val modifier: String) : KeyAction()
     object SwitchLanguage : KeyAction()
     object Backspace : KeyAction()

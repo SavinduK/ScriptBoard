@@ -602,7 +602,15 @@ fun KeyProKeyboardView(
                     },
                     onStickerSelected = { sticker ->
                         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
-                        onAction(KeyAction.InsertSticker(sticker.filePath, sticker.name))
+                        onAction(
+                            KeyAction.InsertSticker(
+                                filePath = sticker.filePath,
+                                name = sticker.name,
+                                gifPath = sticker.gifPath,
+                                staticPngPath = sticker.staticPngPath,
+                                isAnimated = sticker.isAnimated
+                            )
+                        )
                         coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }
                     },
                     onDeleteSticker = { sticker ->
@@ -645,7 +653,15 @@ fun KeyProKeyboardView(
                     },
                     onStickerSelected = { sticker ->
                         FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
-                        onAction(KeyAction.InsertSticker(sticker.filePath, sticker.name))
+                        onAction(
+                            KeyAction.InsertSticker(
+                                filePath = sticker.filePath,
+                                name = sticker.name,
+                                gifPath = sticker.gifPath,
+                                staticPngPath = sticker.staticPngPath,
+                                isAnimated = sticker.isAnimated
+                            )
+                        )
                         coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }
                     },
                     onDeleteSticker = { sticker ->

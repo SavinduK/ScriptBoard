@@ -13,5 +13,7 @@ data class StickerEntity(
     val dateAdded: Long = System.currentTimeMillis(),
     val isFavorite: Boolean = false,
     val isAnimated: Boolean = false,
-    val usageCount: Int = 0
+    val usageCount: Int = 0,
+    val gifPath: String? = null,
+    val staticPngPath: String? = null
 )

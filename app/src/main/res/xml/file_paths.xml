@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="stickers" path="stickers/" />
     <files-path name="internal_stickers" path="stickers/" />
-    <external-files-path name="external_stickers" path="stickers/" />
+    <files-path name="gif_stickers" path="gif_stickers/" />
+    <files-path name="png_stickers" path="png_stickers/" />
+    <files-path name="files" path="." />
+    <cache-path name="gif_cache" path="gif_stickers/" />
     <cache-path name="cache" path="." />
+    <external-files-path name="external_stickers" path="stickers/" />
 </paths>

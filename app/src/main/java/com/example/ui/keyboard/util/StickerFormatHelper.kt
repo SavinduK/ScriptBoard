@@ -3,8 +3,6 @@ package com.example.ui.keyboard.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.os.Build
 import android.view.inputmethod.EditorInfo
 import androidx.core.view.inputmethod.EditorInfoCompat
 import java.io.File
@@ -12,10 +10,12 @@ import java.io.FileOutputStream
 
 object StickerFormatHelper {
 
-    data class FormattedSticker(
-        val file: File,
-        val mimeType: String,
-        val isGif: Boolean
+    /**
+     * Overridable allowlist of packages verified to render keyboard-sent animated WebP stickers.
+     * (Default: Google Messages). All other apps receive animated GIFs or static PNGs.
+     */
+    val animatedWebpAllowlist: MutableSet<String> = mutableSetOf(
+        "com.google.android.apps.messaging"
     )
 
     fun isWhatsApp(editorInfo: EditorInfo?): Boolean {
@@ -23,108 +23,169 @@ object StickerFormatHelper {
         return pkg.contains("whatsapp")
     }
 
-    fun isAnimated(file: File): Boolean {
-        return WebpAnimationHelper.isAnimated(file)
-    }
+    data class ResolvedPayload(
+        val file: File,
+        val mimeType: String,
+        val isAnimated: Boolean
+    )
 
     /**
-     * Resolves the best sticker file and MIME type for the target editor.
-     * If the target is WhatsApp (which does not render raw WebP commits as animated stickers),
-     * OR if the receiving app does not support WebP but supports GIF, this provides an animated GIF version.
+     * Resolves the ordered candidate payloads to attempt sending via commitContent.
+     * Order for ANIMATED stickers:
+     *   1. image/gif if advertised (or image/wildcard is advertised)
+     *   2. image/webp ONLY for apps verified to animate it (default: com.google.android.apps.messaging)
+     *   3. static PNG of frame 1 via image/png (or image/wildcard)
+     *   4. clipboard fallback
+     * Order for STATIC stickers:
+     *   1. image/webp
+     *   2. image/png
+     *   3. clipboard fallback
      */
-    fun resolveStickerForTarget(
+    fun resolveCandidatesForTarget(
         context: Context,
-        originalFile: File,
+        stickerFile: File,
+        gifPath: String?,
+        staticPngPath: String?,
+        isAnimatedSticker: Boolean,
         editorInfo: EditorInfo?
-    ): FormattedSticker {
-        if (!originalFile.exists()) {
-            return FormattedSticker(originalFile, "image/webp", false)
-        }
-
+    ): List<ResolvedPayload> {
         val supportedMimes = editorInfo?.let { EditorInfoCompat.getContentMimeTypes(it) } ?: emptyArray()
-        val appSupportsWebp = supportedMimes.any { it.equals("image/webp", ignoreCase = true) || it == "image/*" || it == "*/*" }
-        val appSupportsGif = supportedMimes.any { it.equals("image/gif", ignoreCase = true) || it == "image/*" || it == "*/*" }
-        val targetIsWhatsApp = isWhatsApp(editorInfo)
-        val isAnimatedSticker = isAnimated(originalFile)
-
-        // WhatsApp does NOT render pasted/committed WebP stickers as animated items unless sent as GIF.
-        // Also if the target app doesn't support WebP, send as GIF if supported.
-        val shouldSendAsGif = isAnimatedSticker && (targetIsWhatsApp || (!appSupportsWebp && appSupportsGif) || originalFile.extension.equals("gif", ignoreCase = true))
-
-        if (shouldSendAsGif) {
-            val gifFile = getOrGenerateGif(context, originalFile)
-            if (gifFile != null && gifFile.exists() && gifFile.length() > 0) {
-                return FormattedSticker(gifFile, "image/gif", true)
+        fun supports(mime: String): Boolean {
+            return supportedMimes.any {
+                it.equals(mime, ignoreCase = true) || it == "image/*" || it == "*/*"
             }
         }
 
-        val mime = if (originalFile.extension.equals("gif", ignoreCase = true)) "image/gif" else "image/webp"
-        return FormattedSticker(originalFile, mime, mime == "image/gif")
+        val targetPkg = editorInfo?.packageName?.lowercase() ?: ""
+        val candidates = mutableListOf<ResolvedPayload>()
+
+        if (isAnimatedSticker) {
+            // Option 1: image/gif if advertised
+            val gifFile = gifPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}.gif").takeIf { it.exists() && it.length() > 0 }
+                ?: getOrGenerateCompanionGif(context, stickerFile)
+
+            if (gifFile != null && gifFile.exists() && gifFile.length() > 0 && supports("image/gif")) {
+                candidates.add(ResolvedPayload(gifFile, "image/gif", true))
+            }
+
+            // Option 2: image/webp ONLY for apps verified to animate it
+            val isVerifiedToAnimateWebp = animatedWebpAllowlist.any { targetPkg == it.lowercase() }
+            if (isVerifiedToAnimateWebp && supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0) {
+                candidates.add(ResolvedPayload(stickerFile, "image/webp", true))
+            }
+
+            // Option 3: static PNG of frame 1 via image/png
+            val pngFile = staticPngPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}_static.png").takeIf { it.exists() && it.length() > 0 }
+                ?: getOrGenerateStaticPng(context, stickerFile)
+
+            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png")) {
+                candidates.add(ResolvedPayload(pngFile, "image/png", false))
+            }
+
+            // Option 3b: If target supports WebP (even if not verified to animate) and nothing else matched
+            if (supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0 && !candidates.any { it.file == stickerFile }) {
+                candidates.add(ResolvedPayload(stickerFile, "image/webp", false))
+            }
+        } else {
+            // STATIC stickers:
+            // 1. image/webp
+            if (supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0) {
+                candidates.add(ResolvedPayload(stickerFile, "image/webp", false))
+            }
+
+            // 2. image/png
+            val pngFile = staticPngPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}_static.png").takeIf { it.exists() && it.length() > 0 }
+                ?: getOrGenerateStaticPng(context, stickerFile)
+
+            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png")) {
+                candidates.add(ResolvedPayload(pngFile, "image/png", false))
+            }
+
+            // 3. image/gif if static GIF
+            val gifFile = gifPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+            if (gifFile != null && supports("image/gif")) {
+                candidates.add(ResolvedPayload(gifFile, "image/gif", false))
+            }
+        }
+
+        return candidates
     }
 
-    private fun getOrGenerateGif(context: Context, webpFile: File): File? {
-        if (webpFile.extension.equals("gif", ignoreCase = true)) {
-            return webpFile
-        }
+    /**
+     * Generates a valid multi-frame GIF from an animated WebP file and writes it to disk.
+     */
+    fun generateCompanionGif(context: Context, webpFile: File): File? {
+        if (!webpFile.exists() || webpFile.length() == 0L) return null
+        if (webpFile.extension.equals("gif", ignoreCase = true)) return webpFile
 
-        // 1. Check if companion .gif file exists in the same directory (e.g. stickers dir)
-        val companionGif = File(webpFile.parentFile, "${webpFile.nameWithoutExtension}.gif")
-        if (companionGif.exists() && companionGif.length() > 0) {
-            return companionGif
-        }
+        val stickersDir = File(context.filesDir, "stickers")
+        if (!stickersDir.exists()) stickersDir.mkdirs()
+        val destGif = File(stickersDir, "${webpFile.nameWithoutExtension}.gif")
 
-        // 2. Check if companion .gif is bundled in assets/sample_stickers
+        // If companion GIF was already bundled in assets, copy it directly
         val assetGifName = "${webpFile.nameWithoutExtension}.gif"
         try {
             val assetList = context.assets.list("sample_stickers") ?: emptyArray()
             if (assetList.contains(assetGifName)) {
-                val cacheDir = File(context.cacheDir, "gif_stickers")
-                if (!cacheDir.exists()) cacheDir.mkdirs()
-                val cachedFile = File(cacheDir, assetGifName)
-                if (!cachedFile.exists() || cachedFile.length() == 0L) {
-                    context.assets.open("sample_stickers/$assetGifName").use { input ->
-                        FileOutputStream(cachedFile).use { output ->
-                            input.copyTo(output)
-                        }
+                context.assets.open("sample_stickers/$assetGifName").use { input ->
+                    FileOutputStream(destGif).use { output ->
+                        input.copyTo(output)
                     }
                 }
-                if (cachedFile.exists() && cachedFile.length() > 0) {
-                    return cachedFile
+                if (destGif.exists() && destGif.length() > 0 && GifEncoder.validateGif(destGif, false)) {
+                    return destGif
                 }
             }
         } catch (_: Exception) {}
 
-        // 3. Check in app cache directory
-        val cacheDir = File(context.cacheDir, "gif_stickers")
-        if (!cacheDir.exists()) cacheDir.mkdirs()
-        val cachedGif = File(cacheDir, "${webpFile.nameWithoutExtension}.gif")
-        if (cachedGif.exists() && cachedGif.length() > 0) {
-            return cachedGif
-        }
+        // Otherwise decode frames and encode multi-frame GIF
+        val frames = WebpFrameExtractor.extractFrames(webpFile)
+        if (frames.isEmpty()) return null
 
-        // 4. Fallback generation: Convert WebP frames/bitmap to GIF
-        return convertWebpToGifFallback(context, webpFile, cachedGif)
+        val ok = GifEncoder.encodeAnimation(frames, destGif)
+        return if (ok && destGif.exists() && destGif.length() > 0) destGif else null
     }
 
-    private fun convertWebpToGifFallback(context: Context, webpFile: File, outputFile: File): File? {
+    /**
+     * Generates a static PNG from frame 1 of a sticker.
+     */
+    fun generateStaticPng(context: Context, stickerFile: File): File? {
+        if (!stickerFile.exists() || stickerFile.length() == 0L) return null
+        val stickersDir = File(context.filesDir, "stickers")
+        if (!stickersDir.exists()) stickersDir.mkdirs()
+        val destPng = File(stickersDir, "${stickerFile.nameWithoutExtension}_static.png")
+
         try {
-            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                try {
-                    val source = ImageDecoder.createSource(webpFile)
-                    ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    }
-                } catch (_: Exception) {
-                    BitmapFactory.decodeFile(webpFile.absolutePath)
-                }
+            val frames = if (WebpAnimationHelper.isAnimated(stickerFile)) {
+                WebpFrameExtractor.extractFrames(stickerFile)
             } else {
-                BitmapFactory.decodeFile(webpFile.absolutePath)
+                emptyList()
+            }
+
+            val bmp = if (frames.isNotEmpty()) {
+                frames.first().bitmap
+            } else {
+                BitmapFactory.decodeFile(stickerFile.absolutePath)
             } ?: return null
 
-            BasicGifWriter.writeSingleFrameGif(bitmap, outputFile)
-            return if (outputFile.exists() && outputFile.length() > 0) outputFile else null
+            FileOutputStream(destPng).use { out ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            return if (destPng.exists() && destPng.length() > 0) destPng else null
         } catch (_: Exception) {
             return null
         }
+    }
+
+    private fun getOrGenerateCompanionGif(context: Context, webpFile: File): File? {
+        return generateCompanionGif(context, webpFile)
+    }
+
+    private fun getOrGenerateStaticPng(context: Context, stickerFile: File): File? {
+        return generateStaticPng(context, stickerFile)
     }
 }

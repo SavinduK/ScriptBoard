@@ -1,10 +1,10 @@
 package com.example.data
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import androidx.core.content.FileProvider
+import com.example.ui.keyboard.util.GifEncoder
+import com.example.ui.keyboard.util.StickerFormatHelper
 import com.example.ui.keyboard.util.WebpAnimationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -29,8 +29,40 @@ class StickerRepository(private val stickerDao: StickerDao) {
     }
 
     suspend fun ensureSampleStickersSeeded(context: Context) = withContext(Dispatchers.IO) {
-        if (stickerDao.getStickerCount() > 0) return@withContext
-        seedSampleStickers(context)
+        if (stickerDao.getStickerCount() == 0) {
+            seedSampleStickers(context)
+        } else {
+            ensureCompanionFilesGenerated(context)
+        }
+    }
+
+    suspend fun ensureCompanionFilesGenerated(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            val missing = stickerDao.getAnimatedStickersMissingCompanions()
+            for (sticker in missing) {
+                val file = File(sticker.filePath)
+                if (!file.exists() || file.length() == 0L) continue
+
+                var gifFile = sticker.gifPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                if (gifFile == null || !GifEncoder.validateGif(gifFile, false)) {
+                    gifFile = StickerFormatHelper.generateCompanionGif(context, file)
+                }
+
+                var pngFile = sticker.staticPngPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+                if (pngFile == null) {
+                    pngFile = StickerFormatHelper.generateStaticPng(context, file)
+                }
+
+                if (gifFile != null || pngFile != null) {
+                    stickerDao.update(
+                        sticker.copy(
+                            gifPath = gifFile?.absolutePath ?: sticker.gifPath,
+                            staticPngPath = pngFile?.absolutePath ?: sticker.staticPngPath
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     suspend fun seedSampleStickers(context: Context): Int = withContext(Dispatchers.IO) {
@@ -55,7 +87,7 @@ class StickerRepository(private val stickerDao: StickerDao) {
                     }
                 }
 
-                // Copy companion .gif file if present for WhatsApp animated sticker support
+                // Copy companion .gif file if present in assets
                 val gifName = "${fileName.removeSuffix(".webp")}.gif"
                 val destGif = File(stickersDir, gifName)
                 if ((!destGif.exists() || destGif.length() == 0L) && sampleList.contains(gifName)) {
@@ -72,13 +104,26 @@ class StickerRepository(private val stickerDao: StickerDao) {
                     val isAnim = WebpAnimationHelper.isAnimated(destFile)
                     val readableName = fileName.removeSuffix(".webp").replace('_', ' ')
                         .split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+
+                    var validGifFile: File? = if (destGif.exists() && destGif.length() > 0 && GifEncoder.validateGif(destGif, false)) {
+                        destGif
+                    } else if (isAnim) {
+                        StickerFormatHelper.generateCompanionGif(context, destFile)
+                    } else {
+                        null
+                    }
+
+                    val staticPngFile = StickerFormatHelper.generateStaticPng(context, destFile)
+
                     entities.add(
                         StickerEntity(
                             filePath = destFile.absolutePath,
                             name = readableName,
                             source = "sample",
                             isAnimated = isAnim,
-                            dateAdded = System.currentTimeMillis() + index
+                            dateAdded = System.currentTimeMillis() + index,
+                            gifPath = validGifFile?.absolutePath,
+                            staticPngPath = staticPngFile?.absolutePath
                         )
                     )
                 }
@@ -113,13 +158,18 @@ class StickerRepository(private val stickerDao: StickerDao) {
 
                 if (destFile.exists() && destFile.length() > 0) {
                     val isAnim = WebpAnimationHelper.isAnimated(destFile)
+                    val gifFile = if (isAnim) StickerFormatHelper.generateCompanionGif(context, destFile) else null
+                    val staticPngFile = StickerFormatHelper.generateStaticPng(context, destFile)
+
                     entities.add(
                         StickerEntity(
                             filePath = destFile.absolutePath,
                             name = "Sticker ${System.currentTimeMillis() % 10000}",
                             source = source,
                             isAnimated = isAnim,
-                            dateAdded = System.currentTimeMillis() + index
+                            dateAdded = System.currentTimeMillis() + index,
+                            gifPath = gifFile?.absolutePath,
+                            staticPngPath = staticPngFile?.absolutePath
                         )
                     )
                     count++
@@ -155,13 +205,18 @@ class StickerRepository(private val stickerDao: StickerDao) {
 
                 if (destFile.exists() && destFile.length() > 0) {
                     val isAnim = WebpAnimationHelper.isAnimated(destFile)
+                    val gifFile = if (isAnim) StickerFormatHelper.generateCompanionGif(context, destFile) else null
+                    val staticPngFile = StickerFormatHelper.generateStaticPng(context, destFile)
+
                     entities.add(
                         StickerEntity(
                             filePath = destFile.absolutePath,
                             name = file.nameWithoutExtension.take(20).ifBlank { "WA Sticker" },
                             source = source,
                             isAnimated = isAnim,
-                            dateAdded = System.currentTimeMillis() + index
+                            dateAdded = System.currentTimeMillis() + index,
+                            gifPath = gifFile?.absolutePath,
+                            staticPngPath = staticPngFile?.absolutePath
                         )
                     )
                     count++
@@ -178,8 +233,14 @@ class StickerRepository(private val stickerDao: StickerDao) {
     suspend fun deleteSticker(sticker: StickerEntity) = withContext(Dispatchers.IO) {
         try {
             val file = File(sticker.filePath)
-            if (file.exists()) {
-                file.delete()
+            if (file.exists()) file.delete()
+            sticker.gifPath?.let { path ->
+                val gifFile = File(path)
+                if (gifFile.exists()) gifFile.delete()
+            }
+            sticker.staticPngPath?.let { path ->
+                val pngFile = File(path)
+                if (pngFile.exists()) pngFile.delete()
             }
         } catch (_: Exception) {}
         stickerDao.delete(sticker)

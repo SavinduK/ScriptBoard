@@ -11,6 +11,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -106,6 +109,7 @@ fun StickersScreen(
     var stickerToDelete by remember { mutableStateOf<StickerEntity?>(null) }
 
     var selectedStickerTab by remember { mutableStateOf(0) } // 0 = Normal, 1 = Animated
+    var showImportInfoDialog by remember { mutableStateOf(false) }
 
     // Generic file picker (SAF / ACTION_OPEN_DOCUMENT) for browsing sticker folders
     val openDocumentLauncher = rememberLauncherForActivityResult(
@@ -282,6 +286,18 @@ fun StickersScreen(
                                     color = colors.letterKeySecondaryTextColor,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showImportInfoDialog = true },
+                                modifier = Modifier.testTag("btn_sticker_import_info")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "Import & Export Help",
+                                    tint = colors.enterKeyBackground,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
@@ -679,6 +695,101 @@ fun StickersScreen(
                 }
             }
         }
+    }
+
+    if (showImportInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportInfoDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = colors.enterKeyBackground,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Sticker Import & Export",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "WhatsApp Stickers Folder:",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Stickers/",
+                            color = colors.letterKeyTextColor,
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = "How to Import Images / Stickers:",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "1. Tap \"Open Folder\" on the card.\n2. In the Android file picker, tap the menu (top left) and choose your phone storage.\n3. Navigate to the WhatsApp Stickers folder above, or your Downloads or Pictures.\n4. Select any .webp, .gif, or .png sticker files.\n5. KeyPro automatically converts animations into high-compatibility formats for WhatsApp, Telegram, and Instagram DMs.",
+                        color = colors.letterKeySecondaryTextColor,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = "How to Export / Backup:",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Tap \"Backup as ZIP\" to bundle all your stickers into one file. Save it to Google Drive or Downloads to share with other devices.",
+                        color = colors.letterKeySecondaryTextColor,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showImportInfoDialog = false },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.enterKeyBackground,
+                        contentColor = colors.enterKeyTextColor
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("btn_close_import_info_dialog")
+                ) {
+                    Text("Got it", fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = colors.toolbarBackground,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 
