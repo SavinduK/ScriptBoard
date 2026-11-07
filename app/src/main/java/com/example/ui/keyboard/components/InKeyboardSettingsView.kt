@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardCapslock
 import androidx.compose.material.icons.filled.Language
@@ -90,7 +89,6 @@ fun InKeyboardSettingsView(
     val laptopBarEnabled by keyboardPrefs.laptopBarVisible.collectAsState()
     val holdForSymbolsEnabled by keyboardPrefs.holdForSymbolsEnabled.collectAsState()
     val autoSuggestEnabled by keyboardPrefs.autoSuggestEnabled.collectAsState()
-    val handwritingEnabled by keyboardPrefs.handwritingEnabled.collectAsState()
     val autoCapitalizationEnabled by keyboardPrefs.autoCapitalizationEnabled.collectAsState()
     val keyFontSize by keyboardPrefs.keyFontSize.collectAsState()
     val altKeyFontSize by keyboardPrefs.altKeyFontSize.collectAsState()
@@ -522,18 +520,6 @@ fun InKeyboardSettingsView(
                             testTag = "switch_auto_suggest_inline"
                         )
 
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Handwritten text toggle (Request: in feedback and actions add toggle to turn on/off handwritten text)
-                        SettingToggleRow(
-                            icon = Icons.Default.Draw,
-                            title = "Handwritten Text",
-                            subtitle = "Enable ML Kit handwriting recognition canvas on toolbar",
-                            checked = handwritingEnabled,
-                            onCheckedChange = { keyboardPrefs.setHandwritingEnabled(it) },
-                            colors = colors,
-                            testTag = "switch_handwriting_inline"
-                        )
 
                         Spacer(modifier = Modifier.height(4.dp))
 

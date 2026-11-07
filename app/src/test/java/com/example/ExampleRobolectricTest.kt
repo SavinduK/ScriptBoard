@@ -356,53 +356,13 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `handwriting recognizer accurately classifies circle gesture as o`() {
-    // Generate circular stroke points
-    val circleStroke = (0..20).map { i ->
-      val angle = (i.toDouble() / 20.0) * 2.0 * Math.PI
-      androidx.compose.ui.geometry.Offset(
-        x = (100.0 + 50.0 * Math.cos(angle)).toFloat(),
-        y = (100.0 + 50.0 * Math.sin(angle)).toFloat()
-      )
-    }
-
-    val result = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
-      strokes = listOf(circleStroke),
-      commonVocabulary = listOf("o", "on", "of", "one", "out")
-    )
-
-    assertNotNull(result)
-    assertTrue("Should recognize letter o or related round character", result.recognizedLetters.contains('o') || result.primaryWord.contains("o", ignoreCase = true))
-  }
-
-  @Test
-  fun `handwriting recognizer clusters multi-letter strokes and returns candidate words`() {
-    // Draw two horizontal separate strokes: stroke 1 (left) and stroke 2 (right)
-    val stroke1 = listOf(
-      androidx.compose.ui.geometry.Offset(50f, 100f),
-      androidx.compose.ui.geometry.Offset(50f, 150f),
-      androidx.compose.ui.geometry.Offset(50f, 200f)
-    )
-    val stroke2 = listOf(
-      androidx.compose.ui.geometry.Offset(250f, 100f),
-      androidx.compose.ui.geometry.Offset(250f, 150f),
-      androidx.compose.ui.geometry.Offset(250f, 200f)
-    )
-
-    val result = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
-      strokes = listOf(stroke1, stroke2),
-      commonVocabulary = listOf("ll", "it", "in", "is", "to")
-    )
-
-    assertNotNull(result)
-    assertEquals(2, result.recognizedLetters.size)
-    assertTrue("Primary word should not be empty", result.primaryWord.isNotBlank())
-  }
-
-  @Test
-  fun `glide typing layout mode is registered in KeyboardLayoutMode`() {
+  fun `keyboard layout mode registers standard typing and media modes`() {
     val modes = com.example.ui.keyboard.model.KeyboardLayoutMode.values()
-    assertTrue("KeyboardLayoutMode must contain GLIDE_TYPING", modes.any { it.name == "GLIDE_TYPING" })
+    assertTrue("KeyboardLayoutMode must contain TEXT", modes.any { it.name == "TEXT" })
+    assertTrue("KeyboardLayoutMode must contain EMOJI", modes.any { it.name == "EMOJI" })
+    assertTrue("KeyboardLayoutMode must contain STICKERS", modes.any { it.name == "STICKERS" })
+    assertTrue("KeyboardLayoutMode must contain CLIPBOARD", modes.any { it.name == "CLIPBOARD" })
+    assertTrue("KeyboardLayoutMode must contain EXTENDED_PC", modes.any { it.name == "EXTENDED_PC" })
   }
 
   @Test
@@ -585,43 +545,6 @@ class ExampleRobolectricTest {
     assertEquals("Remaining entry should be the newest one", 3000L, afterList.first().timestamp)
   }
 
-  @Test
-  fun `handwriting recognizer accurately identifies circle as o and vertical line as l or I`() {
-    // 1. Circle stroke
-    val circleStroke = (0..20).map { i ->
-      val angle = (i.toDouble() / 20.0) * 2.0 * Math.PI
-      androidx.compose.ui.geometry.Offset(
-        x = (150.0 + 50.0 * Math.cos(angle)).toFloat(),
-        y = (150.0 + 50.0 * Math.sin(angle)).toFloat()
-      )
-    }
-
-    val circleResult = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
-      strokes = listOf(circleStroke),
-      commonVocabulary = listOf("o", "on", "of", "open")
-    )
-    assertTrue(
-      "Circle stroke should recognize 'o', 'O', or '0'",
-      circleResult.recognizedLetters.any { it.equals('o', ignoreCase = true) || it == '0' } ||
-      circleResult.candidateLetters.any { it.char.equals('o', ignoreCase = true) || it.char == '0' }
-    )
-
-    // 2. Straight vertical line stroke
-    val lineStroke = listOf(
-      androidx.compose.ui.geometry.Offset(100f, 50f),
-      androidx.compose.ui.geometry.Offset(100f, 150f),
-      androidx.compose.ui.geometry.Offset(100f, 250f)
-    )
-
-    val lineResult = com.example.ui.keyboard.glide.HandwritingRecognizer.recognize(
-      strokes = listOf(lineStroke)
-    )
-    assertTrue(
-      "Vertical line stroke should recognize 'l', 'I', '1', or 'i'",
-      lineResult.recognizedLetters.any { it.lowercaseChar() in listOf('l', 'i', '1') } ||
-      lineResult.candidateLetters.any { it.char.lowercaseChar() in listOf('l', 'i', '1') }
-    )
-  }
 
   @Test
   fun `word suggestion manager privacy filter rejects numbers, emails, and urls`() {

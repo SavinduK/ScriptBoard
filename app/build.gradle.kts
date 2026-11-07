@@ -122,7 +122,7 @@ dependencies {
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   implementation(libs.zxing.core)
-  implementation(libs.mlkit.digital.ink)
+  // implementation(libs.mlkit.digital.ink)
   implementation(libs.androidx.work.runtime.ktx)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

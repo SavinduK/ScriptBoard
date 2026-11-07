@@ -103,7 +103,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
     val isHoldForSymbolsEnabled by viewModel.isHoldForSymbolsEnabled.collectAsState()
     val isAutoSuggestEnabled by viewModel.isAutoSuggestEnabled.collectAsState()
-    val isHandwritingEnabled by viewModel.handwritingEnabled.collectAsState()
     val isAutoCapitalizationEnabled by viewModel.autoCapitalizationEnabled.collectAsState()
     val keyFontSize by viewModel.keyFontSize.collectAsState()
     val altKeyFontSize by viewModel.altKeyFontSize.collectAsState()
@@ -406,7 +405,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         isLaptopBarEnabled = isLaptopBarVisible,
                         isHoldForSymbolsEnabled = isHoldForSymbolsEnabled,
                         isAutoSuggestEnabled = isAutoSuggestEnabled,
-                        isHandwritingEnabled = isHandwritingEnabled,
                         isAutoCapitalizationEnabled = isAutoCapitalizationEnabled,
                         keyFontSize = keyFontSize,
                         altKeyFontSize = altKeyFontSize,
@@ -445,7 +443,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         onToggleLaptopBar = { viewModel.setLaptopBarVisible(it) },
                         onToggleHoldForSymbols = { viewModel.setHoldForSymbolsEnabled(it) },
                         onToggleAutoSuggest = { viewModel.setAutoSuggestEnabled(it) },
-                        onToggleHandwriting = { viewModel.setHandwritingEnabled(it) },
                         onToggleAutoCapitalization = { viewModel.setAutoCapitalizationEnabled(it) },
                         onToggleHideOnPhysicalKeyboard = { viewModel.setHideOnPhysicalKeyboard(it) },
                         onCustomColorsChanged = { bg, keyBg, text, accent ->

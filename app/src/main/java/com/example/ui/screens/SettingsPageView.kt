@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardCapslock
 import androidx.compose.material.icons.filled.Language
@@ -93,7 +92,6 @@ fun SettingsPageView(
     isLaptopBarEnabled: Boolean,
     isHoldForSymbolsEnabled: Boolean,
     isAutoSuggestEnabled: Boolean = true,
-    isHandwritingEnabled: Boolean = true,
     isAutoCapitalizationEnabled: Boolean = true,
     keyFontSize: Float = 24f,
     altKeyFontSize: Float = 14f,
@@ -109,7 +107,6 @@ fun SettingsPageView(
     onToggleLaptopBar: (Boolean) -> Unit,
     onToggleHoldForSymbols: (Boolean) -> Unit,
     onToggleAutoSuggest: (Boolean) -> Unit = {},
-    onToggleHandwriting: (Boolean) -> Unit = {},
     onToggleAutoCapitalization: (Boolean) -> Unit = {},
     onToggleHideOnPhysicalKeyboard: (Boolean) -> Unit = {},
     currentUserEmail: String? = null,
@@ -712,18 +709,6 @@ fun SettingsPageView(
                             testTag = "page_switch_auto_suggest"
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Handwritten text toggle (Request: in feedback and actions add a toggle to turn on and off handwritten text)
-                        SettingsPageToggle(
-                            icon = Icons.Default.Draw,
-                            title = "Handwritten Text",
-                            subtitle = "Enable ML Kit handwriting recognition canvas on keyboard toolbar",
-                            checked = isHandwritingEnabled,
-                            onCheckedChange = onToggleHandwriting,
-                            colors = colors,
-                            testTag = "page_switch_handwriting"
-                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 

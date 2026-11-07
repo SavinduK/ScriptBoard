@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ContentPasteGo
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Mic
@@ -37,8 +36,6 @@ fun KeyboardToolbar(
     isExtendedPcActive: Boolean,
     isEmojiActive: Boolean = false,
     isVoiceTypeActive: Boolean = false,
-    isGlideTypingActive: Boolean = false,
-    isHandwritingEnabled: Boolean = true,
     currentLanguage: String = "en",
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
@@ -46,7 +43,6 @@ fun KeyboardToolbar(
     onOpenClipboard: () -> Unit,
     onOpenEmoji: () -> Unit = {},
     onTriggerVoiceType: () -> Unit = {},
-    onToggleGlideTyping: () -> Unit = {},
     onOpenSettings: () -> Unit
 ) {
     Row(
@@ -126,27 +122,7 @@ fun KeyboardToolbar(
             )
         }
 
-        // 5. Handwriting recognition (Pen icon - visible only when enabled in settings)
-        if (isHandwritingEnabled) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isGlideTypingActive) colors.laptopKeyActiveBackground else Color.Transparent)
-                    .clickable(onClick = onToggleGlideTyping)
-                    .testTag("btn_toolbar_glide_typing"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Draw,
-                    contentDescription = "Handwriting",
-                    tint = if (isGlideTypingActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
-        // 6. Voice typing button (microphone icon)
+        // 5. Voice typing button (microphone icon)
         Box(
             modifier = Modifier
                 .size(38.dp)

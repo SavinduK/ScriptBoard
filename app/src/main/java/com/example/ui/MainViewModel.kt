@@ -61,7 +61,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val persistentSyncServiceEnabled = keyboardPrefs.persistentSyncServiceEnabled
     val localDeviceName = keyboardPrefs.localDeviceName
     val hideOnPhysicalKeyboard = keyboardPrefs.hideOnPhysicalKeyboard
-    val handwritingEnabled = keyboardPrefs.handwritingEnabled
     val autoCapitalizationEnabled = keyboardPrefs.autoCapitalizationEnabled
     val customCategories: StateFlow<Set<String>> = keyboardPrefs.customCategories
 
@@ -710,10 +709,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _lastActionStatus.value = if (enabled) "Hide on physical keyboard: ON" else "Hide on physical keyboard: OFF"
     }
 
-    fun setHandwritingEnabled(enabled: Boolean) {
-        keyboardPrefs.setHandwritingEnabled(enabled)
-        _lastActionStatus.value = if (enabled) "Handwriting recognition: ON" else "Handwriting recognition: OFF"
-    }
 
     fun setAutoCapitalizationEnabled(enabled: Boolean) {
         keyboardPrefs.setAutoCapitalizationEnabled(enabled)

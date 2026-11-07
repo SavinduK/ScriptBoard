@@ -60,7 +60,6 @@ import com.example.ui.keyboard.components.KeyCap
 import com.example.ui.keyboard.components.KeyboardToolbar
 import com.example.ui.keyboard.components.LaptopKeysBar
 import com.example.ui.keyboard.components.VoiceTypingView
-import com.example.ui.keyboard.components.GlideTypingView
 import com.example.ui.keyboard.model.KeyAction
 import com.example.ui.keyboard.model.KeyItem
 import com.example.ui.keyboard.model.KeyboardColors
@@ -102,7 +101,6 @@ fun KeyProKeyboardView(
     val currentLanguage by keyboardPrefs.currentLanguage.collectAsState()
     val installedLanguages by keyboardPrefs.installedLanguages.collectAsState()
     val numberRowEnabled by keyboardPrefs.numberRowEnabled.collectAsState()
-    val handwritingEnabled by keyboardPrefs.handwritingEnabled.collectAsState()
     val autoCapitalizationEnabled by keyboardPrefs.autoCapitalizationEnabled.collectAsState()
 
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
@@ -301,9 +299,6 @@ fun KeyProKeyboardView(
             is KeyAction.SwitchLanguage -> {
                 selectedSinhalaLetter = "ව"
                 currentWordBuffer = ""
-                if (layoutMode == KeyboardLayoutMode.GLIDE_TYPING) {
-                    layoutMode = KeyboardLayoutMode.TEXT
-                }
                 val nextLang = keyboardPrefs.cycleLanguage()
                 val langName = if (nextLang == "si") "සිංහල" else "English"
                 android.widget.Toast.makeText(context, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
@@ -378,7 +373,7 @@ fun KeyProKeyboardView(
         ) {
             // Laptop Keys Bar (Top row: Esc, Tab, Ctrl, Alt, Arrow keys)
             AnimatedVisibility(
-                visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING && layoutMode != KeyboardLayoutMode.EXTENDED_PC && layoutMode != KeyboardLayoutMode.GLIDE_TYPING),
+                visible = isLaptopBarVisible && (layoutMode != KeyboardLayoutMode.EMOJI && layoutMode != KeyboardLayoutMode.CLIPBOARD && layoutMode != KeyboardLayoutMode.SETTINGS && layoutMode != KeyboardLayoutMode.STICKERS && layoutMode != KeyboardLayoutMode.VOICE_TYPING && layoutMode != KeyboardLayoutMode.EXTENDED_PC),
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
@@ -395,7 +390,7 @@ fun KeyProKeyboardView(
                 )
             }
 
-        // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Glide Typing (Pen) / Emoji, Voice Typing, Settings
+        // Toolbar: Laptop switch, Extended PC keys, Direct Paste, Clipboard, Emoji / Stickers, Voice Typing, Settings
         // In laptop keyboard mode, do not show the top icon bar
         if (layoutMode != KeyboardLayoutMode.EXTENDED_PC) {
             KeyboardToolbar(
@@ -404,8 +399,6 @@ fun KeyProKeyboardView(
                 isExtendedPcActive = layoutMode == KeyboardLayoutMode.EXTENDED_PC,
                 isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
                 isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
-                isGlideTypingActive = layoutMode == KeyboardLayoutMode.GLIDE_TYPING,
-                isHandwritingEnabled = handwritingEnabled,
                 currentLanguage = currentLanguage,
                 onToggleLaptopBar = {
                     val next = !isLaptopBarVisible
@@ -441,13 +434,6 @@ fun KeyProKeyboardView(
                         KeyboardLayoutMode.TEXT
                     } else {
                         KeyboardLayoutMode.VOICE_TYPING
-                    }
-                },
-                onToggleGlideTyping = {
-                    layoutMode = if (layoutMode == KeyboardLayoutMode.GLIDE_TYPING) {
-                        KeyboardLayoutMode.TEXT
-                    } else {
-                        KeyboardLayoutMode.GLIDE_TYPING
                     }
                 },
                 onOpenSettings = {
@@ -682,20 +668,6 @@ fun KeyProKeyboardView(
                     onEnter = { handleKeyAction(KeyAction.Enter) },
                     onSpace = { handleKeyAction(KeyAction.Space) },
                     onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT }
-                )
-            }
-            KeyboardLayoutMode.GLIDE_TYPING -> {
-                GlideTypingView(
-                    colors = colors,
-                    onInsertText = { text ->
-                        FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
-                        onAction(KeyAction.InsertText(text))
-                    },
-                    onBackspace = { handleKeyAction(KeyAction.Backspace) },
-                    onEnter = { handleKeyAction(KeyAction.Enter) },
-                    onSpace = { handleKeyAction(KeyAction.Space) },
-                    onBackToLetters = { layoutMode = KeyboardLayoutMode.TEXT },
-                    languageOverride = currentLanguage
                 )
             }
             else -> {

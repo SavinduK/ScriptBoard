@@ -30,9 +30,6 @@ class KeyboardPreferences(context: Context) {
     private val _autoSuggestEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SUGGEST_ENABLED, true))
     val autoSuggestEnabled: StateFlow<Boolean> = _autoSuggestEnabled.asStateFlow()
 
-    private val _handwritingEnabled = MutableStateFlow(prefs.getBoolean(KEY_HANDWRITING_ENABLED, true))
-    val handwritingEnabled: StateFlow<Boolean> = _handwritingEnabled.asStateFlow()
-
     private val _autoCapitalizationEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, true))
     val autoCapitalizationEnabled: StateFlow<Boolean> = _autoCapitalizationEnabled.asStateFlow()
 
@@ -281,11 +278,6 @@ class KeyboardPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_SUGGEST_ENABLED, enabled).apply()
     }
 
-    fun setHandwritingEnabled(enabled: Boolean) {
-        _handwritingEnabled.value = enabled
-        prefs.edit().putBoolean(KEY_HANDWRITING_ENABLED, enabled).apply()
-    }
-
     fun setAutoCapitalizationEnabled(enabled: Boolean) {
         _autoCapitalizationEnabled.value = enabled
         prefs.edit().putBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, enabled).apply()
@@ -440,7 +432,6 @@ class KeyboardPreferences(context: Context) {
         map["laptopBarVisible"] = _laptopBarVisible.value
         map["holdForSymbolsEnabled"] = _holdForSymbolsEnabled.value
         map["autoSuggestEnabled"] = _autoSuggestEnabled.value
-        map["handwritingEnabled"] = _handwritingEnabled.value
         map["autoCapitalizationEnabled"] = _autoCapitalizationEnabled.value
         map["keyFontSize"] = _keyFontSize.value.toDouble()
         map["altKeyFontSize"] = _altKeyFontSize.value.toDouble()
@@ -503,10 +494,6 @@ class KeyboardPreferences(context: Context) {
             _autoSuggestEnabled.value = it
             editor.putBoolean(KEY_AUTO_SUGGEST_ENABLED, it)
         }
-        (map["handwritingEnabled"] as? Boolean)?.let {
-            _handwritingEnabled.value = it
-            editor.putBoolean(KEY_HANDWRITING_ENABLED, it)
-        }
         (map["autoCapitalizationEnabled"] as? Boolean)?.let {
             _autoCapitalizationEnabled.value = it
             editor.putBoolean(KEY_AUTO_CAPITALIZATION_ENABLED, it)
@@ -563,7 +550,6 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_LAPTOP_BAR_VISIBLE = "laptop_bar_visible"
         private const val KEY_HOLD_FOR_SYMBOLS = "hold_for_symbols"
         private const val KEY_AUTO_SUGGEST_ENABLED = "auto_suggest_enabled"
-        private const val KEY_HANDWRITING_ENABLED = "handwriting_enabled"
         private const val KEY_AUTO_CAPITALIZATION_ENABLED = "auto_capitalization_enabled"
         private const val KEY_RECENT_EMOJIS = "recent_emojis"
         private const val KEY_KEY_FONT_SIZE = "key_character_font_size"

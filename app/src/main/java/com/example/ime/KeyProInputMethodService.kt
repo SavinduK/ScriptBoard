@@ -621,6 +621,15 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             is KeyAction.InsertSticker -> {
                 try {
                     val file = java.io.File(action.filePath)
+                    if (!file.exists() || file.length() == 0L) {
+                        android.widget.Toast.makeText(
+                            this,
+                            "Sticker error: File not found or empty (${file.name})",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        return
+                    }
+
                     val editorInfo = currentInputEditorInfo
                     val isAnim = action.isAnimated || com.example.ui.keyboard.util.WebpAnimationHelper.isAnimated(file)
 
@@ -636,10 +645,18 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     var committed = false
                     var lastUri: android.net.Uri? = null
                     val targetPkg = editorInfo?.packageName
+                    var lastErrorMsg: String? = null
+
+                    if (candidates.isEmpty()) {
+                        lastErrorMsg = "Target application (${targetPkg ?: "current field"}) does not accept sticker image formats"
+                    }
 
                     for (candidate in candidates) {
                         val targetFile = candidate.file
-                        if (!targetFile.exists() || targetFile.length() == 0L) continue
+                        if (!targetFile.exists() || targetFile.length() == 0L) {
+                            lastErrorMsg = "Candidate image file missing (${targetFile.name})"
+                            continue
+                        }
 
                         val contentUri = try {
                             androidx.core.content.FileProvider.getUriForFile(
@@ -647,7 +664,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                                 "${packageName}.fileprovider",
                                 targetFile
                             )
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            lastErrorMsg = "FileProvider error: ${e.localizedMessage ?: e.message}"
                             null
                         } ?: continue
 
@@ -677,7 +695,9 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                                     contentUri,
                                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                                 )
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                lastErrorMsg = "Permission error: ${e.localizedMessage ?: e.message}"
+                            }
                         }
 
                         committed = if (editorInfo != null) {
@@ -691,8 +711,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                         } else false
 
                         if (committed) {
+                            lastErrorMsg = null
                             break
                         } else {
+                            lastErrorMsg = "Target app (${targetPkg ?: "unknown"}) rejected ${candidate.mimeType}"
                             // If commitContent returned false on API 25 and below, revoke
                             if (targetPkg != null && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N_MR1) {
                                 try {
@@ -709,27 +731,54 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                         val fallbackUri = lastUri ?: (fallbackFile?.let {
                             try {
                                 androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", it)
-                            } catch (_: Exception) { null }
+                            } catch (e: Exception) {
+                                lastErrorMsg = "FileProvider error: ${e.localizedMessage ?: e.message}"
+                                null
+                            }
                         })
 
                         if (fallbackUri != null) {
-                            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clip = android.content.ClipData.newUri(contentResolver, action.name, fallbackUri)
-                            cm?.setPrimaryClip(clip)
-                            if (targetPkg != null) {
-                                try {
-                                    grantUriPermission(
-                                        targetPkg,
-                                        fallbackUri,
-                                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                    )
-                                } catch (_: Exception) {}
+                            try {
+                                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                val clip = android.content.ClipData.newUri(contentResolver, action.name, fallbackUri)
+                                cm?.setPrimaryClip(clip)
+                                if (targetPkg != null) {
+                                    try {
+                                        grantUriPermission(
+                                            targetPkg,
+                                            fallbackUri,
+                                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+                                val errorDetail = if (!lastErrorMsg.isNullOrBlank()) " ($lastErrorMsg)" else ""
+                                android.widget.Toast.makeText(
+                                    this,
+                                    "Sticker copied to clipboard$errorDetail. Paste it into your message.",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(
+                                    this,
+                                    "Sticker error: ${e.localizedMessage ?: e.message ?: lastErrorMsg ?: "Failed to send or copy sticker"}",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
                             }
+                        } else {
+                            val failureReason = lastErrorMsg ?: "Target app rejected sticker and no compatible file could be prepared"
+                            android.widget.Toast.makeText(
+                                this,
+                                "Sticker send error: $failureReason",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
                         }
-                        android.widget.Toast.makeText(this, "Sticker copied. Paste it into your message.", android.widget.Toast.LENGTH_SHORT).show()
                     }
-                } catch (_: Exception) {
-                    android.widget.Toast.makeText(this, "Sticker copied. Paste it into your message.", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(
+                        this,
+                        "Sticker send error: ${e.localizedMessage ?: e.message ?: "Unexpected error"}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
                 }
             }
             else -> {}
