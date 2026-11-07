@@ -1,11 +1,15 @@
 package com.example.ui.keyboard.util
 
+import com.example.data.TranslitChoiceDao
 import java.util.Locale
 
 /**
  * Phonetic Transliteration Engine: English (Singlish) ➔ Sinhala.
- * Provides high-speed, rule-based phonetic conversion combined with
- * an extensive common Singlish word dictionary.
+ * Provides high-speed phonetic conversion, dictionary hits, learned user choices,
+ * and rule-based variants handling ambiguous character pairs:
+ * - ත (dental t) vs ට (retroflex t)
+ * - ද (dental d) vs ඩ (retroflex d)
+ * - ල (dental l) vs ළ (retroflex l)
  */
 object SinhalaTransliterator {
 
@@ -129,7 +133,6 @@ object SinhalaTransliterator {
         "paha" to "පහ"
     )
 
-    // Multi-letter consonant prefixes sorted by length descending
     private val multiConsonants = listOf(
         "thth" to ("ත්" to "ත"),
         "dhdh" to ("ද්" to "ද"),
@@ -183,7 +186,6 @@ object SinhalaTransliterator {
         'f' to ("ෆ්" to "ෆ")
     )
 
-    // Independent initial vowels
     private val independentVowels = listOf(
         "aae" to "ඈ",
         "ae" to "ඇ",
@@ -202,7 +204,6 @@ object SinhalaTransliterator {
         "o" to "ඔ"
     )
 
-    // Dependent vowel modifiers (Pillam)
     private val vowelModifiers = listOf(
         "aae" to "ෑ",
         "ae" to "ැ",
@@ -214,22 +215,18 @@ object SinhalaTransliterator {
         "ee" to "ේ",
         "uu" to "ූ",
         "oo" to "ෝ",
-        "a" to "",    // inherent vowel, no modifier needed
+        "a" to "",
         "i" to "ි",
         "u" to "ු",
         "e" to "ෙ",
         "o" to "ො"
     )
 
-    /**
-     * Converts a single English word to Sinhala phonetically.
-     */
     fun transliterateWord(rawWord: String): String {
         val word = rawWord.trim()
         if (word.isEmpty()) return ""
 
         val lower = word.lowercase(Locale.ROOT)
-        // Check exact dictionary match first
         dictionary[lower]?.let { return it }
 
         val sb = StringBuilder()
@@ -239,7 +236,7 @@ object SinhalaTransliterator {
         while (i < len) {
             val remaining = lower.substring(i)
 
-            // 1. Check if at start of syllable or word we have an independent vowel
+            // 1. Independent vowel
             if (i == 0 || (i > 0 && !lower[i - 1].isLetter())) {
                 var matchedVowel = false
                 for ((vKey, vVal) in independentVowels) {
@@ -253,7 +250,7 @@ object SinhalaTransliterator {
                 if (matchedVowel) continue
             }
 
-            // 2. Check multi-character consonant match
+            // 2. Consonants
             var matchedConsonant: Pair<String, String>? = null
             var consKeyLen = 0
 
@@ -265,7 +262,6 @@ object SinhalaTransliterator {
                 }
             }
 
-            // If not multi, check single consonant
             if (matchedConsonant == null) {
                 val ch = remaining[0]
                 val single = singleConsonants[ch]
@@ -279,7 +275,6 @@ object SinhalaTransliterator {
                 i += consKeyLen
                 val afterCons = lower.substring(i)
 
-                // Look for attached vowel modifier
                 var matchedModifier: String? = null
                 var modKeyLen = 0
 
@@ -292,19 +287,16 @@ object SinhalaTransliterator {
                 }
 
                 if (matchedModifier != null) {
-                    // Consonant base + pillam
                     val base = matchedConsonant.second
                     sb.append(base).append(matchedModifier)
                     i += modKeyLen
                 } else {
-                    // Hal consonant (no following vowel)
                     val hal = matchedConsonant.first
                     sb.append(hal)
                 }
                 continue
             }
 
-            // 3. Fallback for unexpected characters or digits
             sb.append(word[i])
             i++
         }
@@ -313,26 +305,57 @@ object SinhalaTransliterator {
     }
 
     /**
-     * Translates whole sentences or phrase strings, preserving punctuation and spacing.
+     * Generates rule-based variants for ambiguous pairs:
+     * - ත vs ට
+     * - ද vs ඩ
+     * - ල vs ළ
      */
-    fun transliterateText(text: String): String {
-        if (text.isEmpty()) return ""
-        val parts = text.split(Regex("(?<=\\s)|(?=\\s)|(?<=[^a-zA-Z0-9])|(?=[^a-zA-Z0-9])"))
-        val sb = StringBuilder()
-        for (part in parts) {
-            if (part.matches(Regex("[a-zA-Z]+"))) {
-                sb.append(transliterateWord(part))
-            } else {
-                sb.append(part)
-            }
+    fun generateAmbiguousVariants(baseSinhala: String): List<String> {
+        val variants = mutableListOf<String>()
+
+        // ත <-> ට variants
+        if (baseSinhala.contains("ත") || baseSinhala.contains("ත්")) {
+            val v = baseSinhala.replace("ත", "ට").replace("ත්", "ට්")
+            if (v != baseSinhala) variants.add(v)
+        } else if (baseSinhala.contains("ට") || baseSinhala.contains("ට්")) {
+            val v = baseSinhala.replace("ට", "ත").replace("ට්", "ත්")
+            if (v != baseSinhala) variants.add(v)
         }
-        return sb.toString()
+
+        // ද <-> ඩ variants
+        if (baseSinhala.contains("ද") || baseSinhala.contains("ද්")) {
+            val v = baseSinhala.replace("ද", "ඩ").replace("ද්", "ඩ්")
+            if (v != baseSinhala) variants.add(v)
+        } else if (baseSinhala.contains("ඩ") || baseSinhala.contains("ඩ්")) {
+            val v = baseSinhala.replace("ඩ", "ද").replace("ඩ්", "ද්")
+            if (v != baseSinhala) variants.add(v)
+        }
+
+        // ල <-> ළ variants
+        if (baseSinhala.contains("ල") || baseSinhala.contains("ල්")) {
+            val v = baseSinhala.replace("ල", "ළ").replace("ල්", "ළ්")
+            if (v != baseSinhala) variants.add(v)
+        } else if (baseSinhala.contains("ළ") || baseSinhala.contains("ළ්")) {
+            val v = baseSinhala.replace("ළ", "ල").replace("ළ්", "ල්")
+            if (v != baseSinhala) variants.add(v)
+        }
+
+        return variants
     }
 
     /**
-     * Given an English prefix, returns up to [limit] suggested Sinhala candidate words.
+     * Returns up to [limit] Sinhala candidates for an English prefix:
+     * 1. Learned mapping from TranslitChoiceDao
+     * 2. Common Singlish dictionary exact match
+     * 3. Rule-based transliterated word
+     * 4. Ambiguous pair variants (ත/ට, ද/ඩ, ල/ළ)
+     * 5. Dictionary prefix matches
      */
-    fun getSuggestions(prefix: String, limit: Int = 3): List<String> {
+    suspend fun getSuggestions(
+        prefix: String,
+        translitChoiceDao: TranslitChoiceDao? = null,
+        limit: Int = 3
+    ): List<String> {
         val clean = prefix.trim().lowercase(Locale.ROOT)
         if (clean.isEmpty()) {
             return listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද").take(limit)
@@ -340,18 +363,41 @@ object SinhalaTransliterator {
 
         val result = mutableListOf<String>()
 
-        // Direct dictionary match
-        dictionary[clean]?.let {
-            result.add(it)
+        // 1. Learned user choices from TranslitChoiceDao (ranked highest)
+        if (translitChoiceDao != null) {
+            try {
+                val learned = translitChoiceDao.getTopChoicesForLatin(clean, limit = 3)
+                for (item in learned) {
+                    if (!result.contains(item.sinhala)) {
+                        result.add(item.sinhala)
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
-        // Transliterated candidate
+        // 2. Direct dictionary match
+        dictionary[clean]?.let {
+            if (!result.contains(it)) result.add(it)
+        }
+
+        // 3. Rule-based transliteration
         val transliterated = transliterateWord(clean)
         if (transliterated.isNotBlank() && !result.contains(transliterated)) {
             result.add(transliterated)
         }
 
-        // Prefix matches in dictionary
+        // 4. Ambiguous pair variants (ත/ට, ද/ඩ, ල/ළ)
+        if (transliterated.isNotBlank()) {
+            val variants = generateAmbiguousVariants(transliterated)
+            for (v in variants) {
+                if (result.size >= limit) break
+                if (!result.contains(v)) {
+                    result.add(v)
+                }
+            }
+        }
+
+        // 5. Prefix matches in dictionary
         for ((key, value) in dictionary) {
             if (result.size >= limit) break
             if (key.startsWith(clean) && !result.contains(value)) {

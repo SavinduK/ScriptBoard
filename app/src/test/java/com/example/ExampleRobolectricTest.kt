@@ -378,7 +378,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `sinhala transliterator converts English phonetic letters to Sinhala words`() {
+  fun `sinhala transliterator converts English phonetic letters to Sinhala words`() = kotlinx.coroutines.runBlocking {
     val transliterator = com.example.ui.keyboard.util.SinhalaTransliterator
     assertEquals("මම", transliterator.transliterateWord("mama"))
     assertEquals("ඔයා", transliterator.transliterateWord("oya"))

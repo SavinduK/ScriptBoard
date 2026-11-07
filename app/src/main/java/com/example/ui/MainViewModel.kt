@@ -43,7 +43,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val historySnippets: StateFlow<List<SnippetEntity>> = repository.historySnippets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val wordSuggestionManager = WordSuggestionManager(AppDatabase.getDatabase(application).wordFrequencyDao())
+    val wordSuggestionManager = WordSuggestionManager(
+        wordFrequencyDao = AppDatabase.getDatabase(application).wordFrequencyDao(),
+        bigramFrequencyDao = AppDatabase.getDatabase(application).bigramFrequencyDao(),
+        correctionPairDao = AppDatabase.getDatabase(application).correctionPairDao(),
+        translitChoiceDao = AppDatabase.getDatabase(application).translitChoiceDao(),
+        dictionaryRepo = com.example.data.DictionaryRepository.getInstance(application)
+    )
     val syncManager = com.example.sync.ClipboardSyncManager.getInstance(application)
     val authManager = syncManager.authManager
     val currentUser = authManager.currentUser

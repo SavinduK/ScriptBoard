@@ -110,6 +110,17 @@ class KeyboardPreferences(context: Context) {
     private val _tabletKeyboardScale = MutableStateFlow(prefs.getFloat(KEY_TABLET_KEYBOARD_SCALE, 1.0f))
     val tabletKeyboardScale: StateFlow<Float> = _tabletKeyboardScale.asStateFlow()
 
+    // Tablet Split Keyboard Mode (Keys on left and right, middle spaces)
+    private val _tabletSplitEnabled = MutableStateFlow(prefs.getBoolean(KEY_TABLET_SPLIT_ENABLED, false))
+    val tabletSplitEnabled: StateFlow<Boolean> = _tabletSplitEnabled.asStateFlow()
+
+    // Tablet Half-Size Keyboard Mode (Keys on one side, space/tools on other)
+    private val _tabletHalfSizeEnabled = MutableStateFlow(prefs.getBoolean(KEY_TABLET_HALF_SIZE_ENABLED, false))
+    val tabletHalfSizeEnabled: StateFlow<Boolean> = _tabletHalfSizeEnabled.asStateFlow()
+
+    private val _tabletHalfSide = MutableStateFlow(prefs.getString(KEY_TABLET_HALF_SIDE, "left") ?: "left")
+    val tabletHalfSide: StateFlow<String> = _tabletHalfSide.asStateFlow()
+
     // Hide keyboard when physical/hardware keyboard is connected (Wired USB or Bluetooth)
     private val _hideOnPhysicalKeyboard = MutableStateFlow(prefs.getBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, true))
     val hideOnPhysicalKeyboard: StateFlow<Boolean> = _hideOnPhysicalKeyboard.asStateFlow()
@@ -212,6 +223,35 @@ class KeyboardPreferences(context: Context) {
         val clamped = scale.coerceIn(0.75f, 1.4f)
         _tabletKeyboardScale.value = clamped
         prefs.edit().putFloat(KEY_TABLET_KEYBOARD_SCALE, clamped).apply()
+    }
+
+    fun setTabletSplitEnabled(enabled: Boolean) {
+        _tabletSplitEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_TABLET_SPLIT_ENABLED, enabled).apply()
+        if (enabled && _tabletHalfSizeEnabled.value) {
+            _tabletHalfSizeEnabled.value = false
+            prefs.edit().putBoolean(KEY_TABLET_HALF_SIZE_ENABLED, false).apply()
+        }
+    }
+
+    fun setTabletHalfSizeEnabled(enabled: Boolean) {
+        _tabletHalfSizeEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_TABLET_HALF_SIZE_ENABLED, enabled).apply()
+        if (enabled && _tabletSplitEnabled.value) {
+            _tabletSplitEnabled.value = false
+            prefs.edit().putBoolean(KEY_TABLET_SPLIT_ENABLED, false).apply()
+        }
+    }
+
+    fun setTabletHalfSide(side: String) {
+        val clean = if (side == "right") "right" else "left"
+        _tabletHalfSide.value = clean
+        prefs.edit().putString(KEY_TABLET_HALF_SIDE, clean).apply()
+    }
+
+    fun toggleTabletHalfSide() {
+        val next = if (_tabletHalfSide.value == "left") "right" else "left"
+        setTabletHalfSide(next)
     }
 
     fun setHideOnPhysicalKeyboard(enabled: Boolean) {
@@ -436,6 +476,9 @@ class KeyboardPreferences(context: Context) {
         map["keyFontSize"] = _keyFontSize.value.toDouble()
         map["altKeyFontSize"] = _altKeyFontSize.value.toDouble()
         map["tabletKeyboardScale"] = _tabletKeyboardScale.value.toDouble()
+        map["tabletSplitEnabled"] = _tabletSplitEnabled.value
+        map["tabletHalfSizeEnabled"] = _tabletHalfSizeEnabled.value
+        map["tabletHalfSide"] = _tabletHalfSide.value
         map["hideOnPhysicalKeyboard"] = _hideOnPhysicalKeyboard.value
         map["currentLanguage"] = _currentLanguage.value
         map["numberRowEnabled"] = _numberRowEnabled.value
@@ -513,6 +556,18 @@ class KeyboardPreferences(context: Context) {
             _tabletKeyboardScale.value = f
             editor.putFloat(KEY_TABLET_KEYBOARD_SCALE, f)
         }
+        (map["tabletSplitEnabled"] as? Boolean)?.let {
+            _tabletSplitEnabled.value = it
+            editor.putBoolean(KEY_TABLET_SPLIT_ENABLED, it)
+        }
+        (map["tabletHalfSizeEnabled"] as? Boolean)?.let {
+            _tabletHalfSizeEnabled.value = it
+            editor.putBoolean(KEY_TABLET_HALF_SIZE_ENABLED, it)
+        }
+        (map["tabletHalfSide"] as? String)?.let {
+            _tabletHalfSide.value = it
+            editor.putString(KEY_TABLET_HALF_SIDE, it)
+        }
         (map["hideOnPhysicalKeyboard"] as? Boolean)?.let {
             _hideOnPhysicalKeyboard.value = it
             editor.putBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, it)
@@ -576,6 +631,9 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_LOCAL_SHARED_SECRET = "local_shared_secret"
         private const val KEY_PERSISTENT_SYNC_SERVICE = "persistent_sync_service"
         private const val KEY_TABLET_KEYBOARD_SCALE = "tablet_keyboard_scale"
+        private const val KEY_TABLET_SPLIT_ENABLED = "tablet_split_enabled"
+        private const val KEY_TABLET_HALF_SIZE_ENABLED = "tablet_half_size_enabled"
+        private const val KEY_TABLET_HALF_SIDE = "tablet_half_side"
         private const val KEY_HIDE_ON_PHYSICAL_KEYBOARD = "hide_on_physical_keyboard"
         private const val KEY_BLUETOOTH_SYNC_ENABLED = "bluetooth_sync_enabled"
         private const val KEY_WIFI_SYNC_ENABLED = "wifi_sync_enabled"

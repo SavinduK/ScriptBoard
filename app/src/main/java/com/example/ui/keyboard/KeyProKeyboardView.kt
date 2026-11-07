@@ -103,14 +103,22 @@ fun KeyProKeyboardView(
     val numberRowEnabled by keyboardPrefs.numberRowEnabled.collectAsState()
     val autoCapitalizationEnabled by keyboardPrefs.autoCapitalizationEnabled.collectAsState()
 
+    val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
+    val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
+    val tabletHalfSide by keyboardPrefs.tabletHalfSide.collectAsState()
+
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
     val localStickers by stickerRepo.allStickers.collectAsState(initial = emptyList())
     val displayStickers = if (stickers.isNotEmpty()) stickers else localStickers
 
     val wordSuggestionManager = remember {
+        val db = AppDatabase.getDatabase(context)
         WordSuggestionManager(
-            AppDatabase.getDatabase(context).wordFrequencyDao(),
-            AppDatabase.getDatabase(context).bigramFrequencyDao()
+            wordFrequencyDao = db.wordFrequencyDao(),
+            bigramFrequencyDao = db.bigramFrequencyDao(),
+            correctionPairDao = db.correctionPairDao(),
+            translitChoiceDao = db.translitChoiceDao(),
+            dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
         )
     }
 
@@ -563,9 +571,16 @@ fun KeyProKeyboardView(
                             .clickable(enabled = word.isNotBlank()) {
                                 if (word.isNotBlank()) {
                                     FeedbackUtil.performKeyPressFeedback(context, view, isSoundEnabled, isHapticEnabled)
-                                    onAction(KeyAction.ApplySuggestion(currentWordBuffer, word))
+                                    val typed = currentWordBuffer
+                                    onAction(KeyAction.ApplySuggestion(typed, word))
                                     coroutineScope.launch {
                                         wordSuggestionManager.recordWordUsed(word)
+                                        if (typed.isNotBlank() && !typed.equals(word, ignoreCase = true)) {
+                                            wordSuggestionManager.recordCorrection(typed, word, currentLanguage)
+                                            if (currentLanguage == "si-trans") {
+                                                wordSuggestionManager.recordTranslitChoice(typed, word)
+                                            }
+                                        }
                                     }
                                     currentWordBuffer = ""
                                 }
@@ -734,37 +749,84 @@ fun KeyProKeyboardView(
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = if (isTablet) 6.dp else 2.dp, vertical = 2.dp)
-                ) {
-                    currentRows.forEach { rowKeys ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = rowVerticalPadding)
-                        ) {
-                            rowKeys.forEach { key ->
-                                KeyCap(
-                                    key = key,
-                                    colors = colors,
-                                    heightDp = calculatedHeightDp,
-                                    characterFontSize = calculatedFontSize,
-                                    altCharacterFontSize = calculatedAltFontSize,
-                                    horizontalPaddingDp = keyHorizontalPadding,
-                                    verticalPaddingDp = keyVerticalPadding,
-                                    cornerRadiusDp = keyCornerRadius,
-                                    holdForSymbols = holdForSymbolsEnabled,
-                                    onKeyClick = { handleKeyAction(it.action) },
-                                    onKeyLongClick = { clickedKey ->
-                                        if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
-                                            handleKeyAction(KeyAction.SwitchLanguage)
-                                        } else if (isSinhala && clickedKey.action is KeyAction.InsertText && KeyboardLayoutGenerator.isSinhalaConsonant(clickedKey.action.text)) {
-                                            selectedSinhalaLetter = clickedKey.action.text
+                if (isTablet && tabletSplitEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
+                    TabletSplitKeyboardRows(
+                        rows = currentRows,
+                        colors = colors,
+                        calculatedHeightDp = calculatedHeightDp,
+                        calculatedFontSize = calculatedFontSize,
+                        calculatedAltFontSize = calculatedAltFontSize,
+                        keyHorizontalPadding = keyHorizontalPadding,
+                        keyVerticalPadding = keyVerticalPadding,
+                        keyCornerRadius = keyCornerRadius,
+                        rowVerticalPadding = rowVerticalPadding,
+                        gapWidthDp = if (isVeryWide) 110.dp else 64.dp,
+                        holdForSymbolsEnabled = holdForSymbolsEnabled,
+                        onKeyClick = { handleKeyAction(it.action) },
+                        onKeyLongClick = { clickedKey ->
+                            if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
+                                handleKeyAction(KeyAction.SwitchLanguage)
+                            } else if (isSinhala && clickedKey.action is KeyAction.InsertText && KeyboardLayoutGenerator.isSinhalaConsonant(clickedKey.action.text)) {
+                                selectedSinhalaLetter = clickedKey.action.text
+                            }
+                        }
+                    )
+                } else if (isTablet && tabletHalfSizeEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
+                    TabletHalfSizeKeyboardRows(
+                        rows = currentRows,
+                        colors = colors,
+                        side = tabletHalfSide,
+                        calculatedHeightDp = calculatedHeightDp,
+                        calculatedFontSize = calculatedFontSize,
+                        calculatedAltFontSize = calculatedAltFontSize,
+                        keyHorizontalPadding = keyHorizontalPadding,
+                        keyVerticalPadding = keyVerticalPadding,
+                        keyCornerRadius = keyCornerRadius,
+                        rowVerticalPadding = rowVerticalPadding,
+                        holdForSymbolsEnabled = holdForSymbolsEnabled,
+                        onToggleSide = { keyboardPrefs.toggleTabletHalfSide() },
+                        onKeyClick = { handleKeyAction(it.action) },
+                        onKeyLongClick = { clickedKey ->
+                            if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
+                                handleKeyAction(KeyAction.SwitchLanguage)
+                            } else if (isSinhala && clickedKey.action is KeyAction.InsertText && KeyboardLayoutGenerator.isSinhalaConsonant(clickedKey.action.text)) {
+                                selectedSinhalaLetter = clickedKey.action.text
+                            }
+                        }
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (isTablet) 6.dp else 2.dp, vertical = 2.dp)
+                    ) {
+                        currentRows.forEach { rowKeys ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = rowVerticalPadding)
+                            ) {
+                                rowKeys.forEach { key ->
+                                    KeyCap(
+                                        key = key,
+                                        colors = colors,
+                                        heightDp = calculatedHeightDp,
+                                        characterFontSize = calculatedFontSize,
+                                        altCharacterFontSize = calculatedAltFontSize,
+                                        horizontalPaddingDp = keyHorizontalPadding,
+                                        verticalPaddingDp = keyVerticalPadding,
+                                        cornerRadiusDp = keyCornerRadius,
+                                        holdForSymbols = holdForSymbolsEnabled,
+                                        onKeyClick = { handleKeyAction(it.action) },
+                                        onKeyLongClick = { clickedKey ->
+                                            if (clickedKey.action is KeyAction.Space && installedLanguages.size > 1) {
+                                                handleKeyAction(KeyAction.SwitchLanguage)
+                                            } else if (isSinhala && clickedKey.action is KeyAction.InsertText && KeyboardLayoutGenerator.isSinhalaConsonant(clickedKey.action.text)) {
+                                                selectedSinhalaLetter = clickedKey.action.text
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -778,6 +840,409 @@ fun KeyProKeyboardView(
                 .navigationBarsPadding()
                 .height(if (isTablet) 58.dp else 22.dp)
         )
+        }
+    }
+}
+
+@Composable
+private fun TabletSplitKeyboardRows(
+    rows: List<List<KeyItem>>,
+    colors: KeyboardColors,
+    calculatedHeightDp: Int,
+    calculatedFontSize: Float,
+    calculatedAltFontSize: Float,
+    keyHorizontalPadding: Float,
+    keyVerticalPadding: Float,
+    keyCornerRadius: Int,
+    rowVerticalPadding: Dp,
+    gapWidthDp: Dp,
+    holdForSymbolsEnabled: Boolean,
+    onKeyClick: (KeyItem) -> Unit,
+    onKeyLongClick: (KeyItem) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .testTag("tablet_split_keyboard_layout")
+    ) {
+        rows.forEach { rowKeys ->
+            val spaceIndex = rowKeys.indexOfFirst { it.action is KeyAction.Space }
+            if (spaceIndex != -1) {
+                // Bottom row with space: split with middle space keys on either side
+                val spaceKey = rowKeys[spaceIndex]
+                val keysBefore = rowKeys.subList(0, spaceIndex)
+                val keysAfter = rowKeys.subList(spaceIndex + 1, rowKeys.size)
+                val leftSpace = spaceKey.copy(primaryText = " ", weight = 2.2f, testTag = "key_split_space_left")
+                val rightSpace = spaceKey.copy(primaryText = " ", weight = 2.2f, testTag = "key_split_space_right")
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = rowVerticalPadding),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left half
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        keysBefore.forEach { key ->
+                            KeyCap(
+                                key = key,
+                                colors = colors,
+                                heightDp = calculatedHeightDp,
+                                characterFontSize = calculatedFontSize,
+                                altCharacterFontSize = calculatedAltFontSize,
+                                horizontalPaddingDp = keyHorizontalPadding,
+                                verticalPaddingDp = keyVerticalPadding,
+                                cornerRadiusDp = keyCornerRadius,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                onKeyClick = onKeyClick,
+                                onKeyLongClick = onKeyLongClick
+                            )
+                        }
+                        KeyCap(
+                            key = leftSpace,
+                            colors = colors,
+                            heightDp = calculatedHeightDp,
+                            characterFontSize = calculatedFontSize,
+                            altCharacterFontSize = calculatedAltFontSize,
+                            horizontalPaddingDp = keyHorizontalPadding,
+                            verticalPaddingDp = keyVerticalPadding,
+                            cornerRadiusDp = keyCornerRadius,
+                            holdForSymbols = holdForSymbolsEnabled,
+                            onKeyClick = onKeyClick,
+                            onKeyLongClick = onKeyLongClick
+                        )
+                    }
+
+                    // Middle thumb space gap
+                    Spacer(modifier = Modifier.width(gapWidthDp))
+
+                    // Right half
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        KeyCap(
+                            key = rightSpace,
+                            colors = colors,
+                            heightDp = calculatedHeightDp,
+                            characterFontSize = calculatedFontSize,
+                            altCharacterFontSize = calculatedAltFontSize,
+                            horizontalPaddingDp = keyHorizontalPadding,
+                            verticalPaddingDp = keyVerticalPadding,
+                            cornerRadiusDp = keyCornerRadius,
+                            holdForSymbols = holdForSymbolsEnabled,
+                            onKeyClick = onKeyClick,
+                            onKeyLongClick = onKeyLongClick
+                        )
+                        keysAfter.forEach { key ->
+                            KeyCap(
+                                key = key,
+                                colors = colors,
+                                heightDp = calculatedHeightDp,
+                                characterFontSize = calculatedFontSize,
+                                altCharacterFontSize = calculatedAltFontSize,
+                                horizontalPaddingDp = keyHorizontalPadding,
+                                verticalPaddingDp = keyVerticalPadding,
+                                cornerRadiusDp = keyCornerRadius,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                onKeyClick = onKeyClick,
+                                onKeyLongClick = onKeyLongClick
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Regular letter/symbol rows: split into left half and right half with middle gap
+                val mid = (rowKeys.size + 1) / 2
+                val leftKeys = rowKeys.take(mid)
+                val rightKeys = rowKeys.drop(mid)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = rowVerticalPadding),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        leftKeys.forEach { key ->
+                            KeyCap(
+                                key = key,
+                                colors = colors,
+                                heightDp = calculatedHeightDp,
+                                characterFontSize = calculatedFontSize,
+                                altCharacterFontSize = calculatedAltFontSize,
+                                horizontalPaddingDp = keyHorizontalPadding,
+                                verticalPaddingDp = keyVerticalPadding,
+                                cornerRadiusDp = keyCornerRadius,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                onKeyClick = onKeyClick,
+                                onKeyLongClick = onKeyLongClick
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(gapWidthDp))
+
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        rightKeys.forEach { key ->
+                            KeyCap(
+                                key = key,
+                                colors = colors,
+                                heightDp = calculatedHeightDp,
+                                characterFontSize = calculatedFontSize,
+                                altCharacterFontSize = calculatedAltFontSize,
+                                horizontalPaddingDp = keyHorizontalPadding,
+                                verticalPaddingDp = keyVerticalPadding,
+                                cornerRadiusDp = keyCornerRadius,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                onKeyClick = onKeyClick,
+                                onKeyLongClick = onKeyLongClick
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabletHalfSizeKeyboardRows(
+    rows: List<List<KeyItem>>,
+    colors: KeyboardColors,
+    side: String,
+    calculatedHeightDp: Int,
+    calculatedFontSize: Float,
+    calculatedAltFontSize: Float,
+    keyHorizontalPadding: Float,
+    keyVerticalPadding: Float,
+    keyCornerRadius: Int,
+    rowVerticalPadding: Dp,
+    holdForSymbolsEnabled: Boolean,
+    onToggleSide: () -> Unit,
+    onKeyClick: (KeyItem) -> Unit,
+    onKeyLongClick: (KeyItem) -> Unit
+) {
+    val keysBlock: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+        ) {
+            rows.forEach { rowKeys ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = rowVerticalPadding)
+                ) {
+                    rowKeys.forEach { key ->
+                        KeyCap(
+                            key = key,
+                            colors = colors,
+                            heightDp = (calculatedHeightDp * 0.95f).toInt(),
+                            characterFontSize = calculatedFontSize * 0.9f,
+                            altCharacterFontSize = calculatedAltFontSize * 0.9f,
+                            horizontalPaddingDp = keyHorizontalPadding * 0.85f,
+                            verticalPaddingDp = keyVerticalPadding * 0.85f,
+                            cornerRadiusDp = keyCornerRadius,
+                            holdForSymbols = holdForSymbolsEnabled,
+                            onKeyClick = onKeyClick,
+                            onKeyLongClick = onKeyLongClick
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val spaceAndToolsSide: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Side switch button
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.functionKeyBackground)
+                    .clickable { onToggleSide() }
+                    .padding(horizontal = 8.dp)
+                    .testTag("btn_switch_half_side"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (side == "left") "Dock Right ➔" else "⬅ Dock Left",
+                    color = colors.letterKeyTextColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Dedicated large Thumb Space Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height((calculatedHeightDp * 1.55f).dp)
+                    .clip(RoundedCornerShape(keyCornerRadius.dp))
+                    .background(colors.letterKeyBackground)
+                    .clickable {
+                        onKeyClick(
+                            KeyItem(
+                                primaryText = " ",
+                                action = KeyAction.Space,
+                                testTag = "btn_half_size_space"
+                            )
+                        )
+                    }
+                    .testTag("btn_half_size_space"),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "SPACE",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Thumb Key",
+                        color = colors.letterKeySecondaryTextColor,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            // Quick Actions: Backspace & Enter
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(calculatedHeightDp.dp)
+                        .clip(RoundedCornerShape(keyCornerRadius.dp))
+                        .background(colors.functionKeyBackground)
+                        .clickable {
+                            onKeyClick(
+                                KeyItem(
+                                    primaryText = "⌫",
+                                    action = KeyAction.Backspace,
+                                    testTag = "btn_half_size_backspace"
+                                )
+                            )
+                        }
+                        .testTag("btn_half_size_backspace"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "⌫ Del", color = colors.letterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(calculatedHeightDp.dp)
+                        .clip(RoundedCornerShape(keyCornerRadius.dp))
+                        .background(colors.enterKeyBackground)
+                        .clickable {
+                            onKeyClick(
+                                KeyItem(
+                                    primaryText = "⏎",
+                                    action = KeyAction.Enter,
+                                    testTag = "btn_half_size_enter"
+                                )
+                            )
+                        }
+                        .testTag("btn_half_size_enter"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "⏎ Enter", color = colors.enterKeyTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Cursor Navigation row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.functionKeyBackground)
+                        .clickable {
+                            onKeyClick(
+                                KeyItem(
+                                    primaryText = "◀",
+                                    action = KeyAction.CursorLeft,
+                                    testTag = "btn_half_size_left"
+                                )
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "◀ Left", color = colors.letterKeyTextColor, fontSize = 11.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.functionKeyBackground)
+                        .clickable {
+                            onKeyClick(
+                                KeyItem(
+                                    primaryText = "▶",
+                                    action = KeyAction.CursorRight,
+                                    testTag = "btn_half_size_right"
+                                )
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "Right ▶", color = colors.letterKeyTextColor, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .testTag("tablet_half_size_keyboard_layout"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (side == "left") {
+            Box(modifier = Modifier.weight(0.66f)) {
+                keysBlock()
+            }
+            Box(modifier = Modifier.weight(0.34f)) {
+                spaceAndToolsSide()
+            }
+        } else {
+            Box(modifier = Modifier.weight(0.34f)) {
+                spaceAndToolsSide()
+            }
+            Box(modifier = Modifier.weight(0.66f)) {
+                keysBlock()
+            }
         }
     }
 }

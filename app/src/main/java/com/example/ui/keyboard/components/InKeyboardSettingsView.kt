@@ -572,6 +572,34 @@ fun InKeyboardSettingsView(
                             colors = colors,
                             testTag = "switch_hide_physical_keyboard_inline"
                         )
+
+                        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                        val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
+                        val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
+                        val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
+
+                        if (isTablet) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SettingToggleRow(
+                                icon = Icons.Default.Laptop,
+                                title = "Split Mode (Tablets Only)",
+                                subtitle = "Keys split for thumbs with space on either side",
+                                checked = tabletSplitEnabled,
+                                onCheckedChange = { keyboardPrefs.setTabletSplitEnabled(it) },
+                                colors = colors,
+                                testTag = "switch_tablet_split_inline"
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SettingToggleRow(
+                                icon = Icons.Default.Keyboard,
+                                title = "Half-Size Keyboard",
+                                subtitle = "Keys on one side, space & tools on the other",
+                                checked = tabletHalfSizeEnabled,
+                                onCheckedChange = { keyboardPrefs.setTabletHalfSizeEnabled(it) },
+                                colors = colors,
+                                testTag = "switch_tablet_half_size_inline"
+                            )
+                        }
                     }
                 }
 
@@ -672,47 +700,72 @@ fun InKeyboardSettingsView(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Clear Learned Words & History (moved into this separate language section)
+                        // Clear Learned Words per language
                         val coroutineScope = rememberCoroutineScope()
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.functionKeyBackground)
-                                .clickable {
-                                    coroutineScope.launch {
-                                        val db = AppDatabase.getDatabase(context)
-                                        val mgr = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
-                                        mgr.clearLearnedWords()
-                                        android.widget.Toast.makeText(context, "Learned words and prediction history cleared", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 7.dp)
-                                .testTag("btn_clear_learned_words"),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = colors.enterKeyBackground,
-                                    modifier = Modifier.size(16.dp)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(colors.functionKeyBackground)
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            val db = AppDatabase.getDatabase(context)
+                                            val mgr = WordSuggestionManager(
+                                                wordFrequencyDao = db.wordFrequencyDao(),
+                                                bigramFrequencyDao = db.bigramFrequencyDao(),
+                                                correctionPairDao = db.correctionPairDao(),
+                                                translitChoiceDao = db.translitChoiceDao(),
+                                                dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
+                                            )
+                                            mgr.clearLearnedData("en")
+                                            android.widget.Toast.makeText(context, "English learned data cleared", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    .padding(vertical = 7.dp)
+                                    .testTag("btn_clear_en_learned_words"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Clear English",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = "Clear Learned Words",
-                                        color = colors.letterKeyTextColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Erase user typing history, word frequencies & bigrams",
-                                        color = colors.letterKeySecondaryTextColor,
-                                        fontSize = 9.5.sp
-                                    )
-                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(colors.functionKeyBackground)
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            val db = AppDatabase.getDatabase(context)
+                                            val mgr = WordSuggestionManager(
+                                                wordFrequencyDao = db.wordFrequencyDao(),
+                                                bigramFrequencyDao = db.bigramFrequencyDao(),
+                                                correctionPairDao = db.correctionPairDao(),
+                                                translitChoiceDao = db.translitChoiceDao(),
+                                                dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
+                                            )
+                                            mgr.clearLearnedData("si")
+                                            android.widget.Toast.makeText(context, "Sinhala learned data cleared", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    .padding(vertical = 7.dp)
+                                    .testTag("btn_clear_si_learned_words"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Clear Sinhala",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }

@@ -22,6 +22,9 @@ interface WordFrequencyDao {
     @Query("SELECT * FROM word_frequency WHERE word = :word LIMIT 1")
     suspend fun getWord(word: String): WordFrequencyEntity?
 
+    @Query("SELECT * FROM word_frequency")
+    suspend fun getAllWords(): List<WordFrequencyEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entity: WordFrequencyEntity)
 
@@ -30,6 +33,15 @@ interface WordFrequencyDao {
 
     @Query("UPDATE word_frequency SET frequency = frequency + 1, lastUsed = :timestamp, originalCase = :originalCase WHERE word = :word")
     suspend fun incrementFrequencyWithCase(word: String, originalCase: String, timestamp: Long = System.currentTimeMillis()): Int
+
+    @Query("UPDATE word_frequency SET frequency = :frequency, lastUsed = :timestamp, originalCase = :originalCase WHERE word = :word")
+    suspend fun updateFrequencyWithDecay(word: String, frequency: Int, originalCase: String, timestamp: Long = System.currentTimeMillis()): Int
+
+    @Query("DELETE FROM word_frequency WHERE word = :word")
+    suspend fun deleteWord(word: String)
+
+    @Query("DELETE FROM word_frequency WHERE word IN (:words)")
+    suspend fun deleteWords(words: List<String>)
 
     @Query("DELETE FROM word_frequency WHERE frequency < :minFrequency AND lastUsed < :cutoffTimestamp")
     suspend fun deleteStaleWords(cutoffTimestamp: Long, minFrequency: Int = 3): Int

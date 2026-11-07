@@ -6,9 +6,6 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @Database(
     entities = [
@@ -16,9 +13,11 @@ import kotlinx.coroutines.launch
         WordFrequencyEntity::class,
         BigramFrequencyEntity::class,
         StickerEntity::class,
-        ConnectedDeviceEntity::class
+        ConnectedDeviceEntity::class,
+        CorrectionPairEntity::class,
+        TranslitChoiceEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +26,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bigramFrequencyDao(): BigramFrequencyDao
     abstract fun stickerDao(): StickerDao
     abstract fun connectedDeviceDao(): ConnectedDeviceDao
+    abstract fun correctionPairDao(): CorrectionPairDao
+    abstract fun translitChoiceDao(): TranslitChoiceDao
 
     companion object {
         @Volatile
@@ -59,6 +60,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS correction_pairs (
+                        typed TEXT NOT NULL,
+                        corrected TEXT NOT NULL,
+                        language TEXT NOT NULL,
+                        count INTEGER NOT NULL DEFAULT 1,
+                        lastUsed INTEGER NOT NULL,
+                        PRIMARY KEY (typed, corrected, language)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_correction_pairs_typed_language ON correction_pairs(typed, language)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_correction_pairs_language ON correction_pairs(language)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS translit_choices (
+                        latin TEXT NOT NULL,
+                        sinhala TEXT NOT NULL,
+                        count INTEGER NOT NULL DEFAULT 1,
+                        PRIMARY KEY (latin, sinhala)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -66,7 +96,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "keypro_keyboard_db"
                 )
-                    .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

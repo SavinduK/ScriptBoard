@@ -56,6 +56,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -602,6 +603,100 @@ fun SettingsPageView(
                                 inactiveTrackColor = colors.background
                             )
                         )
+
+                        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                        val isTablet = configuration.screenWidthDp >= 600 || configuration.smallestScreenWidthDp >= 600
+                        val keyboardPrefs = remember { com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context) }
+                        val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
+                        val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
+                        val tabletHalfSide by keyboardPrefs.tabletHalfSide.collectAsState()
+
+                        if (isTablet) {
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = "Tablet Ergonomics (Tablets Only)",
+                                color = colors.enterKeyBackground,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Split Mode Toggle
+                            SettingsPageToggle(
+                                icon = Icons.Default.Devices,
+                                title = "Split Keyboard Mode",
+                                subtitle = "Separates keys for left and right thumb typing with middle space keys on either side",
+                                checked = tabletSplitEnabled,
+                                onCheckedChange = { keyboardPrefs.setTabletSplitEnabled(it) },
+                                colors = colors,
+                                testTag = "switch_tablet_split_mode"
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Half-Size Keyboard Toggle
+                            SettingsPageToggle(
+                                icon = Icons.Default.Keyboard,
+                                title = "Half-Size Keyboard",
+                                subtitle = "Compact one-handed keyboard on one side, space & quick actions on the other",
+                                checked = tabletHalfSizeEnabled,
+                                onCheckedChange = { keyboardPrefs.setTabletHalfSizeEnabled(it) },
+                                colors = colors,
+                                testTag = "switch_tablet_half_size"
+                            )
+
+                            if (tabletHalfSizeEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Dock Side:",
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (tabletHalfSide == "left") colors.enterKeyBackground else colors.background)
+                                            .clickable { keyboardPrefs.setTabletHalfSide("left") }
+                                            .padding(vertical = 6.dp)
+                                            .testTag("btn_dock_side_left"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Left Side",
+                                            color = if (tabletHalfSide == "left") colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (tabletHalfSide == "right") colors.enterKeyBackground else colors.background)
+                                            .clickable { keyboardPrefs.setTabletHalfSide("right") }
+                                            .padding(vertical = 6.dp)
+                                            .testTag("btn_dock_side_right"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Right Side",
+                                            color = if (tabletHalfSide == "right") colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -788,21 +883,38 @@ fun SettingsPageView(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Clear Learned Words & History (moved into this separate language section)
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // View & Clear Learned Data per Language
                         val coroutineScope = rememberCoroutineScope()
+                        var enCount by remember { mutableStateOf(0) }
+                        var siCount by remember { mutableStateOf(0) }
+
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            val db = AppDatabase.getDatabase(context)
+                            val mgr = WordSuggestionManager(
+                                wordFrequencyDao = db.wordFrequencyDao(),
+                                bigramFrequencyDao = db.bigramFrequencyDao(),
+                                correctionPairDao = db.correctionPairDao(),
+                                translitChoiceDao = db.translitChoiceDao(),
+                                dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
+                            )
+                            enCount = mgr.getLearnedWordsCount("en")
+                            siCount = mgr.getLearnedWordsCount("si")
+                        }
+
+                        Text(
+                            text = "Learned Words (Per Language)",
+                            color = colors.enterKeyBackground,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // English Learned Words Card
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    coroutineScope.launch {
-                                        val db = AppDatabase.getDatabase(context)
-                                        val mgr = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
-                                        mgr.clearLearnedWords()
-                                        android.widget.Toast.makeText(context, "Learned words and prediction history cleared", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                .testTag("btn_clear_learned_words_page"),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
                             shape = RoundedCornerShape(10.dp)
                         ) {
@@ -813,27 +925,99 @@ fun SettingsPageView(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = null,
-                                        tint = colors.enterKeyBackground,
-                                        modifier = Modifier.size(20.dp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "English Learned Words",
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Clear Learned Words",
-                                            color = colors.letterKeyTextColor,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "Erase user typing history, word frequencies, and bigram predictions",
-                                            color = colors.letterKeySecondaryTextColor,
-                                            fontSize = 11.sp
-                                        )
-                                    }
+                                    Text(
+                                        text = "$enCount learned words and typos",
+                                        color = colors.letterKeySecondaryTextColor,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.letterKeyBackground)
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                val db = AppDatabase.getDatabase(context)
+                                                val mgr = WordSuggestionManager(
+                                                    wordFrequencyDao = db.wordFrequencyDao(),
+                                                    bigramFrequencyDao = db.bigramFrequencyDao(),
+                                                    correctionPairDao = db.correctionPairDao(),
+                                                    translitChoiceDao = db.translitChoiceDao(),
+                                                    dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
+                                                )
+                                                mgr.clearLearnedData("en")
+                                                enCount = 0
+                                                android.widget.Toast.makeText(context, "English learned words cleared", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .testTag("btn_clear_english_words"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = "Clear", color = colors.enterKeyBackground, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Sinhala Learned Words Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = colors.functionKeyBackground),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Sinhala Learned Words",
+                                        color = colors.letterKeyTextColor,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "$siCount words & transliterations",
+                                        color = colors.letterKeySecondaryTextColor,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.letterKeyBackground)
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                val db = AppDatabase.getDatabase(context)
+                                                val mgr = WordSuggestionManager(
+                                                    wordFrequencyDao = db.wordFrequencyDao(),
+                                                    bigramFrequencyDao = db.bigramFrequencyDao(),
+                                                    correctionPairDao = db.correctionPairDao(),
+                                                    translitChoiceDao = db.translitChoiceDao(),
+                                                    dictionaryRepo = com.example.data.DictionaryRepository.getInstance(context)
+                                                )
+                                                mgr.clearLearnedData("si")
+                                                siCount = 0
+                                                android.widget.Toast.makeText(context, "Sinhala learned words cleared", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .testTag("btn_clear_sinhala_words"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = "Clear", color = colors.enterKeyBackground, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

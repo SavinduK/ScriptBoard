@@ -155,12 +155,16 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         } catch (_: Exception) {}
     }
 
+    // Revert transliteration: pair of (latinWord, sinhalaWordWithSpace)
+    private var lastTransliteration: Pair<String, String>? = null
+
     /**
-     * Privacy check: detects passwords, emails, URIs, and IME_FLAG_NO_PERSONALIZED_LEARNING.
+     * Privacy check: detects passwords, emails, URIs, TYPE_NULL, and IME_FLAG_NO_PERSONALIZED_LEARNING.
      */
     private fun isSensitiveInput(info: EditorInfo?): Boolean {
         if (info == null) return false
         val inputType = info.inputType
+        if (inputType == EditorInfo.TYPE_NULL) return true
         val variation = inputType and EditorInfo.TYPE_MASK_VARIATION
         val isPassword = variation == EditorInfo.TYPE_TEXT_VARIATION_PASSWORD ||
                 variation == EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
@@ -176,7 +180,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     }
 
     /**
-     * Anti-typo learning: commit staged word if user did not immediately backspace into it.
+     * Anti-typo learning: commit staged word if user did not edit or backspace before next word.
      */
     private fun commitPendingWordIfAny() {
         val word = pendingLearnedWord ?: return
@@ -189,7 +193,13 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             serviceScope.launch(Dispatchers.IO) {
                 try {
                     val db = AppDatabase.getDatabase(this@KeyProInputMethodService)
-                    val manager = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
+                    val manager = WordSuggestionManager(
+                        wordFrequencyDao = db.wordFrequencyDao(),
+                        bigramFrequencyDao = db.bigramFrequencyDao(),
+                        correctionPairDao = db.correctionPairDao(),
+                        translitChoiceDao = db.translitChoiceDao(),
+                        dictionaryRepo = com.example.data.DictionaryRepository.getInstance(this@KeyProInputMethodService)
+                    )
                     manager.recordWordUsed(word, prev, isPrivateOrSensitive = false)
                 } catch (_: Exception) {}
             }
@@ -197,14 +207,18 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
     }
 
     /**
-     * If user hits backspace within 2.5s of typing space/enter, discard pending word so typo is NOT learned.
+     * Discard pending word if user edits it at all before the next word is committed.
      */
-    private fun discardPendingWordOnBackspace() {
-        val now = System.currentTimeMillis()
-        if (pendingLearnedWord != null && (now - pendingCommitTimestamp) < 2500L) {
-            pendingLearnedWord = null
-            pendingPrevWord = null
-        }
+    private fun discardPendingWordOnEdit() {
+        pendingLearnedWord = null
+        pendingPrevWord = null
+    }
+
+    fun getDynamicPrevWord(): String? {
+        val ic = currentInputConnection ?: return null
+        val text = ic.getTextBeforeCursor(60, 0)?.toString() ?: return null
+        val words = text.trimEnd().split(Regex("\\s+"))
+        return words.lastOrNull { it.isNotBlank() && !WordSuggestionManager.isInvalidToLearn(it) }
     }
 
     fun isPhysicalKeyboardConnected(): Boolean {
@@ -385,8 +399,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
         when (action) {
             is KeyAction.InsertText -> {
+                lastTransliteration = null
                 // Direct commit: completely prevents white underline and selection reset glitches
                 ic.commitText(action.text, 1)
+                prevWordFlow.value = getDynamicPrevWord() ?: ""
             }
             is KeyAction.Space -> {
                 val currentLang = keyboardPrefs.currentLanguage.value
@@ -396,16 +412,19 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 // English -> Sinhala Transliteration Keyboard (si-trans)
                 if (currentLang == "si-trans" && lastWord.isNotBlank() && lastWord.all { it.isLetter() }) {
                     val transliterated = com.example.ui.keyboard.util.SinhalaTransliterator.transliterateWord(lastWord)
+                    val committedStr = transliterated + " "
                     ic.deleteSurroundingText(lastWord.length, 0)
-                    ic.commitText(transliterated + " ", 1)
+                    ic.commitText(committedStr, 1)
+                    lastTransliteration = Pair(lastWord, committedStr)
                     commitPendingWordIfAny()
                     pendingLearnedWord = transliterated
                     pendingPrevWord = currentPrevWord
-                    pendingCommitTimestamp = System.currentTimeMillis()
                     currentPrevWord = transliterated
                     prevWordFlow.value = transliterated
                     return
                 }
+
+                lastTransliteration = null
 
                 // Check shortcut expansion
                 val matched = if (lastWord.isNotBlank()) {
@@ -424,12 +443,12 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 if (lastWord.isNotBlank()) {
                     pendingLearnedWord = lastWord
                     pendingPrevWord = currentPrevWord
-                    pendingCommitTimestamp = System.currentTimeMillis()
                     currentPrevWord = lastWord
                     prevWordFlow.value = lastWord
                 }
             }
             is KeyAction.ExpandShortcut -> {
+                lastTransliteration = null
                 if (action.shortcutText.isNotEmpty()) {
                     val before = ic.getTextBeforeCursor(action.shortcutText.length, 0)?.toString()
                     if (before == action.shortcutText) {
@@ -437,8 +456,10 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     }
                 }
                 ic.commitText(action.fullContent, 1)
+                prevWordFlow.value = getDynamicPrevWord() ?: ""
             }
             is KeyAction.ApplySuggestion -> {
+                lastTransliteration = null
                 val prefixLen = action.typedWord.length
                 if (prefixLen > 0) {
                     val before = ic.getTextBeforeCursor(prefixLen, 0)?.toString() ?: ""
@@ -454,21 +475,58 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 }
                 ic.commitText(action.suggestedWord + " ", 1)
 
+                // Record correction pair if typed word was replaced by suggestion
+                if (action.typedWord.isNotBlank() && !action.typedWord.equals(action.suggestedWord, ignoreCase = true)) {
+                    val currentLang = keyboardPrefs.currentLanguage.value
+                    serviceScope.launch(Dispatchers.IO) {
+                        try {
+                            val db = AppDatabase.getDatabase(this@KeyProInputMethodService)
+                            val manager = WordSuggestionManager(
+                                wordFrequencyDao = db.wordFrequencyDao(),
+                                bigramFrequencyDao = db.bigramFrequencyDao(),
+                                correctionPairDao = db.correctionPairDao(),
+                                translitChoiceDao = db.translitChoiceDao(),
+                                dictionaryRepo = com.example.data.DictionaryRepository.getInstance(this@KeyProInputMethodService)
+                            )
+                            manager.recordCorrection(action.typedWord, action.suggestedWord, currentLang)
+                            if (currentLang == "si-trans") {
+                                manager.recordTranslitChoice(action.typedWord, action.suggestedWord)
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
                 commitPendingWordIfAny()
                 pendingLearnedWord = action.suggestedWord
                 pendingPrevWord = currentPrevWord
-                pendingCommitTimestamp = System.currentTimeMillis()
                 currentPrevWord = action.suggestedWord
                 prevWordFlow.value = action.suggestedWord
             }
             is KeyAction.Backspace -> {
-                discardPendingWordOnBackspace()
+                // If user hits Backspace immediately after transliteration conversion, revert to original Latin
+                if (lastTransliteration != null) {
+                    val (origLatin, converted) = lastTransliteration!!
+                    lastTransliteration = null
+                    ic.deleteSurroundingText(converted.length, 0)
+                    ic.commitText(origLatin, 1)
+                    discardPendingWordOnEdit()
+                    prevWordFlow.value = getDynamicPrevWord() ?: ""
+                    return
+                }
+
+                lastTransliteration = null
+                discardPendingWordOnEdit()
                 ic.deleteSurroundingText(1, 0)
+                prevWordFlow.value = getDynamicPrevWord() ?: ""
             }
             is KeyAction.DeleteForward -> {
+                lastTransliteration = null
+                discardPendingWordOnEdit()
                 ic.deleteSurroundingText(0, 1)
+                prevWordFlow.value = getDynamicPrevWord() ?: ""
             }
             is KeyAction.Enter -> {
+                lastTransliteration = null
                 val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
                 val lastWord = before.split(Regex("\\s+")).lastOrNull() ?: ""
 
@@ -479,7 +537,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 if (lastWord.isNotBlank()) {
                     pendingLearnedWord = lastWord
                     pendingPrevWord = currentPrevWord
-                    pendingCommitTimestamp = System.currentTimeMillis()
                     currentPrevWord = lastWord
                     prevWordFlow.value = lastWord
                 }
