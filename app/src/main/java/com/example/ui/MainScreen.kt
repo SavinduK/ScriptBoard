@@ -326,8 +326,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD D: CONNECTED DEVICES & CROSS-DEVICE SYNC
                             HubNavigationCard(
                                 icon = Icons.Default.Devices,
-                                title = "Connected Devices & Cross-Device Sync",
-                                description = "Sync clipboard history between two devices via Wi-Fi & Bluetooth. Show QR code on one device and scan from another to pair and sync text & images.",
+                                title = "Cross-Device Sync",
+                                description = "Sync clipboard history between two devices.",
                                 colors = colors,
                                 testTag = "card_connected_devices",
                                 onClick = { currentSection = MainScreenSection.CONNECTED_DEVICES }
@@ -356,7 +356,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                             // CARD G: EMOJI & SYMBOL PACKAGES (Runic, Hieroglyphs, etc.)
                             HubNavigationCard(
                                 icon = Icons.Default.AutoAwesome,
-                                title = "Emoji & Symbol Packages (Runic, Hieroglyphs, etc.)",
+                                title = "Emoji & Symbol Packages ",
                                 description = "Download ancient rune sets, Egyptian hieroglyphs, Kaomoji, and alchemical symbols to expand your keyboard emoji drawer.",
                                 colors = colors,
                                 testTag = "card_emoji_packages",
