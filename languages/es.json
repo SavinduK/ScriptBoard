@@ -1,0 +1,19 @@
+{
+  "id": "es",
+  "name": "Spanish",
+  "nativeName": "Español",
+  "flag": "🇪🇸",
+  "version": "1.0.0",
+  "layoutType": "qwerty_es",
+  "description": "Spanish QWERTY with ñ, inverted punctuation and accented vowels",
+  "specialCharacters": [
+    "ñ", "Ñ", "á", "é", "í", "ó", "ú", "ü", "¿", "¡"
+  ],
+  "sampleWords": [
+    "hola", "gracias", "sí", "no", "cómo",
+    "buenos", "días", "bien", "yo", "tú",
+    "nosotros", "ellos", "venir", "ir", "hacer",
+    "saber", "bonito", "casa", "escuela", "trabajo",
+    "amigo", "familia", "amor", "feliz", "tiempo"
+  ]
+}

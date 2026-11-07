@@ -68,6 +68,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             // Deduplicate duplicate entries from clipboard history
             repository.deleteDuplicateHistoryEntries()
+            // Remove model shortcuts suggested by the app
+            repository.deleteModelShortcuts()
             // Auto-purge expired history on startup if enabled
             if (keyboardPrefs.autoDeleteClipboardEnabled.value) {
                 repository.purgeExpiredHistory(keyboardPrefs.clipboardRetentionDays.value)
@@ -295,7 +297,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             is KeyAction.SwitchLanguage -> {
                 val nextLang = keyboardPrefs.cycleLanguage()
-                _lastActionStatus.value = "Language: ${if (nextLang == "si") "සිංහල" else "English"}"
+                val langName = when (nextLang) {
+                    "si" -> "සිංහල (Wijesekara)"
+                    "si-trans" -> "සිංහල (English ➔ Sinhala)"
+                    else -> "English"
+                }
+                _lastActionStatus.value = "Language: $langName"
             }
             else -> {}
         }

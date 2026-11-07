@@ -273,9 +273,7 @@ class WordSuggestionManager(
         prevWord: String? = null
     ): List<String> = withContext(Dispatchers.IO) {
         val cleanPrefix = prefix.trim()
-        val isSinhalaScript = cleanPrefix.isNotEmpty() && isSinhalaWord(cleanPrefix)
-        val isSinhalaLanguage = language == "si"
-        val preferSinhala = isSinhalaScript || isSinhalaLanguage
+        val isSinhalaLanguage = language == "si" || language == "si-trans"
 
         // 1. EMPTY BUFFER: Show next-word predictions from bigrams or starter words
         if (cleanPrefix.isEmpty()) {
@@ -285,23 +283,24 @@ class WordSuggestionManager(
             if (!prevWord.isNullOrBlank() && bigramFrequencyDao != null) {
                 try {
                     val cleanPrev = prevWord.trim().lowercase(Locale.ROOT)
-                    val continuations = bigramFrequencyDao.getTopContinuations(cleanPrev, limit = 5)
+                    val continuations = bigramFrequencyDao.getTopContinuations(cleanPrev, limit = 10)
                     for (item in continuations) {
                         if (suggestions.size >= 3) break
-                        if (!suggestions.contains(item.word)) {
+                        val matchesLang = if (isSinhalaLanguage) isSinhalaWord(item.word) else isEnglishWord(item.word)
+                        if (matchesLang && !suggestions.contains(item.word)) {
                             suggestions.add(item.word)
                         }
                     }
                 } catch (_: Exception) {}
             }
 
-            // 1B. Top user history words matching the language script (must have frequency >= 2)
+            // 1B. Top user history words matching the active keyboard language (frequency >= 2)
             if (suggestions.size < 3) {
                 try {
-                    val topLearned = wordFrequencyDao.getTopLearnedWords(minFrequency = 2, limit = 15)
+                    val topLearned = wordFrequencyDao.getTopLearnedWords(minFrequency = 2, limit = 20)
                     for (entity in topLearned) {
                         if (suggestions.size >= 3) break
-                        val matchesLang = if (preferSinhala) isSinhalaWord(entity.word) else isEnglishWord(entity.word)
+                        val matchesLang = if (isSinhalaLanguage) isSinhalaWord(entity.word) else isEnglishWord(entity.word)
                         if (matchesLang && !suggestions.contains(entity.word)) {
                             val text = if (hasCustomCasing(entity.originalCase)) entity.originalCase else entity.word
                             suggestions.add(text)
@@ -310,8 +309,8 @@ class WordSuggestionManager(
                 } catch (_: Exception) {}
             }
 
-            // 1C. Fallback to starter words
-            val starterWords = if (preferSinhala) defaultSinhalaStarterWords else defaultEnglishStarterWords
+            // 1C. Fallback to starter words strictly matched to keyboard language
+            val starterWords = if (isSinhalaLanguage) defaultSinhalaStarterWords else defaultEnglishStarterWords
             for (defaultWord in starterWords) {
                 if (suggestions.size >= 3) break
                 if (!suggestions.any { it.equals(defaultWord, ignoreCase = true) }) {
@@ -338,122 +337,116 @@ class WordSuggestionManager(
 
         val candidateMap = mutableMapOf<String, CandidateInfo>()
 
-        // 2A. User learned words (Requirement A: typed at least 2 times)
-        try {
-            val learned = wordFrequencyDao.getLearnedSuggestions(prefixLower, minFrequency = 2, limit = 20)
-            for (item in learned) {
-                candidateMap[item.word.lowercase()] = CandidateInfo(
-                    word = item.word,
-                    originalCase = item.originalCase,
-                    userFrequency = item.frequency,
-                    lastUsed = item.lastUsed
+        // 2A. Special Handling for English -> Sinhala Transliteration Keyboard (si-trans)
+        if (language == "si-trans") {
+            // Get phonetic transliteration candidates
+            val transSuggestions = com.example.ui.keyboard.util.SinhalaTransliterator.getSuggestions(prefixLower, limit = 5)
+            for ((idx, transWord) in transSuggestions.withIndex()) {
+                candidateMap[transWord] = CandidateInfo(
+                    word = transWord,
+                    originalCase = transWord,
+                    isDictionary = true,
+                    isSinglish = true,
+                    userFrequency = if (idx == 0) 50 else 20
                 )
             }
-        } catch (_: Exception) {}
 
-        // 2B. Bigram context for the current word
-        if (!prevWord.isNullOrBlank() && bigramFrequencyDao != null) {
-            try {
-                val cleanPrev = prevWord.trim().lowercase(Locale.ROOT)
-                val continuations = bigramFrequencyDao.getTopContinuations(cleanPrev, limit = 10)
-                for (item in continuations) {
-                    val lower = item.word.lowercase()
-                    if (lower.startsWith(prefixLower)) {
-                        val existing = candidateMap[lower]
-                        if (existing != null) {
-                            existing.bigramCount = item.count
-                        } else {
-                            candidateMap[lower] = CandidateInfo(
-                                word = item.word,
-                                originalCase = item.word,
-                                bigramCount = item.count,
-                                lastUsed = item.lastUsed
-                            )
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        // 2C. Built-in dictionaries (English and Sinhala, preferring script)
-        val primaryVocab = if (preferSinhala) commonSinhalaVocabulary else commonEnglishVocabulary
-        val secondaryVocab = if (preferSinhala) commonEnglishVocabulary else commonSinhalaVocabulary
-
-        for (dictWord in primaryVocab) {
-            val lower = dictWord.lowercase()
-            if (lower.startsWith(prefixLower)) {
-                val existing = candidateMap[lower]
-                if (existing != null) {
-                    existing.isDictionary = true
-                } else {
-                    candidateMap[lower] = CandidateInfo(
-                        word = dictWord,
-                        originalCase = dictWord,
-                        isDictionary = true
-                    )
-                }
-            }
-        }
-
-        // Also search secondary vocabulary
-        for (dictWord in secondaryVocab) {
-            val lower = dictWord.lowercase()
-            if (lower.startsWith(prefixLower)) {
-                val existing = candidateMap[lower]
-                if (existing != null) {
-                    existing.isDictionary = true
-                } else {
-                    candidateMap[lower] = CandidateInfo(
-                        word = dictWord,
-                        originalCase = dictWord,
-                        isDictionary = true
-                    )
-                }
-            }
-        }
-
-        // 2D. Singlish-to-Sinhala suggestions (Requirement G)
-        if (!isSinhalaScript) {
-            val matchedSinhala = singlishToSinhalaMap[prefixLower]
-            if (matchedSinhala != null) {
-                candidateMap[matchedSinhala] = CandidateInfo(
-                    word = matchedSinhala,
-                    originalCase = matchedSinhala,
-                    isSinglish = true
-                )
-            }
-            // Prefix Singlish match
-            for ((key, value) in singlishToSinhalaMap) {
-                if (key.startsWith(prefixLower) && !candidateMap.containsKey(value)) {
-                    candidateMap[value] = CandidateInfo(
-                        word = value,
-                        originalCase = value,
-                        isSinglish = true
-                    )
-                    if (candidateMap.size > 25) break
-                }
-            }
-        }
-
-        // 2E. Typo / Fuzzy correction (Requirement F)
-        if (candidateMap.size < 3 && prefixLower.length >= 3 && !preferSinhala) {
-            for (dictWord in commonEnglishVocabulary) {
-                if (kotlin.math.abs(dictWord.length - prefixLower.length) <= 1) {
-                    val dist = calculateKeyboardAdjacencyDistance(prefixLower, dictWord)
-                    if (dist <= 1.5f && !candidateMap.containsKey(dictWord)) {
+            // Also check if any known Sinhala vocabulary words start with the primary transliterated word
+            val primaryTrans = transSuggestions.firstOrNull() ?: ""
+            if (primaryTrans.isNotEmpty()) {
+                for (dictWord in commonSinhalaVocabulary) {
+                    if (dictWord.startsWith(primaryTrans) && !candidateMap.containsKey(dictWord)) {
                         candidateMap[dictWord] = CandidateInfo(
                             word = dictWord,
                             originalCase = dictWord,
-                            isDictionary = true,
-                            editDistance = dist
+                            isDictionary = true
+                        )
+                        if (candidateMap.size > 15) break
+                    }
+                }
+            }
+        } else if (language == "si") {
+            // 2B. Sinhala Wijesekara Keyboard: ONLY Sinhala words
+            try {
+                val learned = wordFrequencyDao.getLearnedSuggestions(prefixLower, minFrequency = 2, limit = 20)
+                for (item in learned) {
+                    if (isSinhalaWord(item.word)) {
+                        candidateMap[item.word.lowercase()] = CandidateInfo(
+                            word = item.word,
+                            originalCase = item.originalCase,
+                            userFrequency = item.frequency,
+                            lastUsed = item.lastUsed
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
+
+            for (dictWord in commonSinhalaVocabulary) {
+                val lower = dictWord.lowercase()
+                if (lower.startsWith(prefixLower)) {
+                    val existing = candidateMap[lower]
+                    if (existing != null) {
+                        existing.isDictionary = true
+                    } else {
+                        candidateMap[lower] = CandidateInfo(
+                            word = dictWord,
+                            originalCase = dictWord,
+                            isDictionary = true
                         )
                     }
                 }
             }
+        } else {
+            // 2C. English Keyboard: ONLY English words (No Sinhala words or Singlish conversions)
+            try {
+                val learned = wordFrequencyDao.getLearnedSuggestions(prefixLower, minFrequency = 2, limit = 20)
+                for (item in learned) {
+                    if (isEnglishWord(item.word)) {
+                        candidateMap[item.word.lowercase()] = CandidateInfo(
+                            word = item.word,
+                            originalCase = item.originalCase,
+                            userFrequency = item.frequency,
+                            lastUsed = item.lastUsed
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
+
+            for (dictWord in commonEnglishVocabulary) {
+                val lower = dictWord.lowercase()
+                if (lower.startsWith(prefixLower)) {
+                    val existing = candidateMap[lower]
+                    if (existing != null) {
+                        existing.isDictionary = true
+                    } else {
+                        candidateMap[lower] = CandidateInfo(
+                            word = dictWord,
+                            originalCase = dictWord,
+                            isDictionary = true
+                        )
+                    }
+                }
+            }
+
+            // Typo / Fuzzy correction for English
+            if (candidateMap.size < 3 && prefixLower.length >= 3) {
+                for (dictWord in commonEnglishVocabulary) {
+                    if (kotlin.math.abs(dictWord.length - prefixLower.length) <= 1) {
+                        val dist = calculateKeyboardAdjacencyDistance(prefixLower, dictWord)
+                        if (dist <= 1.5f && !candidateMap.containsKey(dictWord)) {
+                            candidateMap[dictWord] = CandidateInfo(
+                                word = dictWord,
+                                originalCase = dictWord,
+                                isDictionary = true,
+                                editDistance = dist
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        // 3. SCORE CANDIDATES (Requirement C & D)
-        // score = w_user * log(1 + min(freq, 50)) + w_bigram * bigramScore + w_dict * dictionaryScore + exactPrefixBonus
+        // 3. SCORE CANDIDATES
         data class ScoredCandidate(val text: String, val score: Double)
 
         val scored = candidateMap.values.map { info ->
@@ -466,23 +459,15 @@ class WordSuggestionManager(
             } else 0.0
 
             val dictScore = if (info.isDictionary) W_DICT.toDouble() else 0.0
-            val singlishScore = if (info.isSinglish) 3.5 else 0.0
+            val singlishScore = if (info.isSinglish) 4.5 else 0.0
             val exactBonus = if (info.word.equals(cleanPrefix, ignoreCase = true)) EXACT_PREFIX_BONUS.toDouble() else 0.0
             val typoPenalty = if (info.editDistance > 0f) -(info.editDistance * 2.0) else 0.0
 
             var rawScore = userScore + bigramScore + dictScore + singlishScore + exactBonus + typoPenalty
 
-            // Apply recency decay if lastUsed is available
             if (info.lastUsed > 0L) {
                 val decay = computeRecencyDecay(info.lastUsed)
                 rawScore *= decay
-            }
-
-            // Script alignment bonus
-            if (preferSinhala && isSinhalaWord(info.word)) {
-                rawScore += 2.0
-            } else if (!preferSinhala && isEnglishWord(info.word)) {
-                rawScore += 1.0
             }
 
             val formattedText = if (isSinhalaWord(info.word)) {
@@ -494,43 +479,63 @@ class WordSuggestionManager(
             ScoredCandidate(formattedText, rawScore)
         }.sortedByDescending { it.score }
 
-        // 4. STRIP POSITIONING (Requirement J)
-        // Put the best candidate in the center slot only if it clears confidence threshold;
-        // otherwise show the literal typed word in the center slot.
-        val topCandidate = scored.firstOrNull()
-        val isConfident = topCandidate != null && topCandidate.score >= CONFIDENCE_THRESHOLD
+        // Filter strictly by keyboard language
+        val languageStrictCandidates = scored.map { it.text }
+            .filter { word ->
+                if (isSinhalaLanguage) isSinhalaWord(word) else isEnglishWord(word)
+            }
+            .distinct()
 
         val results = mutableListOf<String>()
-        val distinctCandidates = scored.map { it.text }.distinct()
 
-        if (isConfident) {
-            // Center slot is the top candidate
-            val best = distinctCandidates[0]
-            val second = distinctCandidates.getOrNull(1) ?: cleanPrefix
-            val third = distinctCandidates.getOrNull(2) ?: if (second != cleanPrefix) cleanPrefix else ""
-
-            // [Left: second, Center: best, Right: third]
-            results.add(second)
-            results.add(best)
-            results.add(third)
+        if (language == "si-trans") {
+            // For transliteration, show top transliterated candidates directly
+            results.addAll(languageStrictCandidates.take(3))
+            var padIndex = 0
+            while (results.size < 3 && padIndex < defaultSinhalaStarterWords.size) {
+                val starter = defaultSinhalaStarterWords[padIndex++]
+                if (!results.contains(starter)) results.add(starter)
+            }
         } else {
-            // Literal typed word in center
-            val left = distinctCandidates.firstOrNull() ?: cleanPrefix
-            val center = cleanPrefix
-            val right = distinctCandidates.drop(1).firstOrNull() ?: ""
+            val topCandidate = scored.firstOrNull()
+            val isConfident = topCandidate != null && topCandidate.score >= CONFIDENCE_THRESHOLD
 
-            // [Left: alternate, Center: literal, Right: alternate]
-            results.add(if (left != center) left else (distinctCandidates.getOrNull(1) ?: ""))
-            results.add(center)
-            results.add(if (right != center && right != left) right else (distinctCandidates.getOrNull(2) ?: ""))
+            if (isConfident && languageStrictCandidates.isNotEmpty()) {
+                val best = languageStrictCandidates[0]
+                val second = languageStrictCandidates.getOrNull(1) ?: best
+                val third = languageStrictCandidates.getOrNull(2) ?: if (second != best) second else best
+
+                results.add(second)
+                results.add(best)
+                results.add(third)
+            } else {
+                val left = languageStrictCandidates.firstOrNull() ?: cleanPrefix
+                val center = cleanPrefix
+                val right = languageStrictCandidates.drop(1).firstOrNull() ?: ""
+
+                // Ensure words in strip match active keyboard language
+                val safeCenter = if (isSinhalaLanguage && !isSinhalaWord(center)) {
+                    languageStrictCandidates.firstOrNull() ?: defaultSinhalaStarterWords.first()
+                } else center
+
+                results.add(if (left != safeCenter) left else (languageStrictCandidates.getOrNull(1) ?: ""))
+                results.add(safeCenter)
+                results.add(if (right != safeCenter && right != left) right else (languageStrictCandidates.getOrNull(2) ?: ""))
+            }
         }
 
-        // Ensure 3 slots are returned
-        while (results.size < 3) {
-            results.add("")
+        // Final safety guarantee: Ensure strictly 3 non-empty slots matching language
+        val fallbackList = if (isSinhalaLanguage) defaultSinhalaStarterWords else defaultEnglishStarterWords
+        val finalClean = results.filter { word ->
+            word.isNotBlank() && (if (isSinhalaLanguage) isSinhalaWord(word) else isEnglishWord(word))
+        }.toMutableList()
+
+        for (fallback in fallbackList) {
+            if (finalClean.size >= 3) break
+            if (!finalClean.contains(fallback)) finalClean.add(fallback)
         }
 
-        return@withContext results.take(3)
+        return@withContext finalClean.take(3)
     }
 
     /**

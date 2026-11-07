@@ -68,64 +68,12 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
                     .fallbackToDestructiveMigration()
-                    .addCallback(object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // Populate default starter snippets
-                            CoroutineScope(Dispatchers.IO).launch {
-                                INSTANCE?.snippetDao()?.insertAll(DEFAULT_SNIPPETS)
-                            }
-                        }
-                    })
                     .build()
                 INSTANCE = instance
                 instance
             }
         }
 
-        val DEFAULT_SNIPPETS = listOf(
-            SnippetEntity(
-                title = "Email Address",
-                content = "alex.rivera@example.com",
-                isPinned = true,
-                category = "Work",
-                shortcut = "@email"
-            ),
-            SnippetEntity(
-                title = "Email Signature",
-                content = "Best regards,\nAlex Rivera",
-                isPinned = true,
-                category = "Work",
-                shortcut = "@sig"
-            ),
-            SnippetEntity(
-                title = "Quick Reply",
-                content = "Sounds great! Looking forward to it.",
-                isPinned = true,
-                category = "Messages",
-                shortcut = "@reply"
-            ),
-            SnippetEntity(
-                title = "Terminal Bash",
-                content = "git commit -m \"feat: update keyboard components\"",
-                isPinned = true,
-                category = "Code",
-                shortcut = "@git"
-            ),
-            SnippetEntity(
-                title = "Meeting Link",
-                content = "https://meet.google.com/xyz-abcd-efg",
-                isPinned = true,
-                category = "Work",
-                shortcut = "@meet"
-            ),
-            SnippetEntity(
-                title = "Home Address",
-                content = "742 Evergreen Terrace, Springfield, OR 97477",
-                isPinned = true,
-                category = "Personal",
-                shortcut = "@address"
-            )
-        )
+        val DEFAULT_SNIPPETS: List<SnippetEntity> = emptyList()
     }
 }

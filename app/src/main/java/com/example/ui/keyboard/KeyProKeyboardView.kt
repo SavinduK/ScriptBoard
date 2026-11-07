@@ -131,7 +131,9 @@ fun KeyProKeyboardView(
 
     var suggestedWords by remember(currentLanguage) {
         mutableStateOf(
-            if (currentLanguage == "si") listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද") else listOf("I", "The", "Thanks")
+            if (currentLanguage == "si" || currentLanguage == "si-trans")
+                listOf("ආයුබෝවන්", "ස්තූතියි", "කොහොමද")
+            else listOf("I", "The", "Thanks")
         )
     }
     var selectedSinhalaLetter by remember { mutableStateOf("ව") }
@@ -210,6 +212,15 @@ fun KeyProKeyboardView(
                 }
             }
             is KeyAction.Space -> {
+                // English -> Sinhala Transliteration Keyboard (si-trans)
+                if (currentLanguage == "si-trans" && currentWordBuffer.isNotBlank() && currentWordBuffer.all { it.isLetter() }) {
+                    val transliterated = com.example.ui.keyboard.util.SinhalaTransliterator.transliterateWord(currentWordBuffer)
+                    onAction(KeyAction.ApplySuggestion(currentWordBuffer, transliterated))
+                    coroutineScope.launch { wordSuggestionManager.recordWordUsed(transliterated) }
+                    currentWordBuffer = ""
+                    return
+                }
+
                 // Check if user typed an exact shortcut
                 val matched = pinnedSnippets.firstOrNull { it.shortcut.isNotBlank() && it.shortcut.equals(currentWordBuffer.trim(), ignoreCase = true) }
                 if (matched != null) {
@@ -217,8 +228,7 @@ fun KeyProKeyboardView(
                     currentWordBuffer = ""
                     return
                 }
-                // Record typed word into typing history (Request #3: same word used more -> suggest more)
-                // Note: Typed word is NOT autocorrected (no auto correct only suggest)
+                // Record typed word into typing history
                 if (currentWordBuffer.isNotBlank()) {
                     val wordToRecord = currentWordBuffer
                     coroutineScope.launch { wordSuggestionManager.recordWordUsed(wordToRecord) }
@@ -300,7 +310,11 @@ fun KeyProKeyboardView(
                 selectedSinhalaLetter = "ව"
                 currentWordBuffer = ""
                 val nextLang = keyboardPrefs.cycleLanguage()
-                val langName = if (nextLang == "si") "සිංහල" else "English"
+                val langName = when (nextLang) {
+                    "si" -> "සිංහල (Wijesekara)"
+                    "si-trans" -> "සිංහල (English ➔ Sinhala)"
+                    else -> "English"
+                }
                 android.widget.Toast.makeText(context, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
             }
             is KeyAction.InsertText -> {
@@ -673,12 +687,21 @@ fun KeyProKeyboardView(
             else -> {
                 // Layout is either TEXT, SYMBOLS_1, SYMBOLS_2, NUMPAD, or EXTENDED_PC
                 val isSinhala = currentLanguage == "si" && layoutMode == KeyboardLayoutMode.TEXT
+                val isSinhalaTranslit = currentLanguage == "si-trans" && layoutMode == KeyboardLayoutMode.TEXT
                 val hasMultipleLanguages = installedLanguages.size > 1
                 val currentRows = when (layoutMode) {
                     KeyboardLayoutMode.TEXT -> {
                         if (isSinhala) {
                             KeyboardLayoutGenerator.getSinhalaRows(
                                 selectedLetter = selectedSinhalaLetter,
+                                showLanguageSwitchKey = hasMultipleLanguages
+                            )
+                        } else if (isSinhalaTranslit) {
+                            KeyboardLayoutGenerator.getQwertyRows(
+                                shiftState = shiftState,
+                                holdForSymbols = holdForSymbolsEnabled,
+                                languageDisplayName = "සිංහල (Singlish)",
+                                includeNumberRow = numberRowEnabled,
                                 showLanguageSwitchKey = hasMultipleLanguages
                             )
                         } else {
@@ -692,11 +715,11 @@ fun KeyProKeyboardView(
                         }
                     }
                     KeyboardLayoutMode.SYMBOLS_1 -> KeyboardLayoutGenerator.getSymbols1Rows(
-                        languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English",
+                        languageDisplayName = if (currentLanguage == "si" || currentLanguage == "si-trans") "සිංහල" else "English",
                         holdForSymbols = holdForSymbolsEnabled
                     )
                     KeyboardLayoutMode.SYMBOLS_2 -> KeyboardLayoutGenerator.getSymbols2Rows(
-                        languageDisplayName = if (currentLanguage == "si") "සිංහල" else "English",
+                        languageDisplayName = if (currentLanguage == "si" || currentLanguage == "si-trans") "සිංහල" else "English",
                         holdForSymbols = holdForSymbolsEnabled
                     )
                     KeyboardLayoutMode.NUMPAD -> KeyboardLayoutGenerator.getNumpadRows(

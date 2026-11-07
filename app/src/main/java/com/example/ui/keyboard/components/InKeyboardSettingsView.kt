@@ -618,7 +618,11 @@ fun InKeyboardSettingsView(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = if (currentLang == "si") "🇱🇰 Sinhala (සිංහල Wijesekara)" else "🇺🇸 English (QWERTY)",
+                                        text = when (currentLang) {
+                                            "si" -> "🇱🇰 Sinhala (සිංහල Wijesekara)"
+                                            "si-trans" -> "🇱🇰 Sinhala (English ➔ Sinhala)"
+                                            else -> "🇺🇸 English (QWERTY)"
+                                        },
                                         color = colors.letterKeySecondaryTextColor,
                                         fontSize = 10.sp
                                     )
@@ -632,7 +636,11 @@ fun InKeyboardSettingsView(
                                         .background(colors.enterKeyBackground)
                                         .clickable {
                                             val next = keyboardPrefs.cycleLanguage()
-                                            val name = if (next == "si") "සිංහල" else "English"
+                                            val name = when (next) {
+                                                "si" -> "සිංහල (Wijesekara)"
+                                                "si-trans" -> "සිංහල (English ➔ Sinhala)"
+                                                else -> "English"
+                                            }
                                             android.widget.Toast.makeText(context, "Switched to $name", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                         .padding(horizontal = 10.dp, vertical = 5.dp)

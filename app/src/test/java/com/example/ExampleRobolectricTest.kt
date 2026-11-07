@@ -356,6 +356,43 @@ class ExampleRobolectricTest {
   }
 
   @Test
+  fun `word suggestion manager suggests sinhala words only with sinhala keyboard`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+    val manager = WordSuggestionManager(db.wordFrequencyDao(), db.bigramFrequencyDao())
+
+    // 1. Sinhala keyboard empty buffer
+    val emptySuggestions = manager.getSuggestions("", language = "si")
+    assertEquals(3, emptySuggestions.size)
+    assertTrue("All suggestions on Sinhala keyboard must be Sinhala words", emptySuggestions.all { WordSuggestionManager.isSinhalaWord(it) })
+
+    // 2. Sinhala keyboard with prefix
+    val prefixSuggestions = manager.getSuggestions("කො", language = "si")
+    assertEquals(3, prefixSuggestions.size)
+    assertTrue("All prefix suggestions on Sinhala keyboard must be Sinhala words", prefixSuggestions.all { WordSuggestionManager.isSinhalaWord(it) })
+
+    // 3. English keyboard with prefix
+    val englishSuggestions = manager.getSuggestions("th", language = "en")
+    assertEquals(3, englishSuggestions.size)
+    assertTrue("All suggestions on English keyboard must be English words", englishSuggestions.all { WordSuggestionManager.isEnglishWord(it) })
+  }
+
+  @Test
+  fun `sinhala transliterator converts English phonetic letters to Sinhala words`() {
+    val transliterator = com.example.ui.keyboard.util.SinhalaTransliterator
+    assertEquals("මම", transliterator.transliterateWord("mama"))
+    assertEquals("ඔයා", transliterator.transliterateWord("oya"))
+    assertEquals("අපි", transliterator.transliterateWord("api"))
+    assertEquals("සුභ", transliterator.transliterateWord("subha"))
+    assertEquals("ස්තූතියි", transliterator.transliterateWord("sthuthi"))
+    assertEquals("කොහොමද", transliterator.transliterateWord("kohomada"))
+    assertEquals("ලංකා", transliterator.transliterateWord("lanka"))
+
+    val suggestions = transliterator.getSuggestions("mama")
+    assertTrue("Transliteration suggestions must contain converted Sinhala word", suggestions.contains("මම"))
+  }
+
+  @Test
   fun `keyboard layout mode registers standard typing and media modes`() {
     val modes = com.example.ui.keyboard.model.KeyboardLayoutMode.values()
     assertTrue("KeyboardLayoutMode must contain TEXT", modes.any { it.name == "TEXT" })

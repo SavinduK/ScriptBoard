@@ -364,14 +364,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
         candidatesStart: Int, candidatesEnd: Int
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
-        // Safe text replacement (Requirement I):
-        // Re-sync currentWordBuffer when cursor moves or app changes text externally
-        if (candidatesStart < 0 || candidatesEnd < 0 || (candidatesEnd in 0..newSelStart && newSelStart != candidatesEnd)) {
-            if (currentComposingBuffer.isNotEmpty()) {
-                currentComposingBuffer = ""
-                composingBufferFlow.value = ""
-            }
-        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -383,8 +375,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
     override fun onFinishInputView(finishingInput: Boolean) {
         commitPendingWordIfAny()
-        currentComposingBuffer = ""
-        composingBufferFlow.value = ""
         super.onFinishInputView(finishingInput)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
@@ -392,37 +382,29 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
 
     private fun handleImeAction(action: KeyAction, pinnedSnippets: List<com.example.data.SnippetEntity> = emptyList()) {
         val ic = currentInputConnection ?: return
-        val sensitive = isSensitiveInput(currentInputEditorInfo)
 
         when (action) {
             is KeyAction.InsertText -> {
-                // If single letter/symbol typed during composing in non-sensitive field, use setComposingText
-                if (action.text.length == 1 && (action.text[0].isLetterOrDigit() || action.text in listOf("@", "/", "#", "_", "-", ".")) && !sensitive) {
-                    currentComposingBuffer += action.text
-                    ic.setComposingText(currentComposingBuffer, 1)
-                    composingBufferFlow.value = currentComposingBuffer
-                } else {
-                    if (currentComposingBuffer.isNotEmpty()) {
-                        ic.finishComposingText()
-                        currentComposingBuffer = ""
-                        composingBufferFlow.value = ""
-                    }
-                    ic.commitText(action.text, 1)
-                }
+                // Direct commit: completely prevents white underline and selection reset glitches
+                ic.commitText(action.text, 1)
             }
             is KeyAction.Space -> {
-                val lastWord = if (currentComposingBuffer.isNotEmpty()) {
-                    currentComposingBuffer
-                } else {
-                    val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
-                    before.split(Regex("\\s+")).lastOrNull() ?: ""
-                }
+                val currentLang = keyboardPrefs.currentLanguage.value
+                val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
+                val lastWord = before.split(Regex("\\s+")).lastOrNull() ?: ""
 
-                // Finish composing before committing space
-                if (currentComposingBuffer.isNotEmpty()) {
-                    ic.finishComposingText()
-                    currentComposingBuffer = ""
-                    composingBufferFlow.value = ""
+                // English -> Sinhala Transliteration Keyboard (si-trans)
+                if (currentLang == "si-trans" && lastWord.isNotBlank() && lastWord.all { it.isLetter() }) {
+                    val transliterated = com.example.ui.keyboard.util.SinhalaTransliterator.transliterateWord(lastWord)
+                    ic.deleteSurroundingText(lastWord.length, 0)
+                    ic.commitText(transliterated + " ", 1)
+                    commitPendingWordIfAny()
+                    pendingLearnedWord = transliterated
+                    pendingPrevWord = currentPrevWord
+                    pendingCommitTimestamp = System.currentTimeMillis()
+                    currentPrevWord = transliterated
+                    prevWordFlow.value = transliterated
+                    return
                 }
 
                 // Check shortcut expansion
@@ -437,7 +419,7 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                     ic.commitText(" ", 1)
                 }
 
-                // Commit previous pending word, then stage current word (Requirement B)
+                // Commit previous pending word, then stage current word
                 commitPendingWordIfAny()
                 if (lastWord.isNotBlank()) {
                     pendingLearnedWord = lastWord
@@ -448,11 +430,6 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 }
             }
             is KeyAction.ExpandShortcut -> {
-                if (currentComposingBuffer.isNotEmpty()) {
-                    ic.finishComposingText()
-                    currentComposingBuffer = ""
-                    composingBufferFlow.value = ""
-                }
                 if (action.shortcutText.isNotEmpty()) {
                     val before = ic.getTextBeforeCursor(action.shortcutText.length, 0)?.toString()
                     if (before == action.shortcutText) {
@@ -462,11 +439,20 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                 ic.commitText(action.fullContent, 1)
             }
             is KeyAction.ApplySuggestion -> {
-                // Safe text replacement (Requirement I):
-                // Using commitText automatically finishes and replaces composing text cleanly!
+                val prefixLen = action.typedWord.length
+                if (prefixLen > 0) {
+                    val before = ic.getTextBeforeCursor(prefixLen, 0)?.toString() ?: ""
+                    if (before.equals(action.typedWord, ignoreCase = true)) {
+                        ic.deleteSurroundingText(prefixLen, 0)
+                    } else {
+                        val textBefore = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
+                        val lastWord = textBefore.split(Regex("\\s+")).lastOrNull() ?: ""
+                        if (lastWord.isNotBlank() && (action.suggestedWord.startsWith(lastWord, ignoreCase = true) || lastWord.equals(action.typedWord, ignoreCase = true))) {
+                            ic.deleteSurroundingText(lastWord.length, 0)
+                        }
+                    }
+                }
                 ic.commitText(action.suggestedWord + " ", 1)
-                currentComposingBuffer = ""
-                composingBufferFlow.value = ""
 
                 commitPendingWordIfAny()
                 pendingLearnedWord = action.suggestedWord
@@ -477,28 +463,15 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             }
             is KeyAction.Backspace -> {
                 discardPendingWordOnBackspace()
-                if (currentComposingBuffer.isNotEmpty()) {
-                    currentComposingBuffer = currentComposingBuffer.dropLast(1)
-                    if (currentComposingBuffer.isEmpty()) {
-                        ic.commitText("", 1)
-                    } else {
-                        ic.setComposingText(currentComposingBuffer, 1)
-                    }
-                    composingBufferFlow.value = currentComposingBuffer
-                } else {
-                    ic.deleteSurroundingText(1, 0)
-                }
+                ic.deleteSurroundingText(1, 0)
             }
             is KeyAction.DeleteForward -> {
                 ic.deleteSurroundingText(0, 1)
             }
             is KeyAction.Enter -> {
-                val lastWord = if (currentComposingBuffer.isNotEmpty()) currentComposingBuffer else ""
-                if (currentComposingBuffer.isNotEmpty()) {
-                    ic.finishComposingText()
-                    currentComposingBuffer = ""
-                    composingBufferFlow.value = ""
-                }
+                val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: ""
+                val lastWord = before.split(Regex("\\s+")).lastOrNull() ?: ""
+
                 ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
                 ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
 
@@ -615,7 +588,11 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
             is KeyAction.SwitchLanguage -> {
                 val prefs = KeyboardPreferences.getInstance(this)
                 val nextLang = prefs.cycleLanguage()
-                val langName = if (nextLang == "si") "සිංහල" else "English"
+                val langName = when (nextLang) {
+                    "si" -> "සිංහල (Wijesekara)"
+                    "si-trans" -> "සිංහල (English ➔ Sinhala)"
+                    else -> "English"
+                }
                 android.widget.Toast.makeText(this, "Language: $langName", android.widget.Toast.LENGTH_SHORT).show()
             }
             is KeyAction.InsertSticker -> {

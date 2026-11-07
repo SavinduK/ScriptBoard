@@ -1,0 +1,16 @@
+{
+  "id": "si-trans",
+  "name": "Sinhala (English ➔ Sinhala)",
+  "nativeName": "සිංහල (Singlish)",
+  "flag": "🇱🇰",
+  "version": "1.0.0",
+  "layoutType": "phonetic_transliteration",
+  "description": "Phonetic transliteration: type in English letters (QWERTY), converts automatically to Sinhala words and characters",
+  "sampleWords": [
+    "මම", "ඔයා", "අපි", "ඔව්", "නෑ", "සුභ", "ස්තූතියි", "කොහොමද",
+    "හොඳයි", "හරි", "ගෙදර", "කෑම", "වතුර", "මොකක්ද", "ඇයි", "කොහෙද",
+    "දැන්", "පස්සේ", "කමක්", "ඉක්මනින්", "කියන්න", "අහන්න", "බලන්න",
+    "කරන්න", "යන්න", "එන්න", "යමු", "දවසක්", "උදෑසනක්", "අද", "හෙට",
+    "ඊයේ", "වැඩ", "පොත්", "මල්", "සතුටු", "ආදරය", "ශ්‍රී", "ලංකා", "සිංහල"
+  ]
+}

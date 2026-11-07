@@ -61,9 +61,20 @@ object LanguagePackRegistry {
         isBuiltIn = false
     )
 
+    val SINHALA_TRANSLITERATION = LanguagePack(
+        id = "si-trans",
+        name = "Sinhala (English ➔ Sinhala)",
+        nativeName = "සිංහල (Singlish)",
+        flag = "🇱🇰",
+        description = "Type in English letters (QWERTY), converts automatically to Sinhala words and characters",
+        sizeDisplay = "1.4 MB",
+        isBuiltIn = false
+    )
+
     val ALL_PACKAGES: List<LanguagePack> = listOf(
         BUILT_IN_ENGLISH,
-        SINHALA
+        SINHALA,
+        SINHALA_TRANSLITERATION
     )
 
     fun getPack(id: String): LanguagePack? {

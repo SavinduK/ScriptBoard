@@ -261,4 +261,18 @@ class SnippetRepository(private val snippetDao: SnippetDao) {
         val id = snippetDao.insertSnippet(entity)
         return entity.copy(id = id)
     }
+
+    /**
+     * Purges pre-seeded model shortcuts suggested by the app
+     */
+    suspend fun deleteModelShortcuts(): Int {
+        val modelShortcuts = setOf("@email", "@sig", "@reply", "@git", "@meet", "@address")
+        val list = snippetDao.getPinnedList()
+        val idsToDelete = list.filter {
+            modelShortcuts.contains(it.shortcut.lowercase().trim())
+        }.map { it.id }
+        return if (idsToDelete.isNotEmpty()) {
+            snippetDao.deleteSnippetsByIds(idsToDelete)
+        } else 0
+    }
 }

@@ -1,0 +1,39 @@
+{
+  "id": "hi",
+  "name": "Hindi",
+  "nativeName": "हिन्दी",
+  "flag": "🇮🇳",
+  "version": "1.0.0",
+  "layoutType": "devanagari",
+  "description": "Hindi Devanagari script layout with matras and conjuncts",
+  "consonants": [
+    "क", "ख", "ग", "घ", "ङ",
+    "च", "छ", "ज", "झ", "ञ",
+    "ट", "ठ", "ड", "ढ", "ण",
+    "त", "थ", "द", "ध", "न",
+    "प", "फ", "ब", "भ", "म",
+    "य", "र", "ल", "व", "श", "ष", "स", "ह"
+  ],
+  "vowelModifiers": [
+    { "name": "halant", "symbol": "्" },
+    { "name": "aa-matra", "symbol": "ा" },
+    { "name": "chhoti-i-matra", "symbol": "ि" },
+    { "name": "badi-i-matra", "symbol": "ी" },
+    { "name": "chhota-u-matra", "symbol": "ु" },
+    { "name": "bada-u-matra", "symbol": "ू" },
+    { "name": "ri-matra", "symbol": "ृ" },
+    { "name": "e-matra", "symbol": "े" },
+    { "name": "ai-matra", "symbol": "ै" },
+    { "name": "o-matra", "symbol": "ो" },
+    { "name": "au-matra", "symbol": "ौ" },
+    { "name": "anusvara", "symbol": "ं" },
+    { "name": "visarga", "symbol": "ः" },
+    { "name": "candrabindu", "symbol": "ँ" }
+  ],
+  "sampleWords": [
+    "नमस्ते", "धन्यवाद", "हाँ", "नहीं", "कैसे",
+    "शुभ", "प्रभात", "अच्छा", "मैं", "आप",
+    "हम", "वे", "आना", "जाना", "करना",
+    "सुंदर", "घर", "विद्यालय", "मित्र", "परिवार"
+  ]
+}
