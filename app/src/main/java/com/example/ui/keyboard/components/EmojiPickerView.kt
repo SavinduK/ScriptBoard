@@ -524,11 +524,8 @@ fun EmojiPickerView(
             }
 
             MediaPickerSection.STICKERS -> {
-                val normalStickers = remember(stickers) { stickers.filter { !it.isAnimated } }
-                val animatedStickers = remember(stickers) { stickers.filter { it.isAnimated } }
-                val displayedKeyboardStickers = if (keyboardStickerTab == 0) normalStickers else animatedStickers
-
-                // Horizontal selector bar for Normal vs Animated stickers
+                // Unified Sticker Section: Animated & non-animated saved together in one section
+                // ANIM badge displayed on animated stickers
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -536,45 +533,12 @@ fun EmojiPickerView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (keyboardStickerTab == 0) colors.enterKeyBackground else colors.letterKeyBackground)
-                                .clickable { keyboardStickerTab = 0 }
-                                .padding(vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Normal (${normalStickers.size})",
-                                color = if (keyboardStickerTab == 0) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                fontSize = 11.sp,
-                                fontWeight = if (keyboardStickerTab == 0) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (keyboardStickerTab == 1) colors.enterKeyBackground else colors.letterKeyBackground)
-                                .clickable { keyboardStickerTab = 1 }
-                                .padding(vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Animated (${animatedStickers.size})",
-                                color = if (keyboardStickerTab == 1) colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                fontSize = 11.sp,
-                                fontWeight = if (keyboardStickerTab == 1) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    }
+                    Text(
+                        text = "Stickers (${stickers.size})",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
                     // Open Sticker Studio in App button
                     Box(
@@ -590,19 +554,19 @@ fun EmojiPickerView(
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
                             }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "+ Studio",
                             color = colors.functionKeyTextColor,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                if (displayedKeyboardStickers.isEmpty()) {
+                if (stickers.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -615,21 +579,21 @@ fun EmojiPickerView(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = if (keyboardStickerTab == 0) Icons.Default.SentimentSatisfiedAlt else Icons.Default.AutoAwesome,
+                                imageVector = Icons.Default.SentimentSatisfiedAlt,
                                 contentDescription = null,
                                 tint = colors.letterKeySecondaryTextColor.copy(alpha = 0.6f),
                                 modifier = Modifier.size(34.dp)
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (keyboardStickerTab == 0) "No Normal Stickers" else "No Animated Stickers",
+                                text = "No Stickers Yet",
                                 color = colors.letterKeyTextColor,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Use '+ Studio' above to open Sticker Studio and import stickers from your folders.",
+                                text = "Tap '+ Studio' to import WebP, GIF, or PNG stickers from your device.",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 11.sp,
                                 textAlign = TextAlign.Center,
@@ -648,7 +612,7 @@ fun EmojiPickerView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(displayedKeyboardStickers, key = { it.id }) { sticker ->
+                        items(stickers, key = { it.id }) { sticker ->
                             Box(
                                 modifier = Modifier
                                     .aspectRatio(1f)
@@ -679,13 +643,13 @@ fun EmojiPickerView(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
                                             .clip(RoundedCornerShape(4.dp))
-                                            .background(colors.enterKeyBackground.copy(alpha = 0.85f))
-                                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                                            .background(colors.enterKeyBackground.copy(alpha = 0.9f))
+                                            .padding(horizontal = 4.dp, vertical = 1.5.dp)
                                     ) {
                                         Text(
                                             text = "ANIM",
                                             color = colors.enterKeyTextColor,
-                                            fontSize = 7.sp,
+                                            fontSize = 7.5.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -879,8 +843,12 @@ fun EmojiPickerView(
         )
     }
 
-    // Long Hold Delete Confirmation Dialog for Stickers
+    // Long Hold Delete Confirmation Dialog for Stickers (shows filetype of the sticker)
     stickerPendingDelete?.let { sticker ->
+        val file = File(sticker.filePath)
+        val fileType = file.extension.uppercase().ifEmpty { "WEBP" }
+        val animDesc = if (sticker.isAnimated) "Animated $fileType" else "Static $fileType"
+
         AlertDialog(
             onDismissRequest = { stickerPendingDelete = null },
             icon = {
@@ -898,11 +866,19 @@ fun EmojiPickerView(
                 )
             },
             text = {
-                Text(
-                    text = "Are you sure you want to remove \"${sticker.name}\" from your stickers?",
-                    color = colors.letterKeySecondaryTextColor,
-                    fontSize = 13.sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Are you sure you want to remove \"${sticker.name}\"?",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.5.sp
+                    )
+                    Text(
+                        text = "File format: $animDesc (.$fileType)",
+                        color = colors.enterKeyBackground,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                }
             },
             confirmButton = {
                 TextButton(

@@ -254,6 +254,29 @@ class KeyboardPreferences(context: Context) {
         setTabletHalfSide(next)
     }
 
+    /**
+     * Cycles through the 3 tablet keyboard layout stages:
+     * 1. Standard full layout
+     * 2. Split keyboard mode
+     * 3. Half-size keyboard mode
+     */
+    fun cycleTabletLayoutStage(): String {
+        return if (!_tabletSplitEnabled.value && !_tabletHalfSizeEnabled.value) {
+            // Stage 1 -> 2: Enable Split mode
+            setTabletSplitEnabled(true)
+            "split"
+        } else if (_tabletSplitEnabled.value) {
+            // Stage 2 -> 3: Enable Half-size mode
+            setTabletHalfSizeEnabled(true)
+            "half"
+        } else {
+            // Stage 3 -> 1: Return to Standard full layout
+            setTabletSplitEnabled(false)
+            setTabletHalfSizeEnabled(false)
+            "standard"
+        }
+    }
+
     fun setHideOnPhysicalKeyboard(enabled: Boolean) {
         _hideOnPhysicalKeyboard.value = enabled
         prefs.edit().putBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, enabled).apply()

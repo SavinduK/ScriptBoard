@@ -422,6 +422,12 @@ fun KeyProKeyboardView(
                 isEmojiActive = layoutMode == KeyboardLayoutMode.EMOJI || layoutMode == KeyboardLayoutMode.STICKERS,
                 isVoiceTypeActive = layoutMode == KeyboardLayoutMode.VOICE_TYPING,
                 currentLanguage = currentLanguage,
+                isTablet = isTablet,
+                tabletSplitActive = tabletSplitEnabled,
+                tabletHalfSizeActive = tabletHalfSizeEnabled,
+                onCycleTabletLayout = {
+                    keyboardPrefs.cycleTabletLayoutStage()
+                },
                 onToggleLaptopBar = {
                     val next = !isLaptopBarVisible
                     isLaptopBarVisible = next
@@ -760,7 +766,7 @@ fun KeyProKeyboardView(
                         keyVerticalPadding = keyVerticalPadding,
                         keyCornerRadius = keyCornerRadius,
                         rowVerticalPadding = rowVerticalPadding,
-                        gapWidthDp = if (isVeryWide) 110.dp else 64.dp,
+                        gapWidthDp = if (isVeryWide) 160.dp else 110.dp,
                         holdForSymbolsEnabled = holdForSymbolsEnabled,
                         onKeyClick = { handleKeyAction(it.action) },
                         onKeyLongClick = { clickedKey ->
@@ -1049,11 +1055,11 @@ private fun TabletHalfSizeKeyboardRows(
                         KeyCap(
                             key = key,
                             colors = colors,
-                            heightDp = (calculatedHeightDp * 0.95f).toInt(),
-                            characterFontSize = calculatedFontSize * 0.9f,
-                            altCharacterFontSize = calculatedAltFontSize * 0.9f,
-                            horizontalPaddingDp = keyHorizontalPadding * 0.85f,
-                            verticalPaddingDp = keyVerticalPadding * 0.85f,
+                            heightDp = calculatedHeightDp,
+                            characterFontSize = calculatedFontSize,
+                            altCharacterFontSize = calculatedAltFontSize,
+                            horizontalPaddingDp = keyHorizontalPadding,
+                            verticalPaddingDp = keyVerticalPadding,
                             cornerRadiusDp = keyCornerRadius,
                             holdForSymbols = holdForSymbolsEnabled,
                             onKeyClick = onKeyClick,

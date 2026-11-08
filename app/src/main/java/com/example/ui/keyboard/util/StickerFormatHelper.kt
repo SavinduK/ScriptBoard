@@ -31,15 +31,13 @@ object StickerFormatHelper {
 
     /**
      * Resolves the ordered candidate payloads to attempt sending via commitContent.
-     * Order for ANIMATED stickers:
-     *   1. image/gif if advertised (or image/wildcard is advertised)
-     *   2. image/webp ONLY for apps verified to animate it (default: com.google.android.apps.messaging)
-     *   3. static PNG of frame 1 via image/png (or image/wildcard)
-     *   4. clipboard fallback
-     * Order for STATIC stickers:
-     *   1. image/webp
-     *   2. image/png
-     *   3. clipboard fallback
+     * User requested flow:
+     * For any type of animated stickers:
+     *   1. Convert all animated types to animated GIF before sending
+     *   2. Then send the generated animated GIF as the sticker
+     *   3. For backup send the original sticker format (e.g. animated webp)
+     * For non animated stickers:
+     *   Send in original format (webp/png/jpg), then static png, then original sticker format backup
      */
     fun resolveCandidatesForTarget(
         context: Context,
@@ -51,16 +49,16 @@ object StickerFormatHelper {
     ): List<ResolvedPayload> {
         val supportedMimes = editorInfo?.let { EditorInfoCompat.getContentMimeTypes(it) } ?: emptyArray()
         fun supports(mime: String): Boolean {
+            if (supportedMimes.isEmpty()) return true // default allow attempt if app doesn't advertise
             return supportedMimes.any {
                 it.equals(mime, ignoreCase = true) || it == "image/*" || it == "*/*"
             }
         }
 
-        val targetPkg = editorInfo?.packageName?.lowercase() ?: ""
         val candidates = mutableListOf<ResolvedPayload>()
 
         if (isAnimatedSticker) {
-            // Option 1: image/gif if advertised
+            // Step 1 & 2: Convert all animated types to animated GIF, then send generated animated GIF as sticker
             val gifFile = gifPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
                 ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}.gif").takeIf { it.exists() && it.length() > 0 }
                 ?: getOrGenerateCompanionGif(context, stickerFile)
@@ -69,45 +67,55 @@ object StickerFormatHelper {
                 candidates.add(ResolvedPayload(gifFile, "image/gif", true))
             }
 
-            // Option 2: image/webp ONLY for apps verified to animate it
-            val isVerifiedToAnimateWebp = animatedWebpAllowlist.any { targetPkg == it.lowercase() }
-            if (isVerifiedToAnimateWebp && supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0) {
-                candidates.add(ResolvedPayload(stickerFile, "image/webp", true))
+            // Step 3 (Backup): Send the original sticker format (e.g. .webp or other animated format)
+            val origExt = stickerFile.extension.lowercase()
+            val origMime = when (origExt) {
+                "webp" -> "image/webp"
+                "gif" -> "image/gif"
+                "png" -> "image/png"
+                else -> "image/webp"
             }
 
-            // Option 3: static PNG of frame 1 via image/png
+            if (stickerFile.exists() && stickerFile.length() > 0 && supports(origMime) && !candidates.any { it.file == stickerFile }) {
+                candidates.add(ResolvedPayload(stickerFile, origMime, true))
+            }
+
+            // Secondary Fallback: Static PNG of frame 1
             val pngFile = staticPngPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
                 ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}_static.png").takeIf { it.exists() && it.length() > 0 }
                 ?: getOrGenerateStaticPng(context, stickerFile)
 
-            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png")) {
+            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png") && !candidates.any { it.file == pngFile }) {
                 candidates.add(ResolvedPayload(pngFile, "image/png", false))
-            }
-
-            // Option 3b: If target supports WebP (even if not verified to animate) and nothing else matched
-            if (supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0 && !candidates.any { it.file == stickerFile }) {
-                candidates.add(ResolvedPayload(stickerFile, "image/webp", false))
             }
         } else {
-            // STATIC stickers:
-            // 1. image/webp
-            if (supports("image/webp") && stickerFile.exists() && stickerFile.length() > 0) {
-                candidates.add(ResolvedPayload(stickerFile, "image/webp", false))
+            // NON-ANIMATED stickers:
+            // Send in original format first, then static png, then backup original
+            val origExt = stickerFile.extension.lowercase()
+            val origMime = when (origExt) {
+                "webp" -> "image/webp"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "jpg", "jpeg" -> "image/jpeg"
+                else -> "image/webp"
             }
 
-            // 2. image/png
+            if (stickerFile.exists() && stickerFile.length() > 0 && supports(origMime)) {
+                candidates.add(ResolvedPayload(stickerFile, origMime, false))
+            }
+
+            // Static PNG representation if different
             val pngFile = staticPngPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
                 ?: File(stickerFile.parentFile, "${stickerFile.nameWithoutExtension}_static.png").takeIf { it.exists() && it.length() > 0 }
                 ?: getOrGenerateStaticPng(context, stickerFile)
 
-            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png")) {
+            if (pngFile != null && pngFile.exists() && pngFile.length() > 0 && supports("image/png") && !candidates.any { it.file == pngFile }) {
                 candidates.add(ResolvedPayload(pngFile, "image/png", false))
             }
 
-            // 3. image/gif if static GIF
-            val gifFile = gifPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
-            if (gifFile != null && supports("image/gif")) {
-                candidates.add(ResolvedPayload(gifFile, "image/gif", false))
+            // Backup original sticker format if not already in candidates
+            if (stickerFile.exists() && stickerFile.length() > 0 && !candidates.any { it.file == stickerFile }) {
+                candidates.add(ResolvedPayload(stickerFile, origMime, false))
             }
         }
 

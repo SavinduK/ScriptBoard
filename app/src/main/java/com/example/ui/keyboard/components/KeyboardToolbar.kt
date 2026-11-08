@@ -11,13 +11,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -37,6 +40,10 @@ fun KeyboardToolbar(
     isEmojiActive: Boolean = false,
     isVoiceTypeActive: Boolean = false,
     currentLanguage: String = "en",
+    isTablet: Boolean = false,
+    tabletSplitActive: Boolean = false,
+    tabletHalfSizeActive: Boolean = false,
+    onCycleTabletLayout: () -> Unit = {},
     onToggleLaptopBar: () -> Unit,
     onToggleExtendedPcKeys: () -> Unit,
     onPasteCopiedContent: () -> Unit,
@@ -54,6 +61,32 @@ fun KeyboardToolbar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Tablet 3-stage layout cycle button: Standard -> Split -> Half-Size -> Standard
+        if (isTablet) {
+            val (tabletIcon, tabletDesc) = when {
+                tabletHalfSizeActive -> Pair(Icons.Default.PhoneAndroid, "Tablet Mode: Half-Size (Tap for Standard)")
+                tabletSplitActive -> Pair(Icons.Default.CallSplit, "Tablet Mode: Split (Tap for Half-Size)")
+                else -> Pair(Icons.Default.VerticalSplit, "Tablet Mode: Standard (Tap for Split)")
+            }
+            val isCustomTabletActive = tabletSplitActive || tabletHalfSizeActive
+
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isCustomTabletActive) colors.laptopKeyActiveBackground else Color.Transparent)
+                    .clickable(onClick = onCycleTabletLayout)
+                    .testTag("btn_tablet_layout_cycle"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = tabletIcon,
+                    contentDescription = tabletDesc,
+                    tint = if (isCustomTabletActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
         // 1. Laptop top shortcut bar switch button (when toggled off, do not show its icon)
         if (isLaptopBarVisible) {
             Box(

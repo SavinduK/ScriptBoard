@@ -226,10 +226,6 @@ fun StickersScreen(
             }
         }
 
-        val normalStickers = remember(stickers) { stickers.filter { !it.isAnimated } }
-        val animatedStickers = remember(stickers) { stickers.filter { it.isAnimated } }
-        val displayedStickers = if (selectedStickerTab == 0) normalStickers else animatedStickers
-
         // Main Content (Import Action Card + Stickers Grid)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 96.dp),
@@ -353,81 +349,41 @@ fun StickersScreen(
                 }
             }
 
-            // Horizontal Tab Bar: Normal Stickers vs Animated Stickers
+            // Section Header: Unified Sticker Collection
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 4.dp)
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TabRow(
-                        selectedTabIndex = selectedStickerTab,
-                        containerColor = colors.toolbarBackground,
-                        contentColor = colors.enterKeyBackground,
-                        indicator = { tabPositions ->
-                            if (selectedStickerTab < tabPositions.size) {
-                                TabRowDefaults.SecondaryIndicator(
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedStickerTab]),
-                                    color = colors.enterKeyBackground,
-                                    height = 3.dp
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                    ) {
-                        Tab(
-                            selected = selectedStickerTab == 0,
-                            onClick = { selectedStickerTab = 0 },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Image,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (selectedStickerTab == 0) colors.enterKeyBackground else colors.letterKeySecondaryTextColor
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Normal Stickers (${normalStickers.size})",
-                                        color = if (selectedStickerTab == 0) colors.enterKeyBackground else colors.letterKeySecondaryTextColor,
-                                        fontWeight = if (selectedStickerTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 12.5.sp
-                                    )
-                                }
-                            },
-                            modifier = Modifier.testTag("tab_normal_stickers")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = colors.enterKeyBackground,
+                            modifier = Modifier.size(20.dp)
                         )
-
-                        Tab(
-                            selected = selectedStickerTab == 1,
-                            onClick = { selectedStickerTab = 1 },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (selectedStickerTab == 1) colors.enterKeyBackground else colors.letterKeySecondaryTextColor
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Animated Stickers (${animatedStickers.size})",
-                                        color = if (selectedStickerTab == 1) colors.enterKeyBackground else colors.letterKeySecondaryTextColor,
-                                        fontWeight = if (selectedStickerTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 12.5.sp
-                                    )
-                                }
-                            },
-                            modifier = Modifier.testTag("tab_animated_stickers")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "All Stickers (${stickers.size})",
+                            color = colors.letterKeyTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+
+                    Text(
+                        text = "Hold to delete",
+                        color = colors.letterKeySecondaryTextColor,
+                        fontSize = 11.5.sp
+                    )
                 }
             }
 
-            // Empty State if no stickers in selected tab
-            if (displayedStickers.isEmpty()) {
+            // Empty State if no stickers
+            if (stickers.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Card(
                         modifier = Modifier
@@ -459,17 +415,14 @@ fun StickersScreen(
                             }
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = if (selectedStickerTab == 0) "No Normal Stickers Yet" else "No Animated Stickers Yet",
+                                text = "No Stickers Yet",
                                 color = colors.letterKeyTextColor,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (selectedStickerTab == 0)
-                                    "Tap 'Open Folder' above to import static .webp, .png, or .jpg images from your device."
-                                else
-                                    "Tap 'Open Folder' above to import animated .webp or .gif stickers from your device.",
+                                text = "Tap 'Open Folder' above to import animated or static stickers (.webp, .gif, .png).",
                                 color = colors.letterKeySecondaryTextColor,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
@@ -479,8 +432,8 @@ fun StickersScreen(
                     }
                 }
             } else {
-                // Sticker grid items (NO delete button on card; delete ONLY via long-hold)
-                items(displayedStickers, key = { it.id }) { sticker ->
+                // Sticker grid items (unified list; delete ONLY via long-hold)
+                items(stickers, key = { it.id }) { sticker ->
                     StickerGridCard(
                         sticker = sticker,
                         colors = colors,
@@ -521,8 +474,12 @@ fun StickersScreen(
 
 
 
-    // Long Hold Delete Confirmation Dialog (Requirement: "To delete stickers only use the long hold menu(remove the on sticker delete button)")
+    // Long Hold Delete Confirmation Dialog (Requirement: "When hold to delete show the filetype of the sticker")
     stickerToDelete?.let { sticker ->
+        val file = File(sticker.filePath)
+        val fileType = file.extension.uppercase().ifEmpty { "WEBP" }
+        val animDesc = if (sticker.isAnimated) "Animated $fileType" else "Static $fileType"
+
         AlertDialog(
             onDismissRequest = { stickerToDelete = null },
             icon = {
@@ -540,11 +497,19 @@ fun StickersScreen(
                 )
             },
             text = {
-                Text(
-                    text = "Are you sure you want to delete \"${sticker.name}\"? This action cannot be undone.",
-                    color = colors.letterKeySecondaryTextColor,
-                    fontSize = 13.sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Are you sure you want to delete \"${sticker.name}\"? This action cannot be undone.",
+                        color = colors.letterKeyTextColor,
+                        fontSize = 13.5.sp
+                    )
+                    Text(
+                        text = "File format: $animDesc (.$fileType)",
+                        color = colors.enterKeyBackground,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
