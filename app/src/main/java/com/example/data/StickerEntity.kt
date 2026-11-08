@@ -15,5 +15,6 @@ data class StickerEntity(
     val isAnimated: Boolean = false,
     val usageCount: Int = 0,
     val gifPath: String? = null,
-    val staticPngPath: String? = null
+    val staticPngPath: String? = null,
+    val mimeType: String = "image/webp"
 )

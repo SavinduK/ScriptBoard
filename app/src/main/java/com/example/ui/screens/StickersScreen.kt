@@ -119,9 +119,16 @@ fun StickersScreen(
             scope.launch {
                 isProcessing = true
                 processingMessage = "Importing ${uris.size} stickers..."
-                val count = stickerRepo.importStickersFromUris(context, uris, "imported")
+                val result = stickerRepo.importStickersFromUris(context, uris, "imported")
                 isProcessing = false
-                Toast.makeText(context, "Successfully imported $count stickers!", Toast.LENGTH_SHORT).show()
+                val msg = if (result.failed.isEmpty()) {
+                    "Successfully imported ${result.imported} stickers!"
+                } else if (result.imported > 0) {
+                    "Imported ${result.imported} stickers (${result.failed.size} skipped/failed)"
+                } else {
+                    "Import failed: ${result.failed.firstOrNull()?.reason ?: "unsupported files"}"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             }
         }
     }

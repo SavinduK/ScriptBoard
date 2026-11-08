@@ -21,6 +21,9 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    ndk {
+      abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+    }
   }
 
   signingConfigs {
@@ -124,6 +127,8 @@ dependencies {
   implementation(libs.zxing.core)
   // implementation(libs.mlkit.digital.ink)
   implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.webp.android)
+  implementation(libs.androidndkgif)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

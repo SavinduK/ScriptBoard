@@ -629,7 +629,8 @@ fun KeyProKeyboardView(
                                 name = sticker.name,
                                 gifPath = sticker.gifPath,
                                 staticPngPath = sticker.staticPngPath,
-                                isAnimated = sticker.isAnimated
+                                isAnimated = sticker.isAnimated,
+                                mimeType = sticker.mimeType
                             )
                         )
                         coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }
@@ -680,7 +681,8 @@ fun KeyProKeyboardView(
                                 name = sticker.name,
                                 gifPath = sticker.gifPath,
                                 staticPngPath = sticker.staticPngPath,
-                                isAnimated = sticker.isAnimated
+                                isAnimated = sticker.isAnimated,
+                                mimeType = sticker.mimeType
                             )
                         )
                         coroutineScope.launch { stickerRepo.recordStickerUsed(sticker.id) }

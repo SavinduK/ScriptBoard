@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# webp-android (libwebp JNI bindings)
+-keep class com.aureusapps.android.webpandroid.** { *; }
+-keepclassmembers class com.aureusapps.android.webpandroid.** {
+    native <methods>;
+}
+
+# androidndkgif (native GIF encoder)
+-keep class com.waynejo.androidndkgif.** { *; }
+-keepclassmembers class com.waynejo.androidndkgif.** {
+    native <methods>;
+}

@@ -26,7 +26,8 @@ sealed class KeyAction {
         val name: String = "Sticker",
         val gifPath: String? = null,
         val staticPngPath: String? = null,
-        val isAnimated: Boolean = false
+        val isAnimated: Boolean = false,
+        val mimeType: String = "image/webp"
     ) : KeyAction()
     data class InsertSinhalaPillam(val baseWithPillam: String, val modifier: String) : KeyAction()
     object SwitchLanguage : KeyAction()

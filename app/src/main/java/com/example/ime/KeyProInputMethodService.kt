@@ -673,7 +673,8 @@ class KeyProInputMethodService : InputMethodService(), LifecycleOwner, ViewModel
                         gifPath = action.gifPath,
                         staticPngPath = action.staticPngPath,
                         isAnimatedSticker = isAnim,
-                        editorInfo = editorInfo
+                        editorInfo = editorInfo,
+                        declaredMimeType = action.mimeType
                     )
 
                     var committed = false
