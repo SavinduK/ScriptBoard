@@ -756,6 +756,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun removeConnectedDevice(deviceId: String) {
         viewModelScope.launch {
             syncManager.connectedDeviceDao.deleteDevice(deviceId)
+            syncManager.deleteDeviceFromServer(deviceId)
             _lastActionStatus.value = "Device removed"
         }
     }

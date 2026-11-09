@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.keyboard.model.KeyboardColors
@@ -234,20 +235,46 @@ fun LanguagesScreen(
                         }
 
                         if (!pack.isBuiltIn) {
-                            IconButton(
-                                onClick = {
-                                    downloader.deletePackageFile(pack.id)
-                                    keyboardPrefs.uninstallLanguage(pack.id)
-                                    Toast.makeText(context, "${pack.name} uninstalled", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.testTag("btn_delete_${pack.id}")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Uninstall ${pack.name}",
-                                    tint = Color(0xFFEF5350),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!downloader.isPackageDownloaded(pack.id)) {
+                                    Button(
+                                        onClick = { startDownload(pack) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier.testTag("btn_redownload_${pack.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Download",
+                                            color = colors.enterKeyTextColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        downloader.deletePackageFile(pack.id)
+                                        keyboardPrefs.uninstallLanguage(pack.id)
+                                        Toast.makeText(context, "${pack.name} uninstalled", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.testTag("btn_delete_${pack.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Uninstall ${pack.name}",
+                                        tint = Color(0xFFEF5350),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -302,18 +329,23 @@ fun LanguagesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Text(
                                         text = pack.flag,
                                         fontSize = 24.sp
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
                                         Text(
                                             text = "${pack.name} (${pack.nativeName})",
                                             color = colors.letterKeyTextColor,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
                                             text = "Downloadable package (${pack.sizeDisplay})",
@@ -323,11 +355,14 @@ fun LanguagesScreen(
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.width(8.dp))
+
                                 if (!isDownloading) {
                                     Button(
                                         onClick = { startDownload(pack) },
                                         shape = RoundedCornerShape(10.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = colors.enterKeyBackground),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                                         modifier = Modifier.testTag("btn_download_${pack.id}")
                                     ) {
                                         Icon(
@@ -340,7 +375,7 @@ fun LanguagesScreen(
                                             text = "Download",
                                             color = colors.enterKeyTextColor,
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            fontWeight = FontWeight.Bold
                                         )
                                     }
                                 }

@@ -99,6 +99,8 @@ fun InKeyboardSettingsView(
     var showRgbThemeDialog by remember { mutableStateOf(false) }
     var currentSubScreen by remember { mutableStateOf<String?>(null) } // null = Main, "themes" = Themes & Customization
     val coroutineScope = rememberCoroutineScope()
+    val downloader = remember { com.example.ui.keyboard.model.LanguagePackDownloader(context) }
+    var downloadingLangId by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -681,6 +683,81 @@ fun InKeyboardSettingsView(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
+                                }
+                            }
+                        }
+
+                        // Available language downloads inline
+                        val uninstalledPacks = remember(installedLangs) {
+                            com.example.ui.keyboard.model.LanguagePackRegistry.ALL_PACKAGES.filter {
+                                !it.isBuiltIn && !installedLangs.contains(it.id)
+                            }
+                        }
+                        if (uninstalledPacks.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(colors.background.copy(alpha = 0.5f))
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "AVAILABLE KEYBOARD DOWNLOADS",
+                                    color = colors.enterKeyBackground,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                uninstalledPacks.forEach { pack ->
+                                    val isDownloadingThis = downloadingLangId == pack.id
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            Text(text = pack.flag, fontSize = 14.sp)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = pack.name,
+                                                color = colors.letterKeyTextColor,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(colors.enterKeyBackground)
+                                                .clickable(enabled = downloadingLangId == null) {
+                                                    coroutineScope.launch {
+                                                        downloadingLangId = pack.id
+                                                        val res = downloader.downloadLanguagePack(pack) { _, _ -> }
+                                                        downloadingLangId = null
+                                                        if (res.isSuccess) {
+                                                            android.widget.Toast.makeText(context, "${pack.name} installed & activated!", android.widget.Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            android.widget.Toast.makeText(context, "Download failed: ${res.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                .testTag("btn_download_inline_${pack.id}"),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (isDownloadingThis) "..." else "Download",
+                                                color = colors.enterKeyTextColor,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

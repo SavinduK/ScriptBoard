@@ -116,7 +116,7 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         val localDeviceId = preferences.getLocalDeviceId()
         val localDeviceName = preferences.localDeviceName.value.ifBlank { Build.MODEL ?: "Android Device" }
 
-        // 1. Register this device under /users/{uid}/devices/{localDeviceId}
+        // 1. Deduplicate & register this device under /users/{uid}/devices/{localDeviceId}
         val deviceData = hashMapOf<String, Any>(
             "userId" to uid,
             "deviceId" to localDeviceId,
@@ -126,16 +126,55 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         )
         try {
             db.collection("users").document(uid)
-                .collection("devices").document(localDeviceId)
-                .set(deviceData, SetOptions.merge())
+                .collection("devices")
+                .get()
+                .addOnSuccessListener { querySnapshot ->
+                    scope.launch {
+                        if (querySnapshot != null) {
+                            var primaryDocFound = false
+                            for (doc in querySnapshot.documents) {
+                                val sDevId = doc.getString("deviceId") ?: doc.id
+
+                                // If document has the same device ID or same document id
+                                if (sDevId == localDeviceId || doc.id == localDeviceId) {
+                                    if (doc.id == localDeviceId && !primaryDocFound) {
+                                        primaryDocFound = true
+                                        doc.reference.update(
+                                            "deviceName", localDeviceName,
+                                            "updatedAt", FieldValue.serverTimestamp()
+                                        ).addOnFailureListener {
+                                            doc.reference.set(deviceData, SetOptions.merge())
+                                        }
+                                    } else {
+                                        // Old copy or duplicate copy on server -> delete it!
+                                        Log.i("FirebaseSync", "Deleting duplicate device copy from server: ${doc.id}")
+                                        doc.reference.delete()
+                                    }
+                                }
+                            }
+
+                            if (!primaryDocFound) {
+                                db.collection("users").document(uid)
+                                    .collection("devices").document(localDeviceId)
+                                    .set(deviceData, SetOptions.merge())
+                                    .addOnFailureListener { e ->
+                                        Log.w("FirebaseSync", "Device registration non-fatal notice: ${e.message}")
+                                    }
+                            }
+                        }
+                    }
+                }
                 .addOnFailureListener { e ->
-                    Log.w("FirebaseSync", "Device registration non-fatal notice: ${e.message}")
+                    Log.w("FirebaseSync", "Device deduplication query notice: ${e.message}")
+                    db.collection("users").document(uid)
+                        .collection("devices").document(localDeviceId)
+                        .set(deviceData, SetOptions.merge())
                 }
         } catch (e: Exception) {
             Log.w("FirebaseSync", "Device reg error: ${e.message}")
         }
 
-        // 2. Listen to /users/{uid}/devices to populate paired devices list
+        // 2. Listen to /users/{uid}/devices to populate paired devices list with deduplication
         devicesListenerRegistration?.remove()
         try {
             devicesListenerRegistration = db.collection("users").document(uid)
@@ -147,20 +186,62 @@ class ClipboardSyncManager private constructor(private val context: Context) {
                     }
                     if (snapshot != null) {
                         scope.launch {
-                            for (doc in snapshot.documents) {
-                                val devId = doc.getString("deviceId") ?: doc.id
-                                if (devId != localDeviceId) {
-                                    val devName = doc.getString("deviceName") ?: "Android Peer"
-                                    val entity = ConnectedDeviceEntity(
-                                        deviceId = devId,
-                                        name = devName,
-                                        ipAddress = "Cloud (${user.email ?: "Google Account"})",
-                                        isOnline = true,
-                                        connectionStatus = "Synced via Firebase",
-                                        transportType = "Google Cloud",
-                                        lastSyncedTimestamp = System.currentTimeMillis()
-                                    )
-                                    connectedDeviceDao.insertOrUpdate(entity)
+                            val activeServerDeviceIds = mutableSetOf<String>()
+
+                            // Group all documents by their unique device ID to detect and prune duplicates
+                            val docsByDeviceId = snapshot.documents.groupBy {
+                                it.getString("deviceId") ?: it.id
+                            }
+
+                            for ((devId, docList) in docsByDeviceId) {
+                                if (devId == localDeviceId) {
+                                    // If duplicate copies of this device exist under other doc IDs, delete them
+                                    if (docList.size > 1) {
+                                        for (duplicateDoc in docList) {
+                                            if (duplicateDoc.id != localDeviceId) {
+                                                Log.i("FirebaseSync", "Deleting duplicate self device doc from server: ${duplicateDoc.id}")
+                                                duplicateDoc.reference.delete()
+                                            }
+                                        }
+                                    }
+                                    continue
+                                }
+
+                                activeServerDeviceIds.add(devId)
+
+                                // For peers with duplicate documents, keep the newest and delete old copies from server
+                                val sortedDocs = docList.sortedByDescending {
+                                    it.getTimestamp("updatedAt")?.toDate()?.time
+                                        ?: it.getTimestamp("createdAt")?.toDate()?.time ?: 0L
+                                }
+                                val primaryPeerDoc = sortedDocs.first()
+
+                                if (sortedDocs.size > 1) {
+                                    for (i in 1 until sortedDocs.size) {
+                                        val oldCopy = sortedDocs[i]
+                                        Log.i("FirebaseSync", "Deleting duplicate peer copy from server: ${oldCopy.id}")
+                                        oldCopy.reference.delete()
+                                    }
+                                }
+
+                                val devName = primaryPeerDoc.getString("deviceName") ?: "Android Peer"
+                                val entity = ConnectedDeviceEntity(
+                                    deviceId = devId,
+                                    name = devName,
+                                    ipAddress = "Cloud (${user.email ?: "Google Account"})",
+                                    isOnline = true,
+                                    connectionStatus = "Synced via Firebase",
+                                    transportType = "Google Cloud",
+                                    lastSyncedTimestamp = System.currentTimeMillis()
+                                )
+                                connectedDeviceDao.insertOrUpdate(entity)
+                            }
+
+                            // Prune devices in local Room that are no longer on the server
+                            val localDevices = connectedDeviceDao.getAllDevicesList()
+                            for (ld in localDevices) {
+                                if (ld.transportType == "Google Cloud" && !activeServerDeviceIds.contains(ld.deviceId)) {
+                                    connectedDeviceDao.deleteDevice(ld.deviceId)
                                 }
                             }
                         }
@@ -251,6 +332,39 @@ class ClipboardSyncManager private constructor(private val context: Context) {
         devicesListenerRegistration?.remove()
         devicesListenerRegistration = null
         _isCloudConnected.value = false
+    }
+
+    /**
+     * Deletes a connected device and any duplicate copies with the same deviceId from the Firebase server.
+     */
+    fun deleteDeviceFromServer(deviceId: String) {
+        val user = getAuthSafe()?.currentUser ?: return
+        val db = getFirestoreSafe() ?: return
+        val uid = user.uid
+
+        scope.launch {
+            try {
+                // Delete direct document
+                db.collection("users").document(uid)
+                    .collection("devices").document(deviceId)
+                    .delete()
+
+                // Query and delete any other copies with the same deviceId
+                db.collection("users").document(uid)
+                    .collection("devices")
+                    .whereEqualTo("deviceId", deviceId)
+                    .get()
+                    .addOnSuccessListener { query ->
+                        if (query != null) {
+                            for (doc in query.documents) {
+                                doc.reference.delete()
+                            }
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.w("FirebaseSync", "Failed to delete device from server: ${e.message}")
+            }
+        }
     }
 
     fun markSyncIdProcessed(syncId: String) {

@@ -300,12 +300,13 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `only sinhala is registered as a downloadable language pack`() {
+  fun `sinhala and sinhala transliteration are registered as downloadable language packs`() {
     val allPacks = com.example.ui.keyboard.model.LanguagePackRegistry.ALL_PACKAGES
     val downloadablePacks = allPacks.filter { !it.isBuiltIn }
-    assertEquals("Should only have exactly 1 downloadable language pack", 1, downloadablePacks.size)
-    assertEquals("Downloadable pack must be Sinhala", "si", downloadablePacks.first().id)
-    assertEquals("Sinhala", downloadablePacks.first().name)
+    assertEquals("Should have 2 downloadable Sinhala language packs", 2, downloadablePacks.size)
+    val packIds = downloadablePacks.map { it.id }.toSet()
+    assertTrue("Must include Sinhala Wijesekara pack", packIds.contains("si"))
+    assertTrue("Must include Sinhala Transliteration pack", packIds.contains("si-trans"))
   }
 
   @Test
@@ -508,6 +509,19 @@ class ExampleRobolectricTest {
     val dao = db.snippetDao()
     val syncedTextClip = dao.findByContent("https://developer.samsung.com/continuity-clipboard-sync")
     assertNotNull("Simulated synced text clip should be saved to Room", syncedTextClip)
+  }
+
+  @Test
+  fun `local device unique id is stable and formatted cleanly`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.ui.keyboard.util.KeyboardPreferences.getInstance(context)
+
+    val devId1 = prefs.getLocalDeviceId()
+    val devId2 = prefs.getLocalDeviceId()
+    assertEquals("Local device ID must be deterministic and stable across calls", devId1, devId2)
+    assertTrue("Local device ID must start with dev_ prefix", devId1.startsWith("dev_"))
+    assertTrue("Local device ID must contain only alphanumeric, dash, and underscore characters",
+        devId1.matches(Regex("^[a-zA-Z0-9_-]+$")))
   }
 
   @Test

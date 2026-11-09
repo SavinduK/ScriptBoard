@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class KeyboardPreferences(context: Context) {
 
+    private val appContext: Context = context.applicationContext
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences("keypro_prefs", Context.MODE_PRIVATE)
 
@@ -160,8 +162,29 @@ class KeyboardPreferences(context: Context) {
 
     fun getLocalDeviceId(): String {
         var id = prefs.getString(KEY_LOCAL_DEVICE_ID, null)
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                appContext.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            )?.trim()
+        } catch (_: Exception) {
+            null
+        }
+
+        val validAndroidId = if (!androidId.isNullOrBlank() && androidId != "9774d56d682e549c") {
+            "dev_" + androidId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        } else null
+
+        if (validAndroidId != null) {
+            if (id != validAndroidId) {
+                id = validAndroidId
+                prefs.edit().putString(KEY_LOCAL_DEVICE_ID, id).apply()
+            }
+            return id
+        }
+
         if (id.isNullOrBlank()) {
-            id = java.util.UUID.randomUUID().toString().take(12)
+            id = "dev_" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)
             prefs.edit().putString(KEY_LOCAL_DEVICE_ID, id).apply()
         }
         return id
