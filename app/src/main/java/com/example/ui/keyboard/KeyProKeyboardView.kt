@@ -106,6 +106,8 @@ fun KeyProKeyboardView(
     val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
     val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
     val tabletHalfSide by keyboardPrefs.tabletHalfSide.collectAsState()
+    val splitKeyboardSizePercent by keyboardPrefs.splitKeyboardSizePercent.collectAsState()
+    val halfKeyboardSizePercent by keyboardPrefs.halfKeyboardSizePercent.collectAsState()
 
     val stickerRepo = remember { StickerRepository(AppDatabase.getDatabase(context).stickerDao()) }
     val localStickers by stickerRepo.allStickers.collectAsState(initial = emptyList())
@@ -757,7 +759,9 @@ fun KeyProKeyboardView(
                     else -> KeyboardLayoutGenerator.getQwertyRows(shiftState, holdForSymbols = holdForSymbolsEnabled, showLanguageSwitchKey = hasMultipleLanguages)
                 }
 
-                if (isTablet && tabletSplitEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
+                if (tabletSplitEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
+                    val baseGap = if (isVeryWide) 160.dp else (if (isTablet) 110.dp else 48.dp)
+                    val scaledGap = baseGap * (splitKeyboardSizePercent / 100f)
                     TabletSplitKeyboardRows(
                         rows = currentRows,
                         colors = colors,
@@ -768,7 +772,7 @@ fun KeyProKeyboardView(
                         keyVerticalPadding = keyVerticalPadding,
                         keyCornerRadius = keyCornerRadius,
                         rowVerticalPadding = rowVerticalPadding,
-                        gapWidthDp = if (isVeryWide) 160.dp else 110.dp,
+                        gapWidthDp = scaledGap,
                         holdForSymbolsEnabled = holdForSymbolsEnabled,
                         onKeyClick = { handleKeyAction(it.action) },
                         onKeyLongClick = { clickedKey ->
@@ -779,11 +783,12 @@ fun KeyProKeyboardView(
                             }
                         }
                     )
-                } else if (isTablet && tabletHalfSizeEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
+                } else if (tabletHalfSizeEnabled && layoutMode in listOf(KeyboardLayoutMode.TEXT, KeyboardLayoutMode.SYMBOLS_1, KeyboardLayoutMode.SYMBOLS_2)) {
                     TabletHalfSizeKeyboardRows(
                         rows = currentRows,
                         colors = colors,
                         side = tabletHalfSide,
+                        halfSizePercent = halfKeyboardSizePercent,
                         calculatedHeightDp = calculatedHeightDp,
                         calculatedFontSize = calculatedFontSize,
                         calculatedAltFontSize = calculatedAltFontSize,
@@ -1029,6 +1034,7 @@ private fun TabletHalfSizeKeyboardRows(
     rows: List<List<KeyItem>>,
     colors: KeyboardColors,
     side: String,
+    halfSizePercent: Float = 66f,
     calculatedHeightDp: Int,
     calculatedFontSize: Float,
     calculatedAltFontSize: Float,
@@ -1230,6 +1236,9 @@ private fun TabletHalfSizeKeyboardRows(
         }
     }
 
+    val keysWeight = (halfSizePercent / 100f).coerceIn(0.45f, 0.85f)
+    val toolsWeight = (1f - keysWeight).coerceAtLeast(0.15f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1238,17 +1247,17 @@ private fun TabletHalfSizeKeyboardRows(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (side == "left") {
-            Box(modifier = Modifier.weight(0.66f)) {
+            Box(modifier = Modifier.weight(keysWeight)) {
                 keysBlock()
             }
-            Box(modifier = Modifier.weight(0.34f)) {
+            Box(modifier = Modifier.weight(toolsWeight)) {
                 spaceAndToolsSide()
             }
         } else {
-            Box(modifier = Modifier.weight(0.34f)) {
+            Box(modifier = Modifier.weight(toolsWeight)) {
                 spaceAndToolsSide()
             }
-            Box(modifier = Modifier.weight(0.66f)) {
+            Box(modifier = Modifier.weight(keysWeight)) {
                 keysBlock()
             }
         }

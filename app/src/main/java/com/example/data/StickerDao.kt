@@ -37,6 +37,15 @@ interface StickerDao {
     @Query("SELECT * FROM stickers WHERE isAnimated = 1 AND (gifPath IS NULL OR staticPngPath IS NULL)")
     suspend fun getAnimatedStickersMissingCompanions(): List<StickerEntity>
 
+    @Query("SELECT * FROM stickers WHERE source = 'sample' OR name IN ('Celebration Confetti', 'Dancing Flame', 'Happy Smiley', 'Magic Star', 'Pulsing Heart')")
+    suspend fun getSampleStickers(): List<StickerEntity>
+
+    @Query("DELETE FROM stickers WHERE source = 'sample' OR name IN ('Celebration Confetti', 'Dancing Flame', 'Happy Smiley', 'Magic Star', 'Pulsing Heart')")
+    suspend fun deleteSampleStickers()
+
+    @Query("SELECT * FROM stickers")
+    suspend fun getAllStickersList(): List<StickerEntity>
+
     @Query("DELETE FROM stickers")
     suspend fun clearAll()
 }

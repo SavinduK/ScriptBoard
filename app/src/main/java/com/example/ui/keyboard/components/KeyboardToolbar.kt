@@ -61,31 +61,29 @@ fun KeyboardToolbar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Tablet 3-stage layout cycle button: Standard -> Split -> Half-Size -> Standard
-        if (isTablet) {
-            val (tabletIcon, tabletDesc) = when {
-                tabletHalfSizeActive -> Pair(Icons.Default.PhoneAndroid, "Tablet Mode: Half-Size (Tap for Standard)")
-                tabletSplitActive -> Pair(Icons.Default.CallSplit, "Tablet Mode: Split (Tap for Half-Size)")
-                else -> Pair(Icons.Default.VerticalSplit, "Tablet Mode: Standard (Tap for Split)")
-            }
-            val isCustomTabletActive = tabletSplitActive || tabletHalfSizeActive
+        // 3-stage layout cycle button: Standard -> Split -> Half-Size -> Standard
+        val (tabletIcon, tabletDesc) = when {
+            tabletHalfSizeActive -> Pair(Icons.Default.PhoneAndroid, "Layout Mode: Half-Size (Tap for Standard)")
+            tabletSplitActive -> Pair(Icons.Default.CallSplit, "Layout Mode: Split (Tap for Half-Size)")
+            else -> Pair(Icons.Default.VerticalSplit, "Layout Mode: Standard (Tap for Split)")
+        }
+        val isCustomTabletActive = tabletSplitActive || tabletHalfSizeActive
 
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isCustomTabletActive) colors.laptopKeyActiveBackground else Color.Transparent)
-                    .clickable(onClick = onCycleTabletLayout)
-                    .testTag("btn_tablet_layout_cycle"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = tabletIcon,
-                    contentDescription = tabletDesc,
-                    tint = if (isCustomTabletActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isCustomTabletActive) colors.laptopKeyActiveBackground else Color.Transparent)
+                .clickable(onClick = onCycleTabletLayout)
+                .testTag("btn_tablet_layout_cycle"),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = tabletIcon,
+                contentDescription = tabletDesc,
+                tint = if (isCustomTabletActive) colors.laptopKeyActiveTextColor else colors.toolbarIconTint,
+                modifier = Modifier.size(20.dp)
+            )
         }
         // 1. Laptop top shortcut bar switch button (when toggled off, do not show its icon)
         if (isLaptopBarVisible) {

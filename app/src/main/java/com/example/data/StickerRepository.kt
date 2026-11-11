@@ -37,11 +37,70 @@ class StickerRepository(private val stickerDao: StickerDao) {
     }
 
     suspend fun ensureSampleStickersSeeded(context: Context) = withContext(Dispatchers.IO) {
-        if (stickerDao.getStickerCount() == 0) {
-            seedSampleStickers(context)
-        } else {
-            ensureCompanionFilesGenerated(context)
+        // User requested removing the 5 example stickers: clean up any existing sample stickers
+        removeSampleStickers(context)
+        ensureCompanionFilesGenerated(context)
+    }
+
+    /**
+     * Deletes sample stickers from the database and removes their files from disk.
+     */
+    suspend fun removeSampleStickers(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            val samples = stickerDao.getSampleStickers()
+            for (sample in samples) {
+                try {
+                    File(sample.filePath).takeIf { it.exists() }?.delete()
+                    sample.gifPath?.let { File(it).takeIf { f -> f.exists() }?.delete() }
+                    sample.staticPngPath?.let { File(it).takeIf { f -> f.exists() }?.delete() }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error deleting sample sticker file ${sample.filePath}: ${e.message}", e)
+                }
+            }
+            stickerDao.deleteSampleStickers()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing sample stickers: ${e.message}", e)
         }
+    }
+
+    /**
+     * Computes the SHA-256 hash of a file for content-based duplicate detection.
+     */
+    fun computeFileSha256(file: File): String? {
+        if (!file.exists() || file.length() == 0L) return null
+        return try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to compute sha256 for file ${file.name}: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Builds a set of SHA-256 hashes of all existing stickers currently stored on the device.
+     */
+    suspend fun getExistingStickerHashes(): MutableSet<String> = withContext(Dispatchers.IO) {
+        val hashes = mutableSetOf<String>()
+        try {
+            val allStickers = stickerDao.getAllStickersList()
+            for (st in allStickers) {
+                val f = File(st.filePath)
+                if (f.exists()) {
+                    computeFileSha256(f)?.let { hashes.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating existing sticker hashes: ${e.message}", e)
+        }
+        hashes
     }
 
     /**
@@ -86,79 +145,8 @@ class StickerRepository(private val stickerDao: StickerDao) {
     }
 
     /**
-     * Seeds initial bundled sample stickers using the new format-aware pipeline.
-     */
-    suspend fun seedSampleStickers(context: Context): Int = withContext(Dispatchers.IO) {
-        val stickersDir = getStickersDirectory(context)
-        val assetManager = context.assets
-        val sampleList = try {
-            assetManager.list("sample_stickers")?.toList() ?: emptyList()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read sample_stickers assets: ${e.message}", e)
-            emptyList()
-        }
-
-        val entities = mutableListOf<StickerEntity>()
-        val webpList = sampleList.filter { it.endsWith(".webp") }
-
-        for ((index, fileName) in webpList.withIndex()) {
-            try {
-                val rawName = fileName.removeSuffix(".webp").replace('_', ' ')
-                    .split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
-
-                val tempFile = File(stickersDir, "sample_temp_${System.currentTimeMillis()}_$index.webp")
-                assetManager.open("sample_stickers/$fileName").use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-
-                // If pre-packaged GIF companion was also provided in assets, extract it
-                val gifAsset = "${fileName.removeSuffix(".webp")}.gif"
-                var bundledGifFile: File? = null
-                if (sampleList.contains(gifAsset)) {
-                    val destGif = File(stickersDir, "sample_${System.currentTimeMillis()}_$index.gif")
-                    try {
-                        assetManager.open("sample_stickers/$gifAsset").use { inG ->
-                            FileOutputStream(destGif).use { outG -> inG.copyTo(outG) }
-                        }
-                        if (destGif.exists() && destGif.length() > 0 && GifEncoder.validateGif(destGif, true)) {
-                            bundledGifFile = destGif
-                        } else {
-                            destGif.delete()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error extracting bundled GIF: ${e.message}", e)
-                    }
-                }
-
-                val entity = importOneInternal(
-                    context = context,
-                    sourceStreamProvider = { tempFile.inputStream() },
-                    displayName = rawName,
-                    source = "sample",
-                    preGeneratedGif = bundledGifFile
-                )
-
-                tempFile.delete()
-
-                if (entity != null) {
-                    entities.add(entity)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error seeding sample sticker $fileName: ${e.message}", e)
-            }
-        }
-
-        if (entities.isNotEmpty()) {
-            stickerDao.insertAll(entities)
-        }
-        entities.size
-    }
-
-    /**
      * Imports a list of stickers from URIs (e.g. SAF file picker).
-     * Processes animated stickers sequentially. Returns ImportResult.
+     * Automatically skips duplicates based on SHA-256 hash comparison.
      */
     suspend fun importStickersFromUris(
         context: Context,
@@ -167,6 +155,7 @@ class StickerRepository(private val stickerDao: StickerDao) {
     ): ImportResult = withContext(Dispatchers.IO) {
         val importedEntities = mutableListOf<StickerEntity>()
         val failedList = mutableListOf<FailedImport>()
+        val knownHashes = getExistingStickerHashes()
 
         for ((index, uri) in uris.withIndex()) {
             val displayName = uri.lastPathSegment?.substringAfterLast('/')?.take(25) ?: "Sticker ${index + 1}"
@@ -175,12 +164,13 @@ class StickerRepository(private val stickerDao: StickerDao) {
                     context = context,
                     sourceStreamProvider = { context.contentResolver.openInputStream(uri) },
                     displayName = displayName,
-                    source = source
+                    source = source,
+                    knownHashes = knownHashes
                 )
                 if (entity != null) {
                     importedEntities.add(entity)
                 } else {
-                    failedList.add(FailedImport(displayName, "Format unsupported or conversion failed"))
+                    failedList.add(FailedImport(displayName, "Duplicate or unsupported format"))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to import sticker from URI $uri: ${e.message}", e)
@@ -197,7 +187,7 @@ class StickerRepository(private val stickerDao: StickerDao) {
 
     /**
      * Imports a list of stickers from Files (e.g. WhatsApp sticker folder).
-     * Processes animated stickers sequentially. Returns ImportResult.
+     * Automatically skips duplicates based on SHA-256 hash comparison.
      */
     suspend fun importStickersFromFiles(
         context: Context,
@@ -206,6 +196,7 @@ class StickerRepository(private val stickerDao: StickerDao) {
     ): ImportResult = withContext(Dispatchers.IO) {
         val importedEntities = mutableListOf<StickerEntity>()
         val failedList = mutableListOf<FailedImport>()
+        val knownHashes = getExistingStickerHashes()
 
         for (file in files) {
             val displayName = file.nameWithoutExtension.take(25).ifBlank { "WA Sticker" }
@@ -218,12 +209,13 @@ class StickerRepository(private val stickerDao: StickerDao) {
                     context = context,
                     sourceStreamProvider = { file.inputStream() },
                     displayName = displayName,
-                    source = source
+                    source = source,
+                    knownHashes = knownHashes
                 )
                 if (entity != null) {
                     importedEntities.add(entity)
                 } else {
-                    failedList.add(FailedImport(displayName, "Unsupported image type or invalid content"))
+                    failedList.add(FailedImport(displayName, "Duplicate or unsupported format"))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to import sticker from file ${file.name}: ${e.message}", e)
@@ -255,7 +247,8 @@ class StickerRepository(private val stickerDao: StickerDao) {
         sourceStreamProvider: () -> InputStream?,
         displayName: String,
         source: String,
-        preGeneratedGif: File? = null
+        preGeneratedGif: File? = null,
+        knownHashes: MutableSet<String>? = null
     ): StickerEntity? {
         val stickersDir = getStickersDirectory(context)
         val tempId = "${System.nanoTime()}_${UUID.randomUUID().toString().take(6)}"
@@ -281,6 +274,15 @@ class StickerRepository(private val stickerDao: StickerDao) {
             if (!tempRawFile.exists() || tempRawFile.length() < 12) {
                 Log.e(TAG, "Input file is empty or too small for $displayName")
                 return null
+            }
+
+            // Check for duplicates using SHA-256
+            val fileHash = computeFileSha256(tempRawFile)
+            if (fileHash != null) {
+                if (knownHashes != null && knownHashes.contains(fileHash)) {
+                    Log.i(TAG, "Skipping duplicate sticker $displayName (hash $fileHash already exists)")
+                    return null
+                }
             }
 
             // Step 2: Read magic bytes and detect format
@@ -373,6 +375,14 @@ class StickerRepository(private val stickerDao: StickerDao) {
             if (tempRawFile.exists()) {
                 tempRawFile.delete()
             }
+
+            // Record newly imported hash so same-batch duplicates are also rejected
+            if (fileHash != null && knownHashes != null) {
+                knownHashes.add(fileHash)
+            }
+
+            // Also record hash of final main file
+            computeFileSha256(finalMainFile)?.let { knownHashes?.add(it) }
 
             return StickerEntity(
                 filePath = finalMainFile.absolutePath,

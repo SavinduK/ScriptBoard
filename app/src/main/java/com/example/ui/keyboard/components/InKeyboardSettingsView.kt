@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardCapslock
 import androidx.compose.material.icons.filled.Language
@@ -43,6 +44,8 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -419,6 +422,85 @@ fun InKeyboardSettingsView(
                                 }
                             }
                         }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Split & Half-Size Keyboard Ergonomics
+                        val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
+                        val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
+                        val splitKeyboardSizePercent by keyboardPrefs.splitKeyboardSizePercent.collectAsState()
+                        val halfKeyboardSizePercent by keyboardPrefs.halfKeyboardSizePercent.collectAsState()
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Devices,
+                                contentDescription = null,
+                                tint = colors.enterKeyBackground,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Split & Half Keyboard Sizing",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Split Middle Space: ${splitKeyboardSizePercent.toInt()}%",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                        Slider(
+                            value = splitKeyboardSizePercent,
+                            onValueChange = { keyboardPrefs.setSplitKeyboardSizePercent(it) },
+                            valueRange = 50f..150f,
+                            steps = 9,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_split_keyboard_size_inline"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.functionKeyBackground
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Half Keyboard Keys Width: ${halfKeyboardSizePercent.toInt()}%",
+                                color = colors.letterKeySecondaryTextColor,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                        Slider(
+                            value = halfKeyboardSizePercent,
+                            onValueChange = { keyboardPrefs.setHalfKeyboardSizePercent(it) },
+                            valueRange = 50f..85f,
+                            steps = 6,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_half_keyboard_size_inline"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.functionKeyBackground
+                            )
+                        )
                     }
                 }
             }

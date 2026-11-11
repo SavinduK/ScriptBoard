@@ -123,6 +123,14 @@ class KeyboardPreferences(context: Context) {
     private val _tabletHalfSide = MutableStateFlow(prefs.getString(KEY_TABLET_HALF_SIDE, "left") ?: "left")
     val tabletHalfSide: StateFlow<String> = _tabletHalfSide.asStateFlow()
 
+    // Percentage sizing for Split keyboard (e.g. 50% to 150%, default 100%)
+    private val _splitKeyboardSizePercent = MutableStateFlow(prefs.getFloat(KEY_SPLIT_KEYBOARD_SIZE_PERCENT, 100f))
+    val splitKeyboardSizePercent: StateFlow<Float> = _splitKeyboardSizePercent.asStateFlow()
+
+    // Percentage sizing for Half-size keyboard (keys width percentage: 50% to 85%, default 66%)
+    private val _halfKeyboardSizePercent = MutableStateFlow(prefs.getFloat(KEY_HALF_KEYBOARD_SIZE_PERCENT, 66f))
+    val halfKeyboardSizePercent: StateFlow<Float> = _halfKeyboardSizePercent.asStateFlow()
+
     // Hide keyboard when physical/hardware keyboard is connected (Wired USB or Bluetooth)
     private val _hideOnPhysicalKeyboard = MutableStateFlow(prefs.getBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, true))
     val hideOnPhysicalKeyboard: StateFlow<Boolean> = _hideOnPhysicalKeyboard.asStateFlow()
@@ -275,6 +283,18 @@ class KeyboardPreferences(context: Context) {
     fun toggleTabletHalfSide() {
         val next = if (_tabletHalfSide.value == "left") "right" else "left"
         setTabletHalfSide(next)
+    }
+
+    fun setSplitKeyboardSizePercent(percent: Float) {
+        val clamped = percent.coerceIn(40f, 180f)
+        _splitKeyboardSizePercent.value = clamped
+        prefs.edit().putFloat(KEY_SPLIT_KEYBOARD_SIZE_PERCENT, clamped).apply()
+    }
+
+    fun setHalfKeyboardSizePercent(percent: Float) {
+        val clamped = percent.coerceIn(45f, 90f)
+        _halfKeyboardSizePercent.value = clamped
+        prefs.edit().putFloat(KEY_HALF_KEYBOARD_SIZE_PERCENT, clamped).apply()
     }
 
     /**
@@ -525,6 +545,8 @@ class KeyboardPreferences(context: Context) {
         map["tabletSplitEnabled"] = _tabletSplitEnabled.value
         map["tabletHalfSizeEnabled"] = _tabletHalfSizeEnabled.value
         map["tabletHalfSide"] = _tabletHalfSide.value
+        map["splitKeyboardSizePercent"] = _splitKeyboardSizePercent.value.toDouble()
+        map["halfKeyboardSizePercent"] = _halfKeyboardSizePercent.value.toDouble()
         map["hideOnPhysicalKeyboard"] = _hideOnPhysicalKeyboard.value
         map["currentLanguage"] = _currentLanguage.value
         map["numberRowEnabled"] = _numberRowEnabled.value
@@ -614,6 +636,16 @@ class KeyboardPreferences(context: Context) {
             _tabletHalfSide.value = it
             editor.putString(KEY_TABLET_HALF_SIDE, it)
         }
+        (map["splitKeyboardSizePercent"] as? Number)?.let {
+            val f = it.toFloat().coerceIn(40f, 180f)
+            _splitKeyboardSizePercent.value = f
+            editor.putFloat(KEY_SPLIT_KEYBOARD_SIZE_PERCENT, f)
+        }
+        (map["halfKeyboardSizePercent"] as? Number)?.let {
+            val f = it.toFloat().coerceIn(45f, 90f)
+            _halfKeyboardSizePercent.value = f
+            editor.putFloat(KEY_HALF_KEYBOARD_SIZE_PERCENT, f)
+        }
         (map["hideOnPhysicalKeyboard"] as? Boolean)?.let {
             _hideOnPhysicalKeyboard.value = it
             editor.putBoolean(KEY_HIDE_ON_PHYSICAL_KEYBOARD, it)
@@ -680,6 +712,8 @@ class KeyboardPreferences(context: Context) {
         private const val KEY_TABLET_SPLIT_ENABLED = "tablet_split_enabled"
         private const val KEY_TABLET_HALF_SIZE_ENABLED = "tablet_half_size_enabled"
         private const val KEY_TABLET_HALF_SIDE = "tablet_half_side"
+        private const val KEY_SPLIT_KEYBOARD_SIZE_PERCENT = "split_keyboard_size_percent"
+        private const val KEY_HALF_KEYBOARD_SIZE_PERCENT = "half_keyboard_size_percent"
         private const val KEY_HIDE_ON_PHYSICAL_KEYBOARD = "hide_on_physical_keyboard"
         private const val KEY_BLUETOOTH_SYNC_ENABLED = "bluetooth_sync_enabled"
         private const val KEY_WIFI_SYNC_ENABLED = "wifi_sync_enabled"

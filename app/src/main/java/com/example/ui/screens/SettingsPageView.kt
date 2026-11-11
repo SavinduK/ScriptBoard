@@ -610,90 +610,162 @@ fun SettingsPageView(
                         val tabletSplitEnabled by keyboardPrefs.tabletSplitEnabled.collectAsState()
                         val tabletHalfSizeEnabled by keyboardPrefs.tabletHalfSizeEnabled.collectAsState()
                         val tabletHalfSide by keyboardPrefs.tabletHalfSide.collectAsState()
+                        val splitKeyboardSizePercent by keyboardPrefs.splitKeyboardSizePercent.collectAsState()
+                        val halfKeyboardSizePercent by keyboardPrefs.halfKeyboardSizePercent.collectAsState()
 
-                        if (isTablet) {
-                            Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
+                        Text(
+                            text = "Split & Half Keyboard Ergonomics",
+                            color = colors.enterKeyBackground,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Split Mode Toggle
+                        SettingsPageToggle(
+                            icon = Icons.Default.Devices,
+                            title = "Split Keyboard Mode",
+                            subtitle = "Separates keys for left and right thumb typing with middle space keys on either side",
+                            checked = tabletSplitEnabled,
+                            onCheckedChange = { keyboardPrefs.setTabletSplitEnabled(it) },
+                            colors = colors,
+                            testTag = "switch_tablet_split_mode"
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Split Size percentage slider
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "Tablet Ergonomics (Tablets Only)",
+                                text = "Split Middle Space Size",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${splitKeyboardSizePercent.toInt()}%",
                                 color = colors.enterKeyBackground,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+                        Slider(
+                            value = splitKeyboardSizePercent,
+                            onValueChange = { keyboardPrefs.setSplitKeyboardSizePercent(it) },
+                            valueRange = 50f..150f,
+                            steps = 9,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_split_keyboard_size"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.background
+                            )
+                        )
 
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Half-Size Keyboard Toggle
+                        SettingsPageToggle(
+                            icon = Icons.Default.Keyboard,
+                            title = "Half-Size Keyboard",
+                            subtitle = "Compact one-handed keyboard on one side, space & quick actions on the other",
+                            checked = tabletHalfSizeEnabled,
+                            onCheckedChange = { keyboardPrefs.setTabletHalfSizeEnabled(it) },
+                            colors = colors,
+                            testTag = "switch_tablet_half_size"
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Half-Size percentage slider
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Half Keyboard Keys Width",
+                                color = colors.letterKeyTextColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${halfKeyboardSizePercent.toInt()}%",
+                                color = colors.enterKeyBackground,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = halfKeyboardSizePercent,
+                            onValueChange = { keyboardPrefs.setHalfKeyboardSizePercent(it) },
+                            valueRange = 50f..85f,
+                            steps = 6,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_half_keyboard_size"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.enterKeyBackground,
+                                activeTrackColor = colors.enterKeyBackground,
+                                inactiveTrackColor = colors.background
+                            )
+                        )
+
+                        if (tabletHalfSizeEnabled) {
                             Spacer(modifier = Modifier.height(8.dp))
-
-                            // Split Mode Toggle
-                            SettingsPageToggle(
-                                icon = Icons.Default.Devices,
-                                title = "Split Keyboard Mode",
-                                subtitle = "Separates keys for left and right thumb typing with middle space keys on either side",
-                                checked = tabletSplitEnabled,
-                                onCheckedChange = { keyboardPrefs.setTabletSplitEnabled(it) },
-                                colors = colors,
-                                testTag = "switch_tablet_split_mode"
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Half-Size Keyboard Toggle
-                            SettingsPageToggle(
-                                icon = Icons.Default.Keyboard,
-                                title = "Half-Size Keyboard",
-                                subtitle = "Compact one-handed keyboard on one side, space & quick actions on the other",
-                                checked = tabletHalfSizeEnabled,
-                                onCheckedChange = { keyboardPrefs.setTabletHalfSizeEnabled(it) },
-                                colors = colors,
-                                testTag = "switch_tablet_half_size"
-                            )
-
-                            if (tabletHalfSizeEnabled) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Dock Side:",
+                                    color = colors.letterKeyTextColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (tabletHalfSide == "left") colors.enterKeyBackground else colors.background)
+                                        .clickable { keyboardPrefs.setTabletHalfSide("left") }
+                                        .padding(vertical = 6.dp)
+                                        .testTag("btn_dock_side_left"),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "Dock Side:",
-                                        color = colors.letterKeyTextColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        text = "Left Side",
+                                        color = if (tabletHalfSide == "left") colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (tabletHalfSide == "left") colors.enterKeyBackground else colors.background)
-                                            .clickable { keyboardPrefs.setTabletHalfSide("left") }
-                                            .padding(vertical = 6.dp)
-                                            .testTag("btn_dock_side_left"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Left Side",
-                                            color = if (tabletHalfSide == "left") colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (tabletHalfSide == "right") colors.enterKeyBackground else colors.background)
-                                            .clickable { keyboardPrefs.setTabletHalfSide("right") }
-                                            .padding(vertical = 6.dp)
-                                            .testTag("btn_dock_side_right"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Right Side",
-                                            color = if (tabletHalfSide == "right") colors.enterKeyTextColor else colors.letterKeyTextColor,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (tabletHalfSide == "right") colors.enterKeyBackground else colors.background)
+                                        .clickable { keyboardPrefs.setTabletHalfSide("right") }
+                                        .padding(vertical = 6.dp)
+                                        .testTag("btn_dock_side_right"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Right Side",
+                                        color = if (tabletHalfSide == "right") colors.enterKeyTextColor else colors.letterKeyTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
